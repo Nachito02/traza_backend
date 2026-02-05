@@ -3,11 +3,13 @@ import type { NextFunction, Request, Response } from "express";
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : undefined;
+  const token = bearerToken ?? req.cookies?.access_token;
+  if (!token) {
     return res.status(401).json({ error: "unauthorized" });
   }
-
-  const token = authHeader.slice(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     return res.status(500).json({ error: "JWT_SECRET no configurado" });

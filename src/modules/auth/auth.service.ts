@@ -1,6 +1,7 @@
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 import { prisma } from "../../config/prismaClient.js";
 
 type LoginInput = {
@@ -38,7 +39,36 @@ function getJwtSecret() {
 }
 
 function signToken(payload: JwtPayload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "15m" });
+}
+
+function getRefreshTtlDays() {
+  const value = process.env.REFRESH_TOKEN_TTL_DAYS;
+  const days = value ? Number(value) : 30;
+  if (Number.isNaN(days) || days <= 0) {
+    throw new AuthError("REFRESH_TOKEN_TTL_DAYS inválido", 500);
+  }
+  return days;
+}
+
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function issueRefreshToken(userId: string) {
+  const refreshToken = crypto.randomBytes(48).toString("base64url");
+  const token_hash = hashToken(refreshToken);
+  const expires_at = new Date(Date.now() + getRefreshTtlDays() * 24 * 60 * 60 * 1000);
+
+  await prisma.refreshToken.create({
+    data: {
+      user_id: userId,
+      token_hash,
+      expires_at,
+    },
+  });
+
+  return refreshToken;
 }
 
 export async function login({ email, password }: LoginInput) {
@@ -57,7 +87,8 @@ export async function login({ email, password }: LoginInput) {
   }
 
   const token = signToken({ userId: user.user_id, email: user.email });
-  return { token, user };
+  const refreshToken = await issueRefreshToken(user.user_id);
+  return { token, refreshToken, user };
 }
 
 export async function getUserById(userId: string) {
@@ -103,4 +134,58 @@ export async function createUser({
   });
 
   return user;
+}
+
+export async function refreshAccessToken(refreshToken: string) {
+  if (!refreshToken) {
+    throw new AuthError("Refresh token requerido", 400);
+  }
+
+  const token_hash = hashToken(refreshToken);
+  const record = await prisma.refreshToken.findFirst({
+    where: {
+      token_hash,
+      revoked_at: null,
+      expires_at: { gt: new Date() },
+    },
+    include: { app_user: true },
+  });
+
+  if (!record) {
+    throw new AuthError("Refresh token inválido", 401);
+  }
+
+  // Rotación: revoca el actual y emite uno nuevo
+  await prisma.refreshToken.update({
+    where: { token_id: record.token_id },
+    data: { revoked_at: new Date() },
+  });
+
+  const newAccessToken = signToken({
+    userId: record.app_user.user_id,
+    email: record.app_user.email,
+  });
+  const newRefreshToken = await issueRefreshToken(record.app_user.user_id);
+
+  return { token: newAccessToken, refreshToken: newRefreshToken };
+}
+
+export async function revokeRefreshToken(refreshToken: string) {
+  if (!refreshToken) {
+    throw new AuthError("Refresh token requerido", 400);
+  }
+
+  const token_hash = hashToken(refreshToken);
+  const record = await prisma.refreshToken.findFirst({
+    where: { token_hash, revoked_at: null },
+  });
+
+  if (!record) {
+    return;
+  }
+
+  await prisma.refreshToken.update({
+    where: { token_id: record.token_id },
+    data: { revoked_at: new Date() },
+  });
 }

@@ -1,5 +1,12 @@
 import type { Request, Response } from 'express';
-import { AuthError, createUser, getUserById, login } from './auth.service.js';
+import {
+  AuthError,
+  createUser,
+  getUserById,
+  login,
+  refreshAccessToken,
+  revokeRefreshToken,
+} from './auth.service.js';
 
 function handleError(res: Response, error: unknown) {
   if (error instanceof AuthError) {
@@ -8,12 +15,30 @@ function handleError(res: Response, error: unknown) {
   return res.status(500).json({ error: 'Error interno' });
 }
 
+function cookieOptions() {
+  const isProd = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+}
+
 export async function loginHandler(req: Request, res: Response) {
   try {
     const { email, password } = req.body ?? {};
     const result = await login({ email, password });
+    const options = cookieOptions();
+    res.cookie('access_token', result.token, {
+      ...options,
+      maxAge: 15 * 60 * 1000,
+    });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...options,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
     return res.json({
-      token: result.token,
       user: {
         id: result.user.user_id,
         email: result.user.email,
@@ -53,6 +78,38 @@ export async function createUserHandler(req: Request, res: Response) {
       nombre: user.nombre,
       bodegaId: user.bodega_id,
     });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function refreshHandler(req: Request, res: Response) {
+  try {
+    const refreshToken = req.cookies?.refresh_token;
+    const result = await refreshAccessToken(refreshToken);
+    const options = cookieOptions();
+    res.cookie('access_token', result.token, {
+      ...options,
+      maxAge: 15 * 60 * 1000,
+    });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...options,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function logoutHandler(req: Request, res: Response) {
+  try {
+    const refreshToken = req.cookies?.refresh_token;
+    await revokeRefreshToken(refreshToken);
+    const options = cookieOptions();
+    res.clearCookie('access_token', options);
+    res.clearCookie('refresh_token', options);
+    return res.status(204).send();
   } catch (error) {
     return handleError(res, error);
   }
