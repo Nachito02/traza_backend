@@ -29,6 +29,20 @@ async function ensureUserBodega(userId: string, bodegaId: string) {
   }
 }
 
+export async function getTrazabilidadById(
+  trazabilidadId: string,
+  userId: string,
+) {
+  const trazabilidad = await prisma.trazabilidad.findUnique({
+    where: { trazabilidad_id: trazabilidadId },
+  });
+  if (!trazabilidad) {
+    throw new TrazabilidadError("Trazabilidad no encontrada", 404);
+  }
+  await ensureUserBodega(userId, trazabilidad.bodega_id);
+  return trazabilidad;
+}
+
 export async function listTrazabilidades(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
@@ -114,5 +128,25 @@ export async function createTrazabilidad({
   if (nombre_producto !== undefined) data.nombre_producto = nombre_producto;
   if (imagen_producto !== undefined) data.imagen_producto = imagen_producto;
 
-  return prisma.trazabilidad.create({ data });
+  const trazabilidad = await prisma.trazabilidad.create({ data });
+
+  // Crea milestones automáticamente según el protocolo
+  const procesos = await prisma.protocoloProceso.findMany({
+    where: { protocolo_etapa: { protocolo_id: protocoloId } },
+    select: { proceso_id: true },
+    orderBy: { orden: "asc" },
+  });
+
+  if (procesos.length > 0) {
+    await prisma.milestone.createMany({
+      data: procesos.map((p) => ({
+        trazabilidad_id: trazabilidad.trazabilidad_id,
+        proceso_id: p.proceso_id,
+        created_by: userId,
+        event_date: new Date(),
+      })),
+    });
+  }
+
+  return trazabilidad;
 }

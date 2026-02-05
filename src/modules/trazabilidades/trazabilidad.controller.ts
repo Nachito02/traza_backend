@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import {
   createTrazabilidad,
+  getTrazabilidadById,
   TrazabilidadError,
   listTrazabilidades,
 } from "./trazabilidad.service.js";
@@ -54,6 +55,19 @@ export async function listTrazabilidadesHandler(req: Request, res: Response) {
       bodegaId,
     );
     return res.json(trazabilidades);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getTrazabilidadHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const { id } = req.params;
+    const trazabilidad = await getTrazabilidadById(id, req.user.userId);
+    return res.json(trazabilidad);
   } catch (error) {
     return handleError(res, error);
   }

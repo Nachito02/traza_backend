@@ -7,6 +7,7 @@ import { cuartelRoutes } from "../modules/cuarteles/cuartel.route.js";
 import { campaniaRoutes } from "../modules/campanias/campania.route.js";
 import { protocoloRoutes } from "../modules/protocolos/protocolo.route.js";
 import { trazabilidadRoutes } from "../modules/trazabilidades/trazabilidad.route.js";
+import { eventoRoutes } from "../modules/eventos/evento.route.js";
 
 export const routes = Router();
 
@@ -18,3 +19,4 @@ routes.use("/cuarteles", cuartelRoutes);
 routes.use("/campanias", campaniaRoutes);
 routes.use("/protocolos", protocoloRoutes);
 routes.use("/trazabilidades", trazabilidadRoutes);
+routes.use("/eventos", eventoRoutes);
