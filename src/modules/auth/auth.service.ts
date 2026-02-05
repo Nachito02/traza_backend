@@ -76,7 +76,11 @@ export async function login({ email, password }: LoginInput) {
     throw new AuthError("Email y password son requeridos", 400);
   }
 
-  const user = await prisma.appUser.findUnique({ where: { email } });
+  const user = await prisma.appUser.findUnique({ where: { email }, include: {user_bodega : {
+    include : {
+      bodega : true
+    }
+  }}  });
   if (!user || !user.password_hash) {
     throw new AuthError("Credenciales inválidas", 401);
   }
@@ -94,11 +98,34 @@ export async function login({ email, password }: LoginInput) {
 export async function getUserById(userId: string) {
   const user = await prisma.appUser.findUnique({
     where: { user_id: userId },
+    include: { user_bodega: { include: { bodega: true } } },
   });
   if (!user) {
     throw new AuthError("Usuario no encontrado", 404);
   }
   return user;
+}
+
+export async function getUserBodegas(userId: string) {
+  const user = await prisma.appUser.findUnique({
+    where: { user_id: userId },
+    include: {
+      user_bodega: { include: { bodega: true } },
+    },
+  });
+  if (!user) {
+    throw new AuthError("Usuario no encontrado", 404);
+  }
+
+  type Bodega = NonNullable<(typeof user.user_bodega)[number]["bodega"]>;
+  const map = new Map<string, Bodega>();
+  for (const relation of user.user_bodega) {
+    if (relation.bodega) {
+      map.set(relation.bodega.bodega_id, relation.bodega);
+    }
+  }
+
+  return Array.from(map.values());
 }
 
 export async function createUser({
@@ -129,7 +156,13 @@ export async function createUser({
       email,
       password_hash,
       nombre,
-      bodega: { connect: { bodega_id: bodegaId } },
+    },
+  });
+
+  await prisma.userBodega.create({
+    data: {
+      user_id: user.user_id,
+      bodega_id: bodegaId,
     },
   });
 

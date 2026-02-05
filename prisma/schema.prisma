@@ -14,8 +14,6 @@ model AppUser {
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
   password_hash String?
   is_active     Boolean         @default(true)
-  bodega_id     String          @db.Uuid
-  bodega        Bodega          @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
   refresh_token RefreshToken[]
   user_bodega   UserBodega[]
   user_rol      UserRol[]
@@ -46,7 +44,6 @@ model Bodega {
   persona                   Persona[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
-  app_users                 AppUser[]
 
   @@index([productor_id], map: "idx_bodega_productor")
   @@map("bodega")

@@ -29,7 +29,13 @@ async function main() {
       email,
       nombre,
       password_hash,
-      bodega: { connect: { bodega_id: bodegaId } },
+    },
+  });
+
+  await prisma.userBodega.create({
+    data: {
+      user_id: user.user_id,
+      bodega_id: bodegaId,
     },
   });
 

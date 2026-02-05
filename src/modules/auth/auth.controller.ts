@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   AuthError,
   createUser,
+  getUserBodegas,
   getUserById,
   login,
   refreshAccessToken,
@@ -43,7 +44,6 @@ export async function loginHandler(req: Request, res: Response) {
         id: result.user.user_id,
         email: result.user.email,
         nombre: result.user.nombre,
-        bodegaId: result.user.bodega_id,
       },
     });
   } catch (error) {
@@ -61,7 +61,6 @@ export async function meHandler(req: Request, res: Response) {
       id: user.user_id,
       email: user.email,
       nombre: user.nombre,
-      bodegaId: user.bodega_id,
     });
   } catch (error) {
     return handleError(res, error);
@@ -76,8 +75,19 @@ export async function createUserHandler(req: Request, res: Response) {
       id: user.user_id,
       email: user.email,
       nombre: user.nombre,
-      bodegaId: user.bodega_id,
     });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function meBodegasHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const bodegas = await getUserBodegas(req.user.userId);
+    return res.json(bodegas);
   } catch (error) {
     return handleError(res, error);
   }
