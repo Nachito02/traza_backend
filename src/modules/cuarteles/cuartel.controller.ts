@@ -47,7 +47,10 @@ export async function listCuartelesByFincaHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const { fincaId } = req.params;
+    const fincaId = String(req.params.fincaId ?? "");
+    if (!fincaId) {
+      return res.status(400).json({ error: "fincaId requerido" });
+    }
     const cuarteles = await listCuartelesByFinca(fincaId, req.user.userId);
     return res.json(cuarteles);
   } catch (error) {

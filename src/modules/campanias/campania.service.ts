@@ -34,7 +34,7 @@ export async function createCampania({
     nombre: string;
     fecha_inicio: Date;
     fecha_fin: Date;
-    estado?: string | null;
+    estado?: string;
   } = {
     nombre,
     fecha_inicio: new Date(fecha_inicio),

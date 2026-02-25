@@ -555,6 +555,7 @@ model Milestone {
   created_at           DateTime               @default(now()) @db.Timestamptz(6)
   updated_at           DateTime               @default(now()) @db.Timestamptz(6)
   evidencia            Evidencia[]
+  hallazgo_cumplimiento HallazgoCumplimiento[]
   protocolo_proceso    ProtocoloProceso      @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
   trazabilidad         Trazabilidad           @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: Cascade, onUpdate: NoAction)
   milestone_evento     MilestoneEvento[]
@@ -698,6 +699,7 @@ model Trazabilidad {
   created_at      DateTime            @default(now()) @db.Timestamptz(6)
   updated_at      DateTime            @default(now()) @db.Timestamptz(6)
   milestone       Milestone[]
+  hallazgo_cumplimiento HallazgoCumplimiento[]
   bodega          Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   campania        Campania            @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
   cuartel         Cuartel             @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
@@ -709,6 +711,60 @@ model Trazabilidad {
   @@index([bodega_id, finca_id, cuartel_id, campania_id], map: "idx_trazabilidad_origen")
   @@index([protocolo_id], map: "idx_trazabilidad_protocolo")
   @@map("trazabilidad")
+}
+
+model ConfigRegla {
+  config_regla_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo          String   @unique
+  valor_json      Json     @default("{}")
+  descripcion     String?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("config_regla")
+}
+
+model HallazgoCumplimiento {
+  hallazgo_id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trazabilidad_id           String?        @db.Uuid
+  milestone_id              String?        @db.Uuid
+  regla_codigo              String
+  severidad                 SeveridadRegla
+  estado                    EstadoHallazgo @default(abierto)
+  titulo                    String
+  mensaje                   String
+  detalle                   Json           @default("{}")
+  evento_tabla              String?
+  evento_id                 String?        @db.Uuid
+  justificacion_categoria   String?
+  justificacion_texto       String?
+  justificacion_responsable String?        @db.Uuid
+  justificacion_fecha       DateTime?      @db.Timestamptz(6)
+  created_at                DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime       @default(now()) @db.Timestamptz(6)
+  resolved_at               DateTime?      @db.Timestamptz(6)
+  milestone                 Milestone?     @relation(fields: [milestone_id], references: [milestone_id], onDelete: SetNull, onUpdate: NoAction)
+  trazabilidad              Trazabilidad?  @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([trazabilidad_id], map: "idx_hallazgo_trazabilidad")
+  @@index([milestone_id], map: "idx_hallazgo_milestone")
+  @@index([estado, severidad], map: "idx_hallazgo_estado_severidad")
+  @@map("hallazgo_cumplimiento")
+}
+
+model EventoFingerprint {
+  evento_fingerprint_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo_evento           String
+  hash_contenido        String   @unique
+  evento_tabla          String
+  evento_id             String   @db.Uuid
+  fecha                 DateTime @db.Date
+  cuartel_id            String?  @db.Uuid
+  finca_id              String?  @db.Uuid
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tipo_evento, fecha], map: "idx_evento_fp_tipo_fecha")
+  @@map("evento_fingerprint")
 }
 
 model UserBodega {
@@ -771,4 +827,18 @@ enum ValidadoPorTipo {
   sistema
   ia
   tecnico
+}
+
+enum SeveridadRegla {
+  bloqueo
+  alerta
+  info
+}
+
+enum EstadoHallazgo {
+  abierto
+  en_proceso
+  resuelto
+  aceptado
+  anulado
 }

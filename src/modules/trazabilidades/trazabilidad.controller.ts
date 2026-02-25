@@ -65,7 +65,10 @@ export async function getTrazabilidadHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const { id } = req.params;
+    const id = String(req.params.id ?? "");
+    if (!id) {
+      return res.status(400).json({ error: "id requerido" });
+    }
     const trazabilidad = await getTrazabilidadById(id, req.user.userId);
     return res.json(trazabilidad);
   } catch (error) {

@@ -35,7 +35,10 @@ export async function listFincasByBodegaHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const { bodegaId } = req.params;
+    const bodegaId = String(req.params.bodegaId ?? "");
+    if (!bodegaId) {
+      return res.status(400).json({ error: "bodegaId requerido" });
+    }
     const fincas = await listFincasByBodega(bodegaId, req.user.userId);
     return res.json(fincas);
   } catch (error) {

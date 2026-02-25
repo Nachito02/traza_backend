@@ -6,7 +6,7 @@ export async function createEventoHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const tipo = req.params.tipo as "riego" | "cosecha";
+    const tipo = req.params.tipo as string;
     const body = req.body ?? {};
     const evento = await createEvento({
       ...body,

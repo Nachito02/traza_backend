@@ -13,6 +13,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use(cors({ origin: true, credentials: true }))
+app.use('/uploads', express.static('uploads'));
 
 //Routes
 app.use('/api', routes);

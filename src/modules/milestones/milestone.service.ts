@@ -32,8 +32,20 @@ export async function listMilestonesByTrazabilidad(
   await ensureUserTrazabilidad(userId, trazabilidadId);
   return prisma.milestone.findMany({
     where: { trazabilidad_id: trazabilidadId },
-    include: { protocolo_proceso: true },
-    orderBy: { created_at: 'asc' },
+
+    include: {
+      protocolo_proceso: {
+        include: {
+          protocolo_etapa: true,
+        },
+      },
+      evidencia: true,
+    },
+    orderBy: {
+      protocolo_proceso: {
+        orden: 'asc',
+      },
+    },
   });
 }
 
@@ -75,6 +87,37 @@ export async function createMilestone({
       proceso_id: procesoId,
       created_by: userId,
       event_date: new Date(),
+    },
+  });
+}
+
+export async function addEvidence({
+  milestoneId,
+  url,
+  tipo = 'imagen',
+  userId,
+}: {
+  milestoneId: string;
+  url: string;
+  tipo?: 'imagen' | 'pdf' | 'planilla' | 'otro';
+  userId: string;
+}) {
+  const milestone = await prisma.milestone.findUnique({
+    where: { milestone_id: milestoneId },
+    select: { trazabilidad_id: true },
+  });
+
+  if (!milestone) {
+    throw new Error('Milestone no encontrado');
+  }
+
+  await ensureUserTrazabilidad(userId, milestone.trazabilidad_id);
+
+  return prisma.evidencia.create({
+    data: {
+      milestone_id: milestoneId,
+      url,
+      tipo,
     },
   });
 }
