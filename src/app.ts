@@ -5,6 +5,8 @@ import cors from "cors";
 import cookieParser from 'cookie-parser';
 import { prisma } from './config/prismaClient.js';
 import { routes } from './routes/index.js';
+import swaggerUi from "swagger-ui-express";
+import openapiSpec from "./config/openapi.js";
 
 const app = express();
 
@@ -14,6 +16,7 @@ app.use(cookieParser());
 
 app.use(cors({ origin: true, credentials: true }))
 app.use('/uploads', express.static('uploads'));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 //Routes
 app.use('/api', routes);
