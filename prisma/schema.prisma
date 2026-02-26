@@ -842,3 +842,8 @@ enum EstadoHallazgo {
   aceptado
   anulado
 }
+
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "../erDiagram.md"
+}
