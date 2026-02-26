@@ -103,10 +103,13 @@ export async function createTrazabilidad({
 
   const campania = await prisma.campania.findUnique({
     where: { campania_id: campaniaId },
-    select: { campania_id: true },
+    select: { campania_id: true, bodega_id: true },
   });
   if (!campania) {
     throw new TrazabilidadError("Campaña no encontrada", 404);
+  }
+  if (campania.bodega_id !== bodegaId) {
+    throw new TrazabilidadError("La campaña no pertenece a la bodega", 400);
   }
 
   const data: {

@@ -1,14 +1,14 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
+import { prisma } from "../src/config/prismaClient.ts";
 
 const email = "arguellojuan08@gmail.com";
 const nombre = "Juan Arguello";
-const bodegaId = "e5cafa84-bca6-417d-96b6-9f01995d2177";
+const bodegaId = "837bc9e4-8abe-4999-aaa2-15963e42f078";
 const password = "123456";
 
 async function main() {
 
-    const {prisma} = await import ("../src/config/prismaClient.js");
 
   const existing = await prisma.appUser.findUnique({ where: { email } });
   if (existing) {

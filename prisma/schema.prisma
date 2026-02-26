@@ -41,6 +41,7 @@ model Bodega {
   evento_sanitizacion_banos EventoSanitizacionBanos[]
   evento_sobrante_lavado    EventoSobranteLavado[]
   finca                     Finca[]
+  campania                  Campania[]
   persona                   Persona[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
@@ -52,12 +53,14 @@ model Bodega {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model Campania {
   campania_id                     String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre                          String                            @unique(map: "uq_campania_nombre")
+  bodega_id                       String                            @db.Uuid
+  nombre                          String
   fecha_inicio                    DateTime                          @db.Date
   fecha_fin                       DateTime                          @db.Date
   estado                          String                            @default("abierta")
   created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  bodega                          Bodega                            @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   cuartel_campania                CuartelCampania[]
   evento_analisis_suelo           EventoAnalisisDeSuelo[]
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
@@ -72,6 +75,8 @@ model Campania {
   evento_precipitacion            EventoPrecipitacion[]
   evento_riego                    EventoRiego[]
   trazabilidad                    Trazabilidad[]
+  @@unique([bodega_id, nombre], map: "uq_campania_bodega_nombre")
+  @@index([bodega_id], map: "idx_campania_bodega")
   @@map("campania")
 }
 
