@@ -1,0 +1,932 @@
+//// ------------------------------------------------------
+//// THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+//// ------------------------------------------------------
+
+Table app_user {
+  user_id String [pk]
+  nombre String [not null]
+  email String [unique]
+  created_at DateTime [default: `now()`, not null]
+  password_hash String
+  is_active Boolean [not null, default: true]
+  refresh_token refresh_token [not null]
+  user_bodega user_bodega [not null]
+  user_rol user_rol [not null]
+}
+
+Table bodega {
+  bodega_id String [pk]
+  productor_id String
+  nombre String [not null]
+  razon_social String
+  cuit String
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  productor productor
+  evento_accidente evento_accidente [not null]
+  evento_capacitacion evento_capacitacion [not null]
+  evento_entrega_epp evento_entrega_epp [not null]
+  evento_limpieza_cosecha evento_limpieza_cosecha [not null]
+  evento_mantenimiento evento_mantenimiento [not null]
+  evento_no_conforme evento_no_conforme [not null]
+  evento_reclamo evento_reclamo [not null]
+  evento_residuo evento_residuo [not null]
+  evento_sanitizacion_banos evento_sanitizacion_banos [not null]
+  evento_sobrante_lavado evento_sobrante_lavado [not null]
+  finca finca [not null]
+  persona persona [not null]
+  trazabilidad trazabilidad [not null]
+  user_bodega user_bodega [not null]
+}
+
+Table campania {
+  campania_id String [pk]
+  nombre String [unique, not null]
+  fecha_inicio DateTime [not null]
+  fecha_fin DateTime [not null]
+  estado String [not null, default: 'abierta']
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  cuartel_campania cuartel_campania [not null]
+  evento_analisis_suelo evento_analisis_suelo [not null]
+  evento_aplicacion_fitosanitaria evento_aplicacion_fitosanitaria [not null]
+  evento_canopia evento_canopia [not null]
+  evento_cosecha evento_cosecha [not null]
+  evento_energia evento_energia [not null]
+  evento_fenologia evento_fenologia [not null]
+  evento_fertilizacion evento_fertilizacion [not null]
+  evento_labor_suelo evento_labor_suelo [not null]
+  evento_monitoreo_enfermedad evento_monitoreo_enfermedad [not null]
+  evento_monitoreo_plaga evento_monitoreo_plaga [not null]
+  evento_precipitacion evento_precipitacion [not null]
+  evento_riego evento_riego [not null]
+  trazabilidad trazabilidad [not null]
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table capacitacion_asistente {
+  evento_capacitacion_id String [not null]
+  persona_id String [not null]
+  evento_capacitacion evento_capacitacion [not null]
+  persona persona [not null]
+
+  indexes {
+    (evento_capacitacion_id, persona_id) [pk]
+  }
+}
+
+Table cuartel {
+  cuartel_id String [pk]
+  finca_id String [not null]
+  codigo_cuartel String [not null]
+  superficie_ha Decimal
+  cultivo String
+  variedad String
+  sistema_productivo String
+  sistema_conduccion String
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  finca finca [not null]
+  cuartel_campania cuartel_campania [not null]
+  evento_analisis_suelo evento_analisis_suelo [not null]
+  evento_aplicacion_fitosanitaria evento_aplicacion_fitosanitaria [not null]
+  evento_canopia evento_canopia [not null]
+  evento_cosecha evento_cosecha [not null]
+  evento_energia evento_energia [not null]
+  evento_fenologia evento_fenologia [not null]
+  evento_fertilizacion evento_fertilizacion [not null]
+  evento_labor_suelo evento_labor_suelo [not null]
+  evento_monitoreo_enfermedad evento_monitoreo_enfermedad [not null]
+  evento_monitoreo_plaga evento_monitoreo_plaga [not null]
+  evento_riego evento_riego [not null]
+  trazabilidad trazabilidad [not null]
+
+  indexes {
+    (finca_id, codigo_cuartel) [unique]
+  }
+}
+
+Table cuartel_campania {
+  cuartel_id String [not null]
+  campania_id String [not null]
+  estado String [not null, default: 'habilitada']
+  campania campania [not null]
+  cuartel cuartel [not null]
+
+  indexes {
+    (cuartel_id, campania_id) [pk]
+  }
+}
+
+Table evento_accidente {
+  evento_accidente_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  persona_id String [not null]
+  accion_correctiva String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona [not null]
+}
+
+Table evento_analisis_suelo {
+  evento_analisis_suelo_id String [pk]
+  fecha DateTime [not null]
+  unidad_muestreada String [not null]
+  cuartel_id String
+  campania_id String
+  laboratorio String
+  parametros Json [not null, default: '{}']
+  created_at DateTime [default: `now()`, not null]
+  campania campania
+  cuartel cuartel
+}
+
+Table evento_aplicacion_fitosanitaria {
+  evento_fito_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  insumo_lote_id String
+  dosis Decimal [not null]
+  unidad String [not null]
+  carencia_dias Int [not null]
+  motivo String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  insumo_lote insumo_lote
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_canopia {
+  evento_canopia_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  tipo_practica String [not null]
+  intensidad String
+  jornales Decimal
+  responsable_persona_id String
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_capacitacion {
+  evento_capacitacion_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  tema String [not null]
+  created_at DateTime [default: `now()`, not null]
+  capacitacion_asistente capacitacion_asistente [not null]
+  bodega bodega
+}
+
+Table evento_cosecha {
+  lote_cosecha_id String [pk]
+  fecha_cosecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  cantidad Decimal [not null]
+  unidad String [not null]
+  destino String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_energia {
+  evento_energia_id String [pk]
+  periodo String [not null]
+  cuartel_id String
+  campania_id String
+  tipo String [not null]
+  consumo Decimal [not null]
+  unidad String [not null]
+  created_at DateTime [default: `now()`, not null]
+  campania campania
+  cuartel cuartel
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_entrega_epp {
+  evento_entrega_epp_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  persona_id String [not null]
+  epp String [not null]
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona [not null]
+}
+
+Table evento_fenologia {
+  evento_fenologia_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  estado_fenologico String [not null]
+  porcentaje_avance Decimal
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_fertilizacion {
+  evento_fertilizacion_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  insumo_id String
+  dosis Decimal [not null]
+  unidad String [not null]
+  cantidad_total Decimal
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  insumo_catalogo insumo_catalogo
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_labor_suelo {
+  evento_labor_suelo_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  tipo_labor String [not null]
+  horas Decimal
+  hs_por_ha Decimal
+  total_horas_cuartel Decimal
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_limpieza_cosecha {
+  evento_limpieza_cosecha_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  elemento String [not null]
+  metodo String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona
+}
+
+Table evento_mantenimiento {
+  evento_mantenimiento_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  equipo String [not null]
+  tipo String [not null]
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona
+}
+
+Table evento_monitoreo_enfermedad {
+  evento_monitoreo_enfermedad_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  enfermedad String [not null]
+  incidencia String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+}
+
+Table evento_monitoreo_plaga {
+  evento_monitoreo_plaga_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  plaga String [not null]
+  nivel String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+}
+
+Table evento_no_conforme {
+  evento_no_conforme_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  descripcion String [not null]
+  estado String [not null, default: 'abierta']
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+}
+
+Table evento_precipitacion {
+  evento_precipitacion_id String [pk]
+  fecha DateTime [not null]
+  finca_id String [not null]
+  campania_id String
+  milimetros Decimal [not null]
+  created_at DateTime [default: `now()`, not null]
+  campania campania
+  finca finca [not null]
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_reclamo {
+  evento_reclamo_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  origen String [not null]
+  estado String [not null, default: 'abierto']
+  descripcion String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+}
+
+Table evento_residuo {
+  evento_residuo_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  tipo_residuo String [not null]
+  cantidad Decimal
+  unidad String
+  destino String [not null]
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_riego {
+  evento_riego_id String [pk]
+  fecha DateTime [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  volumen Decimal [not null]
+  unidad String [not null]
+  sistema_riego String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evento_sanitizacion_banos {
+  evento_sanitizacion_banos_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  tipo_bano String [not null]
+  checklist Json [not null, default: '{}']
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona
+}
+
+Table evento_sobrante_lavado {
+  evento_sobrante_lavado_id String [pk]
+  fecha DateTime [not null]
+  bodega_id String
+  tipo String [not null]
+  volumen Decimal
+  disposicion String
+  responsable_persona_id String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega
+  persona persona
+
+  Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table evidencia {
+  evidencia_id String [pk]
+  milestone_id String [not null]
+  tipo EvidenciaTipo [not null, default: 'otro']
+  url String [not null]
+  hash String
+  created_at DateTime [default: `now()`, not null]
+  milestone milestone [not null]
+}
+
+Table finca {
+  finca_id String [pk]
+  bodega_id String [not null]
+  nombre_finca String [not null]
+  rut String
+  renspa String
+  catastro String
+  ubicacion_texto String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  cuartel cuartel [not null]
+  evento_precipitacion evento_precipitacion [not null]
+  bodega bodega [not null]
+  trazabilidad trazabilidad [not null]
+}
+
+Table insumo_catalogo {
+  insumo_id String [pk]
+  tipo String [not null]
+  nombre_comercial String [not null]
+  principio_activo String
+  unidad_base String [not null]
+  created_at DateTime [default: `now()`, not null]
+  evento_fertilizacion evento_fertilizacion [not null]
+  insumo_lote insumo_lote [not null]
+
+  indexes {
+    (tipo, nombre_comercial) [unique]
+  }
+}
+
+Table insumo_lote {
+  insumo_lote_id String [pk]
+  insumo_id String [not null]
+  nro_lote String [not null]
+  fecha_vencimiento DateTime [not null]
+  estado String [not null, default: 'habilitado']
+  created_at DateTime [default: `now()`, not null]
+  evento_aplicacion_fitosanitaria evento_aplicacion_fitosanitaria [not null]
+  insumo_catalogo insumo_catalogo [not null]
+
+  indexes {
+    (insumo_id, nro_lote) [unique]
+  }
+}
+
+Table milestone {
+  milestone_id String [pk]
+  trazabilidad_id String [not null]
+  proceso_id String [not null]
+  estado MilestoneEstado [not null, default: 'pendiente']
+  event_date DateTime
+  created_by String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  evidencia evidencia [not null]
+  hallazgo_cumplimiento hallazgo_cumplimiento [not null]
+  protocolo_proceso protocolo_proceso [not null]
+  trazabilidad trazabilidad [not null]
+  milestone_evento milestone_evento [not null]
+  validacion_milestone validacion_milestone [not null]
+
+  indexes {
+    (trazabilidad_id, proceso_id) [unique]
+  }
+}
+
+Table milestone_evento {
+  milestone_evento_id String [pk]
+  milestone_id String [not null]
+  evento_tabla String [not null]
+  evento_id String [not null]
+  created_at DateTime [default: `now()`, not null]
+  milestone milestone [not null]
+
+  indexes {
+    (milestone_id, evento_tabla, evento_id) [unique]
+  }
+}
+
+Table persona {
+  persona_id String [pk]
+  bodega_id String
+  nombre_apellido String [not null]
+  tipo String [not null, default: 'empleado']
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  capacitacion_asistente capacitacion_asistente [not null]
+  evento_accidente evento_accidente [not null]
+  evento_aplicacion_fitosanitaria evento_aplicacion_fitosanitaria [not null]
+  evento_canopia evento_canopia [not null]
+  evento_cosecha evento_cosecha [not null]
+  evento_entrega_epp evento_entrega_epp [not null]
+  evento_fenologia evento_fenologia [not null]
+  evento_fertilizacion evento_fertilizacion [not null]
+  evento_labor_suelo evento_labor_suelo [not null]
+  evento_limpieza_cosecha evento_limpieza_cosecha [not null]
+  evento_mantenimiento evento_mantenimiento [not null]
+  evento_monitoreo_enfermedad evento_monitoreo_enfermedad [not null]
+  evento_monitoreo_plaga evento_monitoreo_plaga [not null]
+  evento_residuo evento_residuo [not null]
+  evento_riego evento_riego [not null]
+  evento_sanitizacion_banos evento_sanitizacion_banos [not null]
+  evento_sobrante_lavado evento_sobrante_lavado [not null]
+  bodega bodega
+}
+
+Table productor {
+  productor_id String [pk]
+  razon_social String [not null]
+  cuit String
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  trazabilidad trazabilidad [not null]
+}
+
+Table protocolo {
+  protocolo_id String [pk]
+  nombre String [not null]
+  version String [not null, default: '1.0.0']
+  descripcion String
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  protocolo_etapa protocolo_etapa [not null]
+  trazabilidad trazabilidad [not null]
+
+  indexes {
+    (nombre, version) [unique]
+  }
+}
+
+Table protocolo_etapa {
+  etapa_id String [pk]
+  protocolo_id String [not null]
+  nombre String [not null]
+  orden Int [not null]
+  protocolo protocolo [not null]
+  protocolo_proceso protocolo_proceso [not null]
+
+  indexes {
+    (protocolo_id, nombre) [unique]
+    (protocolo_id, orden) [unique]
+  }
+}
+
+Table protocolo_proceso {
+  proceso_id String [pk]
+  etapa_id String [not null]
+  nombre String [not null]
+  evento_tipo String [not null]
+  obligatorio Boolean [not null, default: false]
+  orden Int [not null]
+  milestone milestone [not null]
+  protocolo_etapa protocolo_etapa [not null]
+
+  indexes {
+    (etapa_id, nombre) [unique]
+    (etapa_id, orden) [unique]
+  }
+}
+
+Table refresh_token {
+  token_id String [pk]
+  user_id String [not null]
+  token_hash String [not null]
+  expires_at DateTime [not null]
+  revoked_at DateTime
+  created_at DateTime [default: `now()`, not null]
+  app_user app_user [not null]
+}
+
+Table rol {
+  rol_id String [pk]
+  nombre String [unique, not null]
+  user_rol user_rol [not null]
+}
+
+Table trazabilidad {
+  trazabilidad_id String [pk]
+  protocolo_id String [not null]
+  productor_id String
+  bodega_id String [not null]
+  finca_id String [not null]
+  cuartel_id String [not null]
+  campania_id String [not null]
+  estado TrazabilidadEstado [not null, default: 'draft']
+  nombre_producto String
+  imagen_producto String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  milestone milestone [not null]
+  hallazgo_cumplimiento hallazgo_cumplimiento [not null]
+  bodega bodega [not null]
+  campania campania [not null]
+  cuartel cuartel [not null]
+  finca finca [not null]
+  productor productor
+  protocolo protocolo [not null]
+
+  indexes {
+    (protocolo_id, cuartel_id, campania_id) [unique]
+  }
+}
+
+Table config_regla {
+  config_regla_id String [pk]
+  codigo String [unique, not null]
+  valor_json Json [not null, default: '{}']
+  descripcion String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+}
+
+Table hallazgo_cumplimiento {
+  hallazgo_id String [pk]
+  trazabilidad_id String
+  milestone_id String
+  regla_codigo String [not null]
+  severidad SeveridadRegla [not null]
+  estado EstadoHallazgo [not null, default: 'abierto']
+  titulo String [not null]
+  mensaje String [not null]
+  detalle Json [not null, default: '{}']
+  evento_tabla String
+  evento_id String
+  justificacion_categoria String
+  justificacion_texto String
+  justificacion_responsable String
+  justificacion_fecha DateTime
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  resolved_at DateTime
+  milestone milestone
+  trazabilidad trazabilidad
+}
+
+Table evento_fingerprint {
+  evento_fingerprint_id String [pk]
+  tipo_evento String [not null]
+  hash_contenido String [unique, not null]
+  evento_tabla String [not null]
+  evento_id String [not null]
+  fecha DateTime [not null]
+  cuartel_id String
+  finca_id String
+  created_at DateTime [default: `now()`, not null]
+}
+
+Table user_bodega {
+  user_id String [not null]
+  bodega_id String [not null]
+  rol_en_bodega String [not null, default: 'encargado']
+  bodega bodega [not null]
+  app_user app_user [not null]
+
+  indexes {
+    (user_id, bodega_id) [pk]
+  }
+}
+
+Table user_rol {
+  user_id String [not null]
+  rol_id String [not null]
+  rol rol [not null]
+  app_user app_user [not null]
+
+  indexes {
+    (user_id, rol_id) [pk]
+  }
+}
+
+Table validacion_milestone {
+  validacion_id String [pk]
+  milestone_id String [not null]
+  validado Boolean [not null]
+  observacion String
+  validado_por ValidadoPorTipo [not null, default: 'sistema']
+  created_at DateTime [default: `now()`, not null]
+  milestone milestone [not null]
+}
+
+Enum EvidenciaTipo {
+  imagen
+  pdf
+  planilla
+  otro
+}
+
+Enum MilestoneEstado {
+  pendiente
+  completado
+  validado
+  rechazado
+}
+
+Enum TrazabilidadEstado {
+  draft
+  en_curso
+  finalizada
+  certificada
+}
+
+Enum ValidadoPorTipo {
+  sistema
+  ia
+  tecnico
+}
+
+Enum SeveridadRegla {
+  bloqueo
+  alerta
+  info
+}
+
+Enum EstadoHallazgo {
+  abierto
+  en_proceso
+  resuelto
+  aceptado
+  anulado
+}
+
+Ref: bodega.productor_id > productor.productor_id [delete: Restrict]
+
+Ref: capacitacion_asistente.evento_capacitacion_id > evento_capacitacion.evento_capacitacion_id [delete: Cascade]
+
+Ref: capacitacion_asistente.persona_id > persona.persona_id
+
+Ref: cuartel.finca_id > finca.finca_id
+
+Ref: cuartel_campania.campania_id > campania.campania_id
+
+Ref: cuartel_campania.cuartel_id > cuartel.cuartel_id [delete: Cascade]
+
+Ref: evento_accidente.bodega_id > bodega.bodega_id
+
+Ref: evento_accidente.persona_id > persona.persona_id
+
+Ref: evento_analisis_suelo.campania_id > campania.campania_id
+
+Ref: evento_analisis_suelo.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_aplicacion_fitosanitaria.campania_id > campania.campania_id
+
+Ref: evento_aplicacion_fitosanitaria.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_aplicacion_fitosanitaria.insumo_lote_id > insumo_lote.insumo_lote_id [delete: Restrict]
+
+Ref: evento_aplicacion_fitosanitaria.responsable_persona_id > persona.persona_id
+
+Ref: evento_canopia.campania_id > campania.campania_id
+
+Ref: evento_canopia.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_canopia.responsable_persona_id > persona.persona_id
+
+Ref: evento_capacitacion.bodega_id > bodega.bodega_id
+
+Ref: evento_cosecha.campania_id > campania.campania_id
+
+Ref: evento_cosecha.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_cosecha.responsable_persona_id > persona.persona_id
+
+Ref: evento_energia.campania_id > campania.campania_id
+
+Ref: evento_energia.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_entrega_epp.bodega_id > bodega.bodega_id
+
+Ref: evento_entrega_epp.persona_id > persona.persona_id
+
+Ref: evento_fenologia.campania_id > campania.campania_id
+
+Ref: evento_fenologia.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_fenologia.responsable_persona_id > persona.persona_id
+
+Ref: evento_fertilizacion.campania_id > campania.campania_id
+
+Ref: evento_fertilizacion.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_fertilizacion.insumo_id > insumo_catalogo.insumo_id [delete: Restrict]
+
+Ref: evento_fertilizacion.responsable_persona_id > persona.persona_id
+
+Ref: evento_labor_suelo.campania_id > campania.campania_id
+
+Ref: evento_labor_suelo.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_labor_suelo.responsable_persona_id > persona.persona_id
+
+Ref: evento_limpieza_cosecha.bodega_id > bodega.bodega_id
+
+Ref: evento_limpieza_cosecha.responsable_persona_id > persona.persona_id
+
+Ref: evento_mantenimiento.bodega_id > bodega.bodega_id
+
+Ref: evento_mantenimiento.responsable_persona_id > persona.persona_id
+
+Ref: evento_monitoreo_enfermedad.campania_id > campania.campania_id
+
+Ref: evento_monitoreo_enfermedad.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_monitoreo_enfermedad.responsable_persona_id > persona.persona_id
+
+Ref: evento_monitoreo_plaga.campania_id > campania.campania_id
+
+Ref: evento_monitoreo_plaga.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_monitoreo_plaga.responsable_persona_id > persona.persona_id
+
+Ref: evento_no_conforme.bodega_id > bodega.bodega_id
+
+Ref: evento_precipitacion.campania_id > campania.campania_id [delete: Restrict]
+
+Ref: evento_precipitacion.finca_id > finca.finca_id
+
+Ref: evento_reclamo.bodega_id > bodega.bodega_id
+
+Ref: evento_residuo.bodega_id > bodega.bodega_id
+
+Ref: evento_residuo.responsable_persona_id > persona.persona_id
+
+Ref: evento_riego.campania_id > campania.campania_id
+
+Ref: evento_riego.cuartel_id > cuartel.cuartel_id
+
+Ref: evento_riego.responsable_persona_id > persona.persona_id
+
+Ref: evento_sanitizacion_banos.bodega_id > bodega.bodega_id
+
+Ref: evento_sanitizacion_banos.responsable_persona_id > persona.persona_id
+
+Ref: evento_sobrante_lavado.bodega_id > bodega.bodega_id
+
+Ref: evento_sobrante_lavado.responsable_persona_id > persona.persona_id
+
+Ref: evidencia.milestone_id > milestone.milestone_id [delete: Cascade]
+
+Ref: finca.bodega_id > bodega.bodega_id
+
+Ref: insumo_lote.insumo_id > insumo_catalogo.insumo_id
+
+Ref: milestone.proceso_id > protocolo_proceso.proceso_id
+
+Ref: milestone.trazabilidad_id > trazabilidad.trazabilidad_id [delete: Cascade]
+
+Ref: milestone_evento.milestone_id > milestone.milestone_id [delete: Cascade]
+
+Ref: persona.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: protocolo_etapa.protocolo_id > protocolo.protocolo_id [delete: Cascade]
+
+Ref: protocolo_proceso.etapa_id > protocolo_etapa.etapa_id [delete: Cascade]
+
+Ref: refresh_token.user_id > app_user.user_id [delete: Cascade]
+
+Ref: trazabilidad.bodega_id > bodega.bodega_id
+
+Ref: trazabilidad.campania_id > campania.campania_id
+
+Ref: trazabilidad.cuartel_id > cuartel.cuartel_id
+
+Ref: trazabilidad.finca_id > finca.finca_id
+
+Ref: trazabilidad.productor_id > productor.productor_id [delete: Restrict]
+
+Ref: trazabilidad.protocolo_id > protocolo.protocolo_id
+
+Ref: hallazgo_cumplimiento.milestone_id > milestone.milestone_id [delete: Set Null]
+
+Ref: hallazgo_cumplimiento.trazabilidad_id > trazabilidad.trazabilidad_id [delete: Set Null]
+
+Ref: user_bodega.bodega_id > bodega.bodega_id
+
+Ref: user_bodega.user_id > app_user.user_id [delete: Cascade]
+
+Ref: user_rol.rol_id > rol.rol_id
+
+Ref: user_rol.user_id > app_user.user_id [delete: Cascade]
+
+Ref: validacion_milestone.milestone_id > milestone.milestone_id [delete: Cascade]

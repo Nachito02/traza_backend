@@ -845,5 +845,10 @@ enum EstadoHallazgo {
 
 generator erd {
   provider = "prisma-erd-generator"
-  output   = "../erDiagram.md"
+  output   = "../erDiagram.svg"
+}
+
+generator dbml {
+  provider = "prisma-dbml-generator"
+  output   = "../schema.dbml"
 }
