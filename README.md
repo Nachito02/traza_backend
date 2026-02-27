@@ -50,3 +50,69 @@ http://localhost:3000/docs
 ```
 
 The spec lives in `src/config/openapi.ts`.
+
+## Docker + Cloud Run
+
+### Build and run locally
+
+```bash
+docker build -t traza-backend .
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e DATABASE_URL="postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/postgres?pgbouncer=true" \
+  traza-backend
+```
+
+### Deploy to Cloud Run (una sola vez: setup)
+
+```bash
+export PROJECT_ID="proyecto-trazabilidad-488013"
+export REGION="southamerica-east1"
+export SERVICE="traza-backend"
+export REPO="traza"
+export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/traza-backend:latest"
+
+gcloud auth login
+gcloud config set project "$PROJECT_ID"
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud auth configure-docker "$REGION-docker.pkg.dev"
+
+gcloud artifacts repositories create "$REPO" \
+  --repository-format=docker \
+  --location="$REGION" || true
+```
+
+### Deploy en cada cambio de la API
+
+```bash
+export PROJECT_ID="proyecto-trazabilidad-488013"
+export REGION="southamerica-east1"
+export SERVICE="traza-backend"
+export REPO="traza"
+export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/traza-backend:latest"
+
+# Crear/usar builder para Cloud Run (linux/amd64)
+docker buildx create --use --name cloudrun-builder 2>/dev/null || docker buildx use cloudrun-builder
+
+# Build + push de imagen compatible con Cloud Run
+docker buildx build \
+  --platform linux/amd64 \
+  -t "$IMAGE" \
+  --push \
+  .
+
+gcloud run deploy "$SERVICE" \
+  --image="$IMAGE" \
+  --region="$REGION" \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=8080 \
+  --set-env-vars="NODE_ENV=production,DATABASE_URL=postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/postgres?pgbouncer=true"
+```
+
+### Verificar deploy
+
+```bash
+gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)'
+gcloud run services logs read "$SERVICE" --region="$REGION" --limit=100
+```
