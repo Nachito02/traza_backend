@@ -1,0 +1,11 @@
+.git
+.gitignore
+.DS_Store
+node_modules
+dist
+.env
+uploads
+*.log
+MANUAL_SISTEMA_TRAZABILIDAD_Y_SUSTENTABILIDAD.md
+erDiagram.svg
+schema.dbml
