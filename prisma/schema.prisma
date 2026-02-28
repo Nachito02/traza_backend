@@ -43,6 +43,7 @@ model Bodega {
   finca                     Finca[]
   campania                  Campania[]
   persona                   Persona[]
+  productor_bodega          ProductorBodega[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
 
@@ -622,8 +623,24 @@ model Productor {
   created_at   DateTime       @default(now()) @db.Timestamptz(6)
   updated_at   DateTime       @default(now()) @db.Timestamptz(6)
   bodega       Bodega[]
+  productor_bodega ProductorBodega[]
   trazabilidad Trazabilidad[]
   @@map("productor")
+}
+
+model ProductorBodega {
+  productor_id   String    @db.Uuid
+  bodega_id      String    @db.Uuid
+  tipo_relacion  String    @default("proveedor_uva")
+  activo         Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  bodega         Bodega    @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
+  productor      Productor @relation(fields: [productor_id], references: [productor_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([productor_id, bodega_id])
+  @@index([bodega_id], map: "idx_productor_bodega_bodega")
+  @@index([productor_id], map: "idx_productor_bodega_productor")
+  @@map("productor_bodega")
 }
 
 model Protocolo {
