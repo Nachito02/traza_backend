@@ -1,10 +1,13 @@
 import { prisma } from "../../config/prismaClient.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 
-const MANAGER_ROLES = ["super_admin", "bodega_admin", "encargado"];
+const MANAGER_BODEGA_ROLES = ["admin_bodega", "encargado_finca"];
 
 type CreateEncargoInput = {
   bodegaId: string;
+  fincaId?: string;
+  cuartelId?: string;
+  milestoneId?: string;
   titulo: string;
   descripcion?: string;
   fechaObjetivo?: string;
@@ -32,8 +35,12 @@ async function ensureCanManageBodega(userId: string, bodegaId: string) {
   const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
   if (isSuperAdmin) return;
 
-  const rel = await prisma.userBodega.findFirst({
-    where: { user_id: userId, bodega_id: bodegaId },
+  const rel = await prisma.userBodegaRol.findFirst({
+    where: {
+      user_id: userId,
+      bodega_id: bodegaId,
+      rol: { in: MANAGER_BODEGA_ROLES },
+    },
   });
   if (!rel) {
     throw new EncargoError("No autorizado para administrar esta bodega", 403);
@@ -67,6 +74,9 @@ export async function createEncargo(input: CreateEncargoInput, actorUserId: stri
 
   const data: {
     bodega_id: string;
+    finca_id?: string | null;
+    cuartel_id?: string | null;
+    milestone_id?: string | null;
     created_by: string;
     titulo: string;
     prioridad: string;
@@ -84,6 +94,15 @@ export async function createEncargo(input: CreateEncargoInput, actorUserId: stri
     titulo: input.titulo,
     prioridad: input.prioridad ?? "media",
   };
+  if (input.fincaId !== undefined) {
+    data.finca_id = input.fincaId;
+  }
+  if (input.cuartelId !== undefined) {
+    data.cuartel_id = input.cuartelId;
+  }
+  if (input.milestoneId !== undefined) {
+    data.milestone_id = input.milestoneId;
+  }
   if (input.descripcion !== undefined) {
     data.descripcion = input.descripcion;
   }
@@ -111,22 +130,39 @@ export async function createEncargo(input: CreateEncargoInput, actorUserId: stri
   return encargo;
 }
 
-export async function listEncargos(actorUserId: string, bodegaId?: string) {
+export async function listEncargos(
+  actorUserId: string,
+  bodegaId?: string,
+  fincaId?: string,
+  soloPendientes = false,
+) {
+  const estadoFilter = soloPendientes
+    ? { in: ["pendiente", "en_progreso"] as Array<"pendiente" | "en_progreso"> }
+    : undefined;
   const isSuperAdmin = await userHasAnyRole(actorUserId, ["super_admin"]);
   if (isSuperAdmin) {
     return prisma.encargo.findMany({
-      where: bodegaId ? { bodega_id: bodegaId } : {},
+      where: {
+        ...(bodegaId ? { bodega_id: bodegaId } : {}),
+        ...(fincaId ? { finca_id: fincaId } : {}),
+        ...(estadoFilter ? { estado: estadoFilter } : {}),
+      },
       orderBy: [{ created_at: "desc" }],
       include: { encargo_asignacion: true },
     });
   }
 
-  const memberships = await prisma.userBodega.findMany({
-    where: { user_id: actorUserId },
+  const memberships = await prisma.userBodegaRol.findMany({
+    where: {
+      user_id: actorUserId,
+      rol: { in: MANAGER_BODEGA_ROLES },
+    },
     select: { bodega_id: true },
   });
   const allowedBodegas = memberships.map((m) => m.bodega_id);
-  if (allowedBodegas.length === 0) return [];
+  if (allowedBodegas.length === 0) {
+    throw new EncargoError("No autorizado para ver encargos", 403);
+  }
 
   if (bodegaId && !allowedBodegas.includes(bodegaId)) {
     throw new EncargoError("No autorizado para ver encargos de esta bodega", 403);
@@ -135,6 +171,8 @@ export async function listEncargos(actorUserId: string, bodegaId?: string) {
   return prisma.encargo.findMany({
     where: {
       bodega_id: bodegaId ?? { in: allowedBodegas },
+      ...(fincaId ? { finca_id: fincaId } : {}),
+      ...(estadoFilter ? { estado: estadoFilter } : {}),
     },
     orderBy: [{ created_at: "desc" }],
     include: { encargo_asignacion: true },
@@ -180,6 +218,60 @@ export async function addEncargoAsignaciones(
   });
 }
 
+export async function cancelEncargo(encargoId: string, actorUserId: string) {
+  if (!encargoId) {
+    throw new EncargoError("encargoId requerido", 400);
+  }
+
+  const encargo = await prisma.encargo.findUnique({
+    where: { encargo_id: encargoId },
+    select: { encargo_id: true, bodega_id: true, estado: true },
+  });
+  if (!encargo) {
+    throw new EncargoError("Encargo no encontrado", 404);
+  }
+
+  await ensureCanManageBodega(actorUserId, encargo.bodega_id);
+
+  if (encargo.estado === "cancelado") {
+    return prisma.encargo.findUnique({
+      where: { encargo_id: encargoId },
+      include: { encargo_asignacion: true },
+    });
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.encargo.update({
+      where: { encargo_id: encargoId },
+      data: {
+        estado: "cancelado",
+        updated_at: now,
+      },
+    }),
+    prisma.encargoAsignacion.updateMany({
+      where: { encargo_id: encargoId },
+      data: {
+        estado: "cancelado",
+        updated_at: now,
+        completed_at: null,
+      },
+    }),
+    prisma.milestoneAsignacion.updateMany({
+      where: { encargo_id: encargoId },
+      data: {
+        estado: "cancelado",
+        updated_at: now,
+      },
+    }),
+  ]);
+
+  return prisma.encargo.findUnique({
+    where: { encargo_id: encargoId },
+    include: { encargo_asignacion: true },
+  });
+}
+
 export async function listMyEncargoAsignaciones(userId: string) {
   return prisma.encargoAsignacion.findMany({
     where: { user_id: userId },
@@ -188,6 +280,26 @@ export async function listMyEncargoAsignaciones(userId: string) {
     },
     orderBy: [{ assigned_at: "desc" }],
   });
+}
+
+export async function listMyPendientes(userId: string) {
+  const estados = ["pendiente", "en_progreso"] as Array<
+    "pendiente" | "en_progreso"
+  >;
+  return prisma.encargoAsignacion.findMany({
+    where: {
+      user_id: userId,
+      estado: { in: estados },
+    },
+    include: {
+      encargo: true,
+    },
+    orderBy: [{ assigned_at: "desc" }],
+  });
+}
+
+export async function listPendientesByBodega(actorUserId: string, bodegaId: string) {
+  return listEncargos(actorUserId, bodegaId, undefined, true);
 }
 
 export async function updateMyEncargoAsignacionEstado(input: UpdateEncargoAsignacionEstadoInput) {
@@ -249,5 +361,14 @@ export async function updateMyEncargoAsignacionEstado(input: UpdateEncargoAsigna
 }
 
 export async function canUserManageEncargos(userId: string) {
-  return userHasAnyRole(userId, MANAGER_ROLES);
+  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
+  if (isSuperAdmin) return true;
+  const membership = await prisma.userBodegaRol.findFirst({
+    where: {
+      user_id: userId,
+      rol: { in: MANAGER_BODEGA_ROLES },
+    },
+    select: { user_id: true },
+  });
+  return Boolean(membership);
 }

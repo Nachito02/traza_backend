@@ -177,6 +177,10 @@ async function ensureUserMilestone(userId: string, milestoneId: string): Promise
     throw new EventoError("No autorizado", 403);
   }
 
+  if (!milestone.trazabilidad.finca_id || !milestone.trazabilidad.cuartel_id) {
+    throw new EventoError("La trazabilidad no tiene finca/cuartel principal definido", 400);
+  }
+
   return {
     milestoneId: milestone.milestone_id,
     trazabilidadId: milestone.trazabilidad_id,

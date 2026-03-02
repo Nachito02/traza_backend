@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import {
+  assignMilestoneToOrigen,
   completeMilestone,
   createMilestone,
   getUserMilestones,
@@ -109,5 +110,38 @@ export async function uploadEvidenceHandler(
     res.json(evidencia);
   } catch (error) {
     next(error);
+  }
+}
+
+export async function assignMilestoneHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const milestoneId = String(req.params.id ?? "");
+    const {
+      fincaId,
+      cuartelId,
+      operarioUserId,
+      titulo,
+      descripcion,
+      fechaObjetivo,
+      prioridad,
+    } = req.body ?? {};
+
+    const assignment = await assignMilestoneToOrigen({
+      milestoneId,
+      fincaId,
+      cuartelId,
+      operarioUserId,
+      actorUserId: req.user.userId,
+      titulo,
+      descripcion,
+      fechaObjetivo,
+      prioridad,
+    });
+    return res.json(assignment);
+  } catch {
+    return res.status(400).json({ error: "Datos inválidos" });
   }
 }

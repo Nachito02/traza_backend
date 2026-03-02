@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  addTrazabilidadOrigen,
   createTrazabilidad,
   getTrazabilidadById,
   TrazabilidadError,
@@ -71,6 +72,25 @@ export async function getTrazabilidadHandler(req: Request, res: Response) {
     }
     const trazabilidad = await getTrazabilidadById(id, req.user.userId);
     return res.json(trazabilidad);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function addTrazabilidadOrigenHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const trazabilidadId = String(req.params.id ?? "");
+    const { fincaId, cuartelId } = req.body ?? {};
+    const origenes = await addTrazabilidadOrigen({
+      trazabilidadId,
+      fincaId,
+      cuartelId,
+      userId: req.user.userId,
+    });
+    return res.json(origenes);
   } catch (error) {
     return handleError(res, error);
   }

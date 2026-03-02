@@ -26,6 +26,8 @@ model AppUser {
   bot_delegaciones_recibidas  BotDelegation[]     @relation("BotDelegationBot")
   bot_action_logs_as_actor    BotActionLog[]      @relation("BotActionActor")
   bot_action_logs_on_behalf   BotActionLog[]      @relation("BotActionOnBehalf")
+  milestone_asignaciones_as_operario  MilestoneAsignacion[] @relation("MilestoneAsignacionOperario")
+  milestone_asignaciones_as_asignador MilestoneAsignacion[] @relation("MilestoneAsignacionAsignador")
   @@map("app_user")
 }
 
@@ -52,7 +54,6 @@ model Bodega {
   finca                     Finca[]
   campania                  Campania[]
   persona                   Persona[]
-  productor_bodega          ProductorBodega[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
   encargo                   Encargo[]
@@ -72,7 +73,7 @@ model Campania {
   estado                          String                            @default("abierta")
   created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  bodega                          Bodega                            @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  bodega                          Bodega                            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
   cuartel_campania                CuartelCampania[]
   evento_analisis_suelo           EventoAnalisisDeSuelo[]
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
@@ -128,6 +129,9 @@ model Cuartel {
   evento_monitoreo_plaga          EventoMonitoreoPlaga[]
   evento_riego                    EventoRiego[]
   trazabilidad                    Trazabilidad[]
+  trazabilidad_origen             TrazabilidadOrigen[]
+  encargo                         Encargo[]
+  milestone_asignacion            MilestoneAsignacion[]
 
   @@unique([finca_id, codigo_cuartel])
   @@index([finca_id], map: "idx_cuartel_finca")
@@ -529,6 +533,9 @@ model Finca {
   evento_precipitacion EventoPrecipitacion[]
   bodega               Bodega                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   trazabilidad         Trazabilidad[]
+  trazabilidad_origen  TrazabilidadOrigen[]
+  encargo              Encargo[]
+  milestone_asignacion MilestoneAsignacion[]
 
   @@index([bodega_id], map: "idx_finca_bodega")
   @@map("finca")
@@ -577,6 +584,8 @@ model Milestone {
   trazabilidad         Trazabilidad           @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: Cascade, onUpdate: NoAction)
   milestone_evento     MilestoneEvento[]
   validacion_milestone ValidacionMilestone[]
+  milestone_asignacion MilestoneAsignacion[]
+  encargo              Encargo[]
 
   @@unique([trazabilidad_id, proceso_id])
   @@index([trazabilidad_id], map: "idx_milestone_trazabilidad")
@@ -634,24 +643,8 @@ model Productor {
   created_at   DateTime       @default(now()) @db.Timestamptz(6)
   updated_at   DateTime       @default(now()) @db.Timestamptz(6)
   bodega       Bodega[]
-  productor_bodega ProductorBodega[]
   trazabilidad Trazabilidad[]
   @@map("productor")
-}
-
-model ProductorBodega {
-  productor_id   String    @db.Uuid
-  bodega_id      String    @db.Uuid
-  tipo_relacion  String    @default("proveedor_uva")
-  activo         Boolean   @default(true)
-  created_at     DateTime  @default(now()) @db.Timestamptz(6)
-  bodega         Bodega    @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
-  productor      Productor @relation(fields: [productor_id], references: [productor_id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@id([productor_id, bodega_id])
-  @@index([bodega_id], map: "idx_productor_bodega_bodega")
-  @@index([productor_id], map: "idx_productor_bodega_productor")
-  @@map("productor_bodega")
 }
 
 model Protocolo {
@@ -723,8 +716,8 @@ model Trazabilidad {
   protocolo_id    String              @db.Uuid
   productor_id    String?             @db.Uuid
   bodega_id       String              @db.Uuid
-  finca_id        String              @db.Uuid
-  cuartel_id      String              @db.Uuid
+  finca_id        String?             @db.Uuid
+  cuartel_id      String?             @db.Uuid
   campania_id     String              @db.Uuid
   estado          TrazabilidadEstado @default(draft)
   nombre_producto String?
@@ -735,10 +728,11 @@ model Trazabilidad {
   hallazgo_cumplimiento HallazgoCumplimiento[]
   bodega          Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   campania        Campania            @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel         Cuartel             @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  finca           Finca               @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel         Cuartel?            @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  finca           Finca?              @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
   productor       Productor?          @relation(fields: [productor_id], references: [productor_id], onDelete: Restrict, onUpdate: NoAction)
   protocolo       Protocolo           @relation(fields: [protocolo_id], references: [protocolo_id], onUpdate: NoAction)
+  trazabilidad_origen TrazabilidadOrigen[]
 
   @@unique([protocolo_id, cuartel_id, campania_id], map: "uq_trazabilidad_unica")
   @@index([bodega_id, finca_id, cuartel_id, campania_id], map: "idx_trazabilidad_origen")
@@ -801,15 +795,26 @@ model EventoFingerprint {
 }
 
 model UserBodega {
-  user_id       String   @db.Uuid
-  bodega_id     String   @db.Uuid
-  rol_en_bodega String   @default("encargado")
-  bodega        Bodega   @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  app_user      AppUser @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  user_id          String          @db.Uuid
+  bodega_id        String          @db.Uuid
+  bodega           Bodega          @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  app_user         AppUser         @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  user_bodega_rol  UserBodegaRol[]
 
   @@id([user_id, bodega_id])
   @@index([bodega_id], map: "idx_user_bodega_bodega")
   @@map("user_bodega")
+}
+
+model UserBodegaRol {
+  user_id    String     @db.Uuid
+  bodega_id  String     @db.Uuid
+  rol        String
+  user_bodega UserBodega @relation(fields: [user_id, bodega_id], references: [user_id, bodega_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([user_id, bodega_id, rol])
+  @@index([bodega_id, rol], map: "idx_user_bodega_rol_bodega_rol")
+  @@map("user_bodega_rol")
 }
 
 model UserRol {
@@ -825,6 +830,9 @@ model UserRol {
 model Encargo {
   encargo_id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id           String              @db.Uuid
+  finca_id            String?             @db.Uuid
+  cuartel_id          String?             @db.Uuid
+  milestone_id        String?             @db.Uuid
   created_by          String              @db.Uuid
   titulo              String
   descripcion         String?
@@ -834,10 +842,16 @@ model Encargo {
   created_at          DateTime            @default(now()) @db.Timestamptz(6)
   updated_at          DateTime            @default(now()) @db.Timestamptz(6)
   bodega              Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  finca               Finca?              @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel             Cuartel?            @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  milestone           Milestone?          @relation(fields: [milestone_id], references: [milestone_id], onUpdate: NoAction)
   app_user            AppUser             @relation("EncargoCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
   encargo_asignacion  EncargoAsignacion[]
+  milestone_asignacion MilestoneAsignacion[]
 
   @@index([bodega_id, estado], map: "idx_encargo_bodega_estado")
+  @@index([finca_id, estado], map: "idx_encargo_finca_estado")
+  @@index([milestone_id], map: "idx_encargo_milestone")
   @@index([created_by], map: "idx_encargo_created_by")
   @@map("encargo")
 }
@@ -860,6 +874,44 @@ model EncargoAsignacion {
   @@unique([encargo_id, user_id], map: "uq_encargo_asignacion_unica")
   @@index([user_id, estado], map: "idx_encargo_asignacion_user_estado")
   @@map("encargo_asignacion")
+}
+
+model TrazabilidadOrigen {
+  trazabilidad_id String       @db.Uuid
+  finca_id        String       @db.Uuid
+  cuartel_id      String       @db.Uuid
+  estado          String       @default("habilitada")
+  created_at      DateTime     @default(now()) @db.Timestamptz(6)
+  trazabilidad    Trazabilidad @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: Cascade, onUpdate: NoAction)
+  finca           Finca        @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel         Cuartel      @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+
+  @@id([trazabilidad_id, finca_id, cuartel_id])
+  @@index([finca_id], map: "idx_trazabilidad_origen_finca")
+  @@map("trazabilidad_origen")
+}
+
+model MilestoneAsignacion {
+  milestone_id         String    @db.Uuid
+  finca_id             String    @db.Uuid
+  cuartel_id           String    @db.Uuid
+  operario_user_id     String    @db.Uuid
+  asignado_por_user_id String    @db.Uuid
+  estado               String    @default("pendiente")
+  encargo_id           String?   @db.Uuid
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime  @default(now()) @db.Timestamptz(6)
+  milestone            Milestone @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
+  finca                Finca     @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel              Cuartel   @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  operario             AppUser   @relation("MilestoneAsignacionOperario", fields: [operario_user_id], references: [user_id], onUpdate: NoAction)
+  asignado_por         AppUser   @relation("MilestoneAsignacionAsignador", fields: [asignado_por_user_id], references: [user_id], onUpdate: NoAction)
+  encargo              Encargo?  @relation(fields: [encargo_id], references: [encargo_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@id([milestone_id, operario_user_id])
+  @@index([finca_id, estado], map: "idx_milestone_asignacion_finca_estado")
+  @@index([operario_user_id, estado], map: "idx_milestone_asignacion_operario_estado")
+  @@map("milestone_asignacion")
 }
 
 model BotDelegation {

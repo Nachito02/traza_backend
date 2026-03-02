@@ -57,6 +57,7 @@ CREATE TABLE "bodega" (
 -- CreateTable
 CREATE TABLE "campania" (
     "campania_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
     "nombre" TEXT NOT NULL,
     "fecha_inicio" DATE NOT NULL,
     "fecha_fin" DATE NOT NULL,
@@ -566,8 +567,8 @@ CREATE TABLE "trazabilidad" (
     "protocolo_id" UUID NOT NULL,
     "productor_id" UUID,
     "bodega_id" UUID NOT NULL,
-    "finca_id" UUID NOT NULL,
-    "cuartel_id" UUID NOT NULL,
+    "finca_id" UUID,
+    "cuartel_id" UUID,
     "campania_id" UUID NOT NULL,
     "estado" "TrazabilidadEstado" NOT NULL DEFAULT 'draft',
     "nombre_producto" TEXT,
@@ -633,9 +634,17 @@ CREATE TABLE "evento_fingerprint" (
 CREATE TABLE "user_bodega" (
     "user_id" UUID NOT NULL,
     "bodega_id" UUID NOT NULL,
-    "rol_en_bodega" TEXT NOT NULL DEFAULT 'encargado',
 
     CONSTRAINT "user_bodega_pkey" PRIMARY KEY ("user_id","bodega_id")
+);
+
+-- CreateTable
+CREATE TABLE "user_bodega_rol" (
+    "user_id" UUID NOT NULL,
+    "bodega_id" UUID NOT NULL,
+    "rol" TEXT NOT NULL,
+
+    CONSTRAINT "user_bodega_rol_pkey" PRIMARY KEY ("user_id","bodega_id","rol")
 );
 
 -- CreateTable
@@ -650,6 +659,9 @@ CREATE TABLE "user_rol" (
 CREATE TABLE "encargo" (
     "encargo_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bodega_id" UUID NOT NULL,
+    "finca_id" UUID,
+    "cuartel_id" UUID,
+    "milestone_id" UUID,
     "created_by" UUID NOT NULL,
     "titulo" TEXT NOT NULL,
     "descripcion" TEXT,
@@ -676,6 +688,32 @@ CREATE TABLE "encargo_asignacion" (
     "observaciones" TEXT,
 
     CONSTRAINT "encargo_asignacion_pkey" PRIMARY KEY ("encargo_asignacion_id")
+);
+
+-- CreateTable
+CREATE TABLE "trazabilidad_origen" (
+    "trazabilidad_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
+    "estado" TEXT NOT NULL DEFAULT 'habilitada',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "trazabilidad_origen_pkey" PRIMARY KEY ("trazabilidad_id","finca_id","cuartel_id")
+);
+
+-- CreateTable
+CREATE TABLE "milestone_asignacion" (
+    "milestone_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
+    "operario_user_id" UUID NOT NULL,
+    "asignado_por_user_id" UUID NOT NULL,
+    "estado" TEXT NOT NULL DEFAULT 'pendiente',
+    "encargo_id" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "milestone_asignacion_pkey" PRIMARY KEY ("milestone_id","operario_user_id")
 );
 
 -- CreateTable
@@ -730,7 +768,10 @@ CREATE UNIQUE INDEX "app_user_whatsapp_e164_key" ON "app_user"("whatsapp_e164");
 CREATE INDEX "idx_bodega_productor" ON "bodega"("productor_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_campania_nombre" ON "campania"("nombre");
+CREATE UNIQUE INDEX "uq_campania_bodega_nombre" ON "campania"("bodega_id", "nombre");
+
+-- CreateIndex
+CREATE INDEX "idx_campania_bodega" ON "campania"("bodega_id");
 
 -- CreateIndex
 CREATE INDEX "idx_cuartel_finca" ON "cuartel"("finca_id");
@@ -871,7 +912,16 @@ CREATE INDEX "idx_evento_fp_tipo_fecha" ON "evento_fingerprint"("tipo_evento", "
 CREATE INDEX "idx_user_bodega_bodega" ON "user_bodega"("bodega_id");
 
 -- CreateIndex
+CREATE INDEX "idx_user_bodega_rol_bodega_rol" ON "user_bodega_rol"("bodega_id", "rol");
+
+-- CreateIndex
 CREATE INDEX "idx_encargo_bodega_estado" ON "encargo"("bodega_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_finca_estado" ON "encargo"("finca_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_milestone" ON "encargo"("milestone_id");
 
 -- CreateIndex
 CREATE INDEX "idx_encargo_created_by" ON "encargo"("created_by");
@@ -881,6 +931,15 @@ CREATE INDEX "idx_encargo_asignacion_user_estado" ON "encargo_asignacion"("user_
 
 -- CreateIndex
 CREATE UNIQUE INDEX "uq_encargo_asignacion_unica" ON "encargo_asignacion"("encargo_id", "user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_trazabilidad_origen_finca" ON "trazabilidad_origen"("finca_id");
+
+-- CreateIndex
+CREATE INDEX "idx_milestone_asignacion_finca_estado" ON "milestone_asignacion"("finca_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_milestone_asignacion_operario_estado" ON "milestone_asignacion"("operario_user_id", "estado");
 
 -- CreateIndex
 CREATE INDEX "idx_bot_delegation_grantor_activo" ON "bot_delegation"("granted_by_user_id", "activo");
@@ -911,6 +970,9 @@ ALTER TABLE "capacitacion_asistente" ADD CONSTRAINT "capacitacion_asistente_pers
 
 -- AddForeignKey
 ALTER TABLE "cuartel" ADD CONSTRAINT "cuartel_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "campania" ADD CONSTRAINT "campania_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "cuartel_campania" ADD CONSTRAINT "cuartel_campania_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1135,13 +1197,47 @@ ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_bodega_id_fkey" FOREIGN KE
 ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "user_bodega_rol_user_bodega_fkey" FOREIGN KEY ("user_id", "bodega_id") REFERENCES "user_bodega"("user_id", "bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddConstraint
+ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "ck_user_bodega_rol_rol"
+CHECK (
+  "rol" IN (
+    'admin_bodega',
+    'encargado_finca',
+    'productor',
+    'operador_campo',
+    'responsable_calidad_inocuidad',
+    'responsable_ssyo'
+  )
+);
+
+-- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_rol_id_fkey" FOREIGN KEY ("rol_id") REFERENCES "rol"("rol_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_trazabilidad_id_fkey" FOREIGN KEY ("trazabilidad_id") REFERENCES "trazabilidad"("trazabilidad_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "encargo" ADD CONSTRAINT "encargo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "encargo" ADD CONSTRAINT "encargo_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1151,6 +1247,24 @@ ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_encargo_id_f
 
 -- AddForeignKey
 ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_operario_user_id_fkey" FOREIGN KEY ("operario_user_id") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_asignado_por_user_id_fkey" FOREIGN KEY ("asignado_por_user_id") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_encargo_id_fkey" FOREIGN KEY ("encargo_id") REFERENCES "encargo"("encargo_id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_granted_by_user_id_fkey" FOREIGN KEY ("granted_by_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;

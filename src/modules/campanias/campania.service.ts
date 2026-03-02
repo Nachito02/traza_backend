@@ -30,7 +30,10 @@ async function ensureUserBodega(userId: string, bodegaId: string) {
 export async function listCampanias(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
-    return prisma.campania.findMany({ where: { bodega_id: bodegaId } });
+    return prisma.campania.findMany({
+      where: { bodega_id: bodegaId },
+      orderBy: [{ fecha_inicio: "desc" }, { nombre: "asc" }],
+    });
   }
 
   const bodegas = await prisma.userBodega.findMany({
@@ -42,7 +45,32 @@ export async function listCampanias(userId: string, bodegaId?: string) {
 
   return prisma.campania.findMany({
     where: { bodega_id: { in: ids } },
+    orderBy: [{ fecha_inicio: "desc" }, { nombre: "asc" }],
   });
+}
+
+function parseCampaniaDate(input: string, fieldLabel: string): Date {
+  const raw = input.trim();
+  let parsed: Date;
+
+  // Accept frontend-friendly DD/MM/YYYY and normalize to UTC date.
+  const ddmmyyyy = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+  const match = raw.match(ddmmyyyy);
+  if (match) {
+    const [, dd, mm, yyyy] = match;
+    parsed = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  } else {
+    parsed = new Date(raw);
+  }
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new CampaniaError(
+      `${fieldLabel} inválida. Usá formato YYYY-MM-DD o DD/MM/YYYY`,
+      400,
+    );
+  }
+
+  return parsed;
 }
 
 export async function createCampania({
@@ -56,8 +84,15 @@ export async function createCampania({
   if (!bodegaId || !nombre || !fecha_inicio || !fecha_fin) {
     throw new CampaniaError("Datos incompletos", 400);
   }
-
   await ensureUserBodega(userId, bodegaId);
+
+  const existing = await prisma.campania.findFirst({
+    where: { bodega_id: bodegaId, nombre },
+    select: { campania_id: true },
+  });
+  if (existing) {
+    throw new CampaniaError("Ya existe una campaña con ese nombre en la bodega", 409);
+  }
 
   const data: {
     bodega_id: string;
@@ -68,8 +103,8 @@ export async function createCampania({
   } = {
     bodega_id: bodegaId,
     nombre,
-    fecha_inicio: new Date(fecha_inicio),
-    fecha_fin: new Date(fecha_fin),
+    fecha_inicio: parseCampaniaDate(fecha_inicio, "Fecha inicio"),
+    fecha_fin: parseCampaniaDate(fecha_fin, "Fecha fin"),
   };
 
   if (estado !== undefined) data.estado = estado;

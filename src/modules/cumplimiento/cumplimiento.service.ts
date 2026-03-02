@@ -173,7 +173,7 @@ export async function getIndicadoresByContext(params: {
     });
     if (!traz) throw new CumplimientoError("Trazabilidad no encontrada", 404);
     targetCampaniaId = traz.campania_id;
-    targetCuartelId = traz.cuartel_id;
+    targetCuartelId = traz.cuartel_id ?? undefined;
     targetTrazabilidadId = trazabilidadId;
   }
 
