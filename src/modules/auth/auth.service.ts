@@ -13,7 +13,8 @@ type CreateUserInput = {
   email: string;
   password: string;
   nombre: string;
-  bodegaId: string;
+  bodegaId?: string;
+  bodegaNombre?: string;
 };
 
 type JwtPayload = {
@@ -128,13 +129,22 @@ export async function getUserBodegas(userId: string) {
   return Array.from(map.values());
 }
 
+export async function getUserRoles(userId: string) {
+  const rows = await prisma.userRol.findMany({
+    where: { user_id: userId },
+    include: { rol: true },
+  });
+  return rows.map((row) => row.rol.nombre);
+}
+
 export async function createUser({
   email,
   password,
   nombre,
   bodegaId,
+  bodegaNombre,
 }: CreateUserInput) {
-  if (!email || !password || !nombre || !bodegaId) {
+  if (!email || !password || !nombre || (!bodegaId && !bodegaNombre)) {
     throw new AuthError("Datos incompletos", 400);
   }
 
@@ -143,11 +153,41 @@ export async function createUser({
     throw new AuthError("El usuario ya existe", 409);
   }
 
-  const bodega = await prisma.bodega.findUnique({
-    where: { bodega_id: bodegaId },
-  });
-  if (!bodega) {
-    throw new AuthError("Bodega no encontrada", 404);
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  const maybeId = bodegaId?.trim();
+  const maybeNombre = bodegaNombre?.trim() || (maybeId && !uuidRegex.test(maybeId) ? maybeId : undefined);
+
+  let resolvedBodegaId = "";
+
+  if (maybeId && uuidRegex.test(maybeId)) {
+    const bodega = await prisma.bodega.findUnique({
+      where: { bodega_id: maybeId },
+    });
+    if (!bodega) {
+      throw new AuthError("Bodega no encontrada", 404);
+    }
+    resolvedBodegaId = bodega.bodega_id;
+  } else if (maybeNombre) {
+    const bodegas = await prisma.bodega.findMany({
+      where: { nombre: maybeNombre, activo: true },
+      select: { bodega_id: true },
+      take: 2,
+    });
+    if (bodegas.length === 0) {
+      throw new AuthError("Bodega no encontrada", 404);
+    }
+    if (bodegas.length > 1) {
+      throw new AuthError("Nombre de bodega ambiguo; enviá bodegaId", 409);
+    }
+    const selectedBodega = bodegas[0];
+    if (!selectedBodega) {
+      throw new AuthError("Bodega no encontrada", 404);
+    }
+    resolvedBodegaId = selectedBodega.bodega_id;
+  } else {
+    throw new AuthError("bodegaId inválido", 400);
   }
 
   const password_hash = await bcrypt.hash(password, 10);
@@ -162,7 +202,7 @@ export async function createUser({
   await prisma.userBodega.create({
     data: {
       user_id: user.user_id,
-      bodega_id: bodegaId,
+      bodega_id: resolvedBodegaId,
     },
   });
 

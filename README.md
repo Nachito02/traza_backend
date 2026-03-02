@@ -116,3 +116,53 @@ gcloud run deploy "$SERVICE" \
 gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)'
 gcloud run services logs read "$SERVICE" --region="$REGION" --limit=100
 ```
+
+## Roles, encargos y bot IA (WhatsApp)
+
+### Roles recomendados
+
+Se implementó autorización por roles usando las tablas `rol` y `user_rol`.
+
+Roles sugeridos:
+- `super_admin`: control total de la plataforma
+- `bodega_admin`: administración de una o más bodegas
+- `encargado`: crea y asigna encargos diarios
+- `operario`: recibe encargos y reporta avance
+- `bot_agent`: cuenta técnica del bot para operar por delegación
+
+Podés consultar roles del usuario actual:
+```bash
+GET /api/auth/me/roles
+```
+
+### Encargos (tareas del día)
+
+Endpoints:
+- `GET /api/encargos/me/can-manage`
+- `GET /api/encargos/me/asignaciones`
+- `PATCH /api/encargos/me/asignaciones/:encargoAsignacionId/estado`
+- `GET /api/encargos` (requiere `super_admin|bodega_admin|encargado`)
+- `POST /api/encargos` (requiere `super_admin|bodega_admin|encargado`)
+- `POST /api/encargos/:encargoId/asignaciones` (requiere `super_admin|bodega_admin|encargado`)
+
+### Bot con delegación por usuario
+
+Se agregó delegación explícita para que un bot actúe en nombre de un usuario y con scopes acotados.
+
+Scopes sugeridos:
+- `encargos.contactar`
+- `encargos.cargar_datos`
+
+Endpoints:
+- `POST /api/bot/delegaciones`
+- `GET /api/bot/delegaciones/me`
+- `DELETE /api/bot/delegaciones/:botDelegationId`
+- `POST /api/bot/asignaciones/:encargoAsignacionId/contactar` (requiere `bot_agent|super_admin`)
+- `POST /api/bot/asignaciones/:encargoAsignacionId/ayudar-carga` (requiere `bot_agent|super_admin`)
+
+### WhatsApp en usuarios
+
+Se agregaron campos en `app_user`:
+- `whatsapp_e164`
+- `whatsapp_verified_at`
+- `whatsapp_opt_in_at`

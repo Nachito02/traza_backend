@@ -6,12 +6,21 @@ Table app_user {
   user_id String [pk]
   nombre String [not null]
   email String [unique]
+  whatsapp_e164 String [unique]
+  whatsapp_verified_at DateTime
+  whatsapp_opt_in_at DateTime
   created_at DateTime [default: `now()`, not null]
   password_hash String
   is_active Boolean [not null, default: true]
   refresh_token refresh_token [not null]
   user_bodega user_bodega [not null]
   user_rol user_rol [not null]
+  encargos_creados encargo [not null]
+  encargos_asignados encargo_asignacion [not null]
+  bot_delegaciones_otorgadas bot_delegation [not null]
+  bot_delegaciones_recibidas bot_delegation [not null]
+  bot_action_logs_as_actor bot_action_log [not null]
+  bot_action_logs_on_behalf bot_action_log [not null]
 }
 
 Table bodega {
@@ -38,6 +47,8 @@ Table bodega {
   persona persona [not null]
   trazabilidad trazabilidad [not null]
   user_bodega user_bodega [not null]
+  encargo encargo [not null]
+  bot_delegation bot_delegation [not null]
 }
 
 Table campania {
@@ -718,6 +729,74 @@ Table user_rol {
   }
 }
 
+Table encargo {
+  encargo_id String [pk]
+  bodega_id String [not null]
+  created_by String [not null]
+  titulo String [not null]
+  descripcion String
+  fecha_objetivo DateTime
+  prioridad String [not null, default: 'media']
+  estado EncargoEstado [not null, default: 'pendiente']
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  app_user app_user [not null]
+  encargo_asignacion encargo_asignacion [not null]
+}
+
+Table encargo_asignacion {
+  encargo_asignacion_id String [pk]
+  encargo_id String [not null]
+  user_id String [not null]
+  estado EncargoAsignacionEstado [not null, default: 'pendiente']
+  assigned_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  completed_at DateTime
+  whatsapp_contactado_at DateTime
+  ultima_interaccion_bot_at DateTime
+  observaciones String
+  encargo encargo [not null]
+  app_user app_user [not null]
+  bot_action_log bot_action_log [not null]
+
+  indexes {
+    (encargo_id, user_id) [unique]
+  }
+}
+
+Table bot_delegation {
+  bot_delegation_id String [pk]
+  granted_by_user_id String [not null]
+  bot_user_id String [not null]
+  bodega_id String
+  scopes String[] [not null]
+  activo Boolean [not null, default: true]
+  expires_at DateTime
+  revoked_at DateTime
+  created_at DateTime [default: `now()`, not null]
+  granted_by_user app_user [not null]
+  bot_user app_user [not null]
+  bodega bodega
+  bot_action_log bot_action_log [not null]
+}
+
+Table bot_action_log {
+  bot_action_log_id String [pk]
+  bot_user_id String [not null]
+  on_behalf_user_id String [not null]
+  bot_delegation_id String
+  encargo_asignacion_id String
+  action String [not null]
+  input_payload Json [not null, default: '{}']
+  output_payload Json [not null, default: '{}']
+  created_at DateTime [default: `now()`, not null]
+  bot_user app_user [not null]
+  on_behalf_user app_user [not null]
+  bot_delegation bot_delegation
+  encargo_asignacion encargo_asignacion
+}
+
 Table validacion_milestone {
   validacion_id String [pk]
   milestone_id String [not null]
@@ -767,6 +846,20 @@ Enum EstadoHallazgo {
   resuelto
   aceptado
   anulado
+}
+
+Enum EncargoEstado {
+  pendiente
+  en_progreso
+  completado
+  cancelado
+}
+
+Enum EncargoAsignacionEstado {
+  pendiente
+  en_progreso
+  completado
+  cancelado
 }
 
 Ref: bodega.productor_id > productor.productor_id [delete: Restrict]
@@ -928,5 +1021,27 @@ Ref: user_bodega.user_id > app_user.user_id [delete: Cascade]
 Ref: user_rol.rol_id > rol.rol_id
 
 Ref: user_rol.user_id > app_user.user_id [delete: Cascade]
+
+Ref: encargo.bodega_id > bodega.bodega_id
+
+Ref: encargo.created_by > app_user.user_id
+
+Ref: encargo_asignacion.encargo_id > encargo.encargo_id [delete: Cascade]
+
+Ref: encargo_asignacion.user_id > app_user.user_id [delete: Cascade]
+
+Ref: bot_delegation.granted_by_user_id > app_user.user_id [delete: Cascade]
+
+Ref: bot_delegation.bot_user_id > app_user.user_id [delete: Cascade]
+
+Ref: bot_delegation.bodega_id > bodega.bodega_id [delete: Set Null]
+
+Ref: bot_action_log.bot_user_id > app_user.user_id [delete: Cascade]
+
+Ref: bot_action_log.on_behalf_user_id > app_user.user_id [delete: Cascade]
+
+Ref: bot_action_log.bot_delegation_id > bot_delegation.bot_delegation_id [delete: Set Null]
+
+Ref: bot_action_log.encargo_asignacion_id > encargo_asignacion.encargo_asignacion_id [delete: Set Null]
 
 Ref: validacion_milestone.milestone_id > milestone.milestone_id [delete: Cascade]

@@ -9,6 +9,8 @@ import { protocoloRoutes } from "../modules/protocolos/protocolo.route.js";
 import { trazabilidadRoutes } from "../modules/trazabilidades/trazabilidad.route.js";
 import { eventoRoutes } from "../modules/eventos/evento.route.js";
 import { cumplimientoRoutes } from "../modules/cumplimiento/cumplimiento.route.js";
+import { encargoRoutes } from "../modules/encargos/encargo.route.js";
+import { botRoutes } from "../modules/bot/bot.route.js";
 
 export const routes = Router();
 
@@ -22,3 +24,5 @@ routes.use("/protocolos", protocoloRoutes);
 routes.use("/trazabilidades", trazabilidadRoutes);
 routes.use("/eventos", eventoRoutes);
 routes.use("/cumplimiento", cumplimientoRoutes);
+routes.use("/encargos", encargoRoutes);
+routes.use("/bot", botRoutes);

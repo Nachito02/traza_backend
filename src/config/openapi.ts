@@ -33,7 +33,38 @@ const openapiSpec = {
       post: {
         summary: "Register user",
         security: [],
-        responses: { 200: { description: "OK" } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password", "nombre"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                  nombre: { type: "string" },
+                  bodegaId: {
+                    type: "string",
+                    description:
+                      "UUID de bodega. Alternativa a bodegaNombre.",
+                  },
+                  bodegaNombre: {
+                    type: "string",
+                    description:
+                      "Nombre de bodega. Alternativa a bodegaId.",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: "Created" },
+          400: { description: "Bad request" },
+          404: { description: "Bodega no encontrada" },
+          409: { description: "Conflicto (usuario existente o bodega ambigua)" },
+        },
       },
     },
     "/auth/refresh": {
@@ -58,6 +89,12 @@ const openapiSpec = {
     "/auth/me/bodegas": {
       get: {
         summary: "Current user bodegas",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/auth/me/roles": {
+      get: {
+        summary: "Current user roles",
         responses: { 200: { description: "OK" } },
       },
     },
@@ -219,6 +256,110 @@ const openapiSpec = {
           },
         ],
         responses: { 201: { description: "Created" } },
+      },
+    },
+    "/encargos/me/can-manage": {
+      get: {
+        summary: "Can current user manage encargos",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos/me/asignaciones": {
+      get: {
+        summary: "List my encargo assignments",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos/me/asignaciones/{encargoAsignacionId}/estado": {
+      patch: {
+        summary: "Update my encargo assignment status",
+        parameters: [
+          {
+            name: "encargoAsignacionId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos": {
+      get: {
+        summary: "List encargos",
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Create encargo",
+        responses: { 201: { description: "Created" } },
+      },
+    },
+    "/encargos/{encargoId}/asignaciones": {
+      post: {
+        summary: "Add assignees to encargo",
+        parameters: [
+          {
+            name: "encargoId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/bot/delegaciones": {
+      post: {
+        summary: "Create bot delegation",
+        responses: { 201: { description: "Created" } },
+      },
+    },
+    "/bot/delegaciones/me": {
+      get: {
+        summary: "List my bot delegations",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/bot/delegaciones/{botDelegationId}": {
+      delete: {
+        summary: "Revoke bot delegation",
+        parameters: [
+          {
+            name: "botDelegationId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/bot/asignaciones/{encargoAsignacionId}/contactar": {
+      post: {
+        summary: "Bot contacts assignee",
+        parameters: [
+          {
+            name: "encargoAsignacionId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/bot/asignaciones/{encargoAsignacionId}/ayudar-carga": {
+      post: {
+        summary: "Bot helps with data load",
+        parameters: [
+          {
+            name: "encargoAsignacionId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
       },
     },
     "/cumplimiento/hallazgos": {

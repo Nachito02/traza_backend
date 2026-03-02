@@ -8,15 +8,24 @@ datasource db {
 }
 
 model AppUser {
-  user_id       String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre        String
-  email         String?         @unique
-  created_at    DateTime        @default(now()) @db.Timestamptz(6)
-  password_hash String?
-  is_active     Boolean         @default(true)
-  refresh_token RefreshToken[]
-  user_bodega   UserBodega[]
-  user_rol      UserRol[]
+  user_id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre                      String
+  email                       String?             @unique
+  whatsapp_e164               String?             @unique
+  whatsapp_verified_at        DateTime?           @db.Timestamptz(6)
+  whatsapp_opt_in_at          DateTime?           @db.Timestamptz(6)
+  created_at                  DateTime            @default(now()) @db.Timestamptz(6)
+  password_hash               String?
+  is_active                   Boolean             @default(true)
+  refresh_token               RefreshToken[]
+  user_bodega                 UserBodega[]
+  user_rol                    UserRol[]
+  encargos_creados            Encargo[]           @relation("EncargoCreatedBy")
+  encargos_asignados          EncargoAsignacion[]
+  bot_delegaciones_otorgadas  BotDelegation[]     @relation("BotDelegationGrantor")
+  bot_delegaciones_recibidas  BotDelegation[]     @relation("BotDelegationBot")
+  bot_action_logs_as_actor    BotActionLog[]      @relation("BotActionActor")
+  bot_action_logs_on_behalf   BotActionLog[]      @relation("BotActionOnBehalf")
   @@map("app_user")
 }
 
@@ -44,6 +53,8 @@ model Bodega {
   persona                   Persona[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
+  encargo                   Encargo[]
+  bot_delegation            BotDelegation[]
 
   @@index([productor_id], map: "idx_bodega_productor")
   @@map("bodega")
@@ -789,6 +800,87 @@ model UserRol {
   @@map("user_rol")
 }
 
+model Encargo {
+  encargo_id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id           String              @db.Uuid
+  created_by          String              @db.Uuid
+  titulo              String
+  descripcion         String?
+  fecha_objetivo      DateTime?           @db.Date
+  prioridad           String              @default("media")
+  estado              EncargoEstado       @default(pendiente)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
+  bodega              Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  app_user            AppUser             @relation("EncargoCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
+  encargo_asignacion  EncargoAsignacion[]
+
+  @@index([bodega_id, estado], map: "idx_encargo_bodega_estado")
+  @@index([created_by], map: "idx_encargo_created_by")
+  @@map("encargo")
+}
+
+model EncargoAsignacion {
+  encargo_asignacion_id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encargo_id                      String                 @db.Uuid
+  user_id                         String                 @db.Uuid
+  estado                          EncargoAsignacionEstado @default(pendiente)
+  assigned_at                     DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime               @default(now()) @db.Timestamptz(6)
+  completed_at                    DateTime?              @db.Timestamptz(6)
+  whatsapp_contactado_at          DateTime?              @db.Timestamptz(6)
+  ultima_interaccion_bot_at       DateTime?              @db.Timestamptz(6)
+  observaciones                   String?
+  encargo                         Encargo                @relation(fields: [encargo_id], references: [encargo_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user                        AppUser                @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_action_log                  BotActionLog[]
+
+  @@unique([encargo_id, user_id], map: "uq_encargo_asignacion_unica")
+  @@index([user_id, estado], map: "idx_encargo_asignacion_user_estado")
+  @@map("encargo_asignacion")
+}
+
+model BotDelegation {
+  bot_delegation_id    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  granted_by_user_id   String         @db.Uuid
+  bot_user_id          String         @db.Uuid
+  bodega_id            String?        @db.Uuid
+  scopes               String[]
+  activo               Boolean        @default(true)
+  expires_at           DateTime?      @db.Timestamptz(6)
+  revoked_at           DateTime?      @db.Timestamptz(6)
+  created_at           DateTime       @default(now()) @db.Timestamptz(6)
+  granted_by_user      AppUser        @relation("BotDelegationGrantor", fields: [granted_by_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_user             AppUser        @relation("BotDelegationBot", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bodega               Bodega?        @relation(fields: [bodega_id], references: [bodega_id], onDelete: SetNull, onUpdate: NoAction)
+  bot_action_log       BotActionLog[]
+
+  @@index([granted_by_user_id, activo], map: "idx_bot_delegation_grantor_activo")
+  @@index([bot_user_id, activo], map: "idx_bot_delegation_bot_activo")
+  @@map("bot_delegation")
+}
+
+model BotActionLog {
+  bot_action_log_id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bot_user_id              String             @db.Uuid
+  on_behalf_user_id        String             @db.Uuid
+  bot_delegation_id        String?            @db.Uuid
+  encargo_asignacion_id    String?            @db.Uuid
+  action                   String
+  input_payload            Json               @default("{}")
+  output_payload           Json               @default("{}")
+  created_at               DateTime           @default(now()) @db.Timestamptz(6)
+  bot_user                 AppUser            @relation("BotActionActor", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  on_behalf_user           AppUser            @relation("BotActionOnBehalf", fields: [on_behalf_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_delegation           BotDelegation?     @relation(fields: [bot_delegation_id], references: [bot_delegation_id], onDelete: SetNull, onUpdate: NoAction)
+  encargo_asignacion       EncargoAsignacion? @relation(fields: [encargo_asignacion_id], references: [encargo_asignacion_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([bot_user_id, created_at], map: "idx_bot_action_actor_date")
+  @@index([on_behalf_user_id, created_at], map: "idx_bot_action_on_behalf_date")
+  @@index([encargo_asignacion_id], map: "idx_bot_action_encargo_asignacion")
+  @@map("bot_action_log")
+}
+
 model ValidacionMilestone {
   validacion_id String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   milestone_id  String            @db.Uuid
@@ -841,6 +933,20 @@ enum EstadoHallazgo {
   resuelto
   aceptado
   anulado
+}
+
+enum EncargoEstado {
+  pendiente
+  en_progreso
+  completado
+  cancelado
+}
+
+enum EncargoAsignacionEstado {
+  pendiente
+  en_progreso
+  completado
+  cancelado
 }
 
 generator erd {

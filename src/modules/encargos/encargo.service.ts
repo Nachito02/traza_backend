@@ -1,0 +1,253 @@
+import { prisma } from "../../config/prismaClient.js";
+import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
+
+const MANAGER_ROLES = ["super_admin", "bodega_admin", "encargado"];
+
+type CreateEncargoInput = {
+  bodegaId: string;
+  titulo: string;
+  descripcion?: string;
+  fechaObjetivo?: string;
+  prioridad?: string;
+  assigneeUserIds?: string[];
+};
+
+type UpdateEncargoAsignacionEstadoInput = {
+  encargoAsignacionId: string;
+  userId: string;
+  estado: "pendiente" | "en_progreso" | "completado" | "cancelado";
+  observaciones?: string;
+};
+
+export class EncargoError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function ensureCanManageBodega(userId: string, bodegaId: string) {
+  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
+  if (isSuperAdmin) return;
+
+  const rel = await prisma.userBodega.findFirst({
+    where: { user_id: userId, bodega_id: bodegaId },
+  });
+  if (!rel) {
+    throw new EncargoError("No autorizado para administrar esta bodega", 403);
+  }
+}
+
+async function ensureUsersBelongToBodega(userIds: string[], bodegaId: string) {
+  if (userIds.length === 0) return;
+  const rows = await prisma.userBodega.findMany({
+    where: {
+      bodega_id: bodegaId,
+      user_id: { in: userIds },
+    },
+    select: { user_id: true },
+  });
+  const allowed = new Set(rows.map((row) => row.user_id));
+  const invalid = userIds.filter((id) => !allowed.has(id));
+  if (invalid.length > 0) {
+    throw new EncargoError("Hay usuarios asignados fuera de la bodega", 400);
+  }
+}
+
+export async function createEncargo(input: CreateEncargoInput, actorUserId: string) {
+  if (!input.bodegaId || !input.titulo) {
+    throw new EncargoError("bodegaId y titulo son requeridos", 400);
+  }
+  await ensureCanManageBodega(actorUserId, input.bodegaId);
+
+  const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
+  await ensureUsersBelongToBodega(assigneeUserIds, input.bodegaId);
+
+  const data: {
+    bodega_id: string;
+    created_by: string;
+    titulo: string;
+    prioridad: string;
+    descripcion?: string | null;
+    fecha_objetivo?: Date | null;
+    encargo_asignacion?: {
+      createMany: {
+        data: { user_id: string }[];
+        skipDuplicates: boolean;
+      };
+    };
+  } = {
+    bodega_id: input.bodegaId,
+    created_by: actorUserId,
+    titulo: input.titulo,
+    prioridad: input.prioridad ?? "media",
+  };
+  if (input.descripcion !== undefined) {
+    data.descripcion = input.descripcion;
+  }
+  if (input.fechaObjetivo) {
+    data.fecha_objetivo = new Date(input.fechaObjetivo);
+  }
+  if (assigneeUserIds.length > 0) {
+    data.encargo_asignacion = {
+      createMany: {
+        data: assigneeUserIds.map((userId) => ({ user_id: userId })),
+        skipDuplicates: true,
+      },
+    };
+  }
+
+  const encargo = await prisma.encargo.create({
+    data,
+    include: {
+      encargo_asignacion: {
+        include: { app_user: { select: { user_id: true, nombre: true, email: true, whatsapp_e164: true } } },
+      },
+    },
+  });
+
+  return encargo;
+}
+
+export async function listEncargos(actorUserId: string, bodegaId?: string) {
+  const isSuperAdmin = await userHasAnyRole(actorUserId, ["super_admin"]);
+  if (isSuperAdmin) {
+    return prisma.encargo.findMany({
+      where: bodegaId ? { bodega_id: bodegaId } : {},
+      orderBy: [{ created_at: "desc" }],
+      include: { encargo_asignacion: true },
+    });
+  }
+
+  const memberships = await prisma.userBodega.findMany({
+    where: { user_id: actorUserId },
+    select: { bodega_id: true },
+  });
+  const allowedBodegas = memberships.map((m) => m.bodega_id);
+  if (allowedBodegas.length === 0) return [];
+
+  if (bodegaId && !allowedBodegas.includes(bodegaId)) {
+    throw new EncargoError("No autorizado para ver encargos de esta bodega", 403);
+  }
+
+  return prisma.encargo.findMany({
+    where: {
+      bodega_id: bodegaId ?? { in: allowedBodegas },
+    },
+    orderBy: [{ created_at: "desc" }],
+    include: { encargo_asignacion: true },
+  });
+}
+
+export async function addEncargoAsignaciones(
+  encargoId: string,
+  userIds: string[],
+  actorUserId: string,
+) {
+  if (!encargoId || userIds.length === 0) {
+    throw new EncargoError("encargoId y userIds son requeridos", 400);
+  }
+  const encargo = await prisma.encargo.findUnique({
+    where: { encargo_id: encargoId },
+    select: { bodega_id: true },
+  });
+  if (!encargo) {
+    throw new EncargoError("Encargo no encontrado", 404);
+  }
+  await ensureCanManageBodega(actorUserId, encargo.bodega_id);
+
+  const uniqueUserIds = Array.from(new Set(userIds));
+  await ensureUsersBelongToBodega(uniqueUserIds, encargo.bodega_id);
+
+  await prisma.encargoAsignacion.createMany({
+    data: uniqueUserIds.map((userId) => ({
+      encargo_id: encargoId,
+      user_id: userId,
+    })),
+    skipDuplicates: true,
+  });
+
+  return prisma.encargoAsignacion.findMany({
+    where: { encargo_id: encargoId },
+    include: {
+      app_user: {
+        select: { user_id: true, nombre: true, email: true, whatsapp_e164: true },
+      },
+    },
+    orderBy: { assigned_at: "asc" },
+  });
+}
+
+export async function listMyEncargoAsignaciones(userId: string) {
+  return prisma.encargoAsignacion.findMany({
+    where: { user_id: userId },
+    include: {
+      encargo: true,
+    },
+    orderBy: [{ assigned_at: "desc" }],
+  });
+}
+
+export async function updateMyEncargoAsignacionEstado(input: UpdateEncargoAsignacionEstadoInput) {
+  const row = await prisma.encargoAsignacion.findUnique({
+    where: { encargo_asignacion_id: input.encargoAsignacionId },
+    include: {
+      encargo: {
+        select: {
+          encargo_id: true,
+          encargo_asignacion: {
+            select: { estado: true },
+          },
+        },
+      },
+    },
+  });
+  if (!row) {
+    throw new EncargoError("Asignación no encontrada", 404);
+  }
+  if (row.user_id !== input.userId) {
+    throw new EncargoError("No autorizado", 403);
+  }
+
+  const data: {
+    estado: "pendiente" | "en_progreso" | "completado" | "cancelado";
+    updated_at: Date;
+    completed_at: Date | null;
+    observaciones?: string | null;
+  } = {
+    estado: input.estado,
+    updated_at: new Date(),
+    completed_at: input.estado === "completado" ? new Date() : null,
+  };
+  if (input.observaciones !== undefined) {
+    data.observaciones = input.observaciones;
+  }
+
+  const updated = await prisma.encargoAsignacion.update({
+    where: { encargo_asignacion_id: input.encargoAsignacionId },
+    data,
+  });
+
+  const siblings = await prisma.encargoAsignacion.findMany({
+    where: { encargo_id: row.encargo_id },
+    select: { estado: true },
+  });
+  const allDone = siblings.length > 0 && siblings.every((s) => s.estado === "completado");
+  const hasProgress = siblings.some((s) => s.estado === "en_progreso");
+
+  await prisma.encargo.update({
+    where: { encargo_id: row.encargo_id },
+    data: {
+      estado: allDone ? "completado" : hasProgress ? "en_progreso" : "pendiente",
+      updated_at: new Date(),
+    },
+  });
+
+  return updated;
+}
+
+export async function canUserManageEncargos(userId: string) {
+  return userHasAnyRole(userId, MANAGER_ROLES);
+}

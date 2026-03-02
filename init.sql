@@ -19,11 +19,20 @@ CREATE TYPE "SeveridadRegla" AS ENUM ('bloqueo', 'alerta', 'info');
 -- CreateEnum
 CREATE TYPE "EstadoHallazgo" AS ENUM ('abierto', 'en_proceso', 'resuelto', 'aceptado', 'anulado');
 
+-- CreateEnum
+CREATE TYPE "EncargoEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado');
+
+-- CreateEnum
+CREATE TYPE "EncargoAsignacionEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado');
+
 -- CreateTable
 CREATE TABLE "app_user" (
     "user_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL,
     "email" TEXT,
+    "whatsapp_e164" TEXT,
+    "whatsapp_verified_at" TIMESTAMPTZ(6),
+    "whatsapp_opt_in_at" TIMESTAMPTZ(6),
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "password_hash" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -638,6 +647,68 @@ CREATE TABLE "user_rol" (
 );
 
 -- CreateTable
+CREATE TABLE "encargo" (
+    "encargo_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "created_by" UUID NOT NULL,
+    "titulo" TEXT NOT NULL,
+    "descripcion" TEXT,
+    "fecha_objetivo" DATE,
+    "prioridad" TEXT NOT NULL DEFAULT 'media',
+    "estado" "EncargoEstado" NOT NULL DEFAULT 'pendiente',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "encargo_pkey" PRIMARY KEY ("encargo_id")
+);
+
+-- CreateTable
+CREATE TABLE "encargo_asignacion" (
+    "encargo_asignacion_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "encargo_id" UUID NOT NULL,
+    "user_id" UUID NOT NULL,
+    "estado" "EncargoAsignacionEstado" NOT NULL DEFAULT 'pendiente',
+    "assigned_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completed_at" TIMESTAMPTZ(6),
+    "whatsapp_contactado_at" TIMESTAMPTZ(6),
+    "ultima_interaccion_bot_at" TIMESTAMPTZ(6),
+    "observaciones" TEXT,
+
+    CONSTRAINT "encargo_asignacion_pkey" PRIMARY KEY ("encargo_asignacion_id")
+);
+
+-- CreateTable
+CREATE TABLE "bot_delegation" (
+    "bot_delegation_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "granted_by_user_id" UUID NOT NULL,
+    "bot_user_id" UUID NOT NULL,
+    "bodega_id" UUID,
+    "scopes" TEXT[],
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "expires_at" TIMESTAMPTZ(6),
+    "revoked_at" TIMESTAMPTZ(6),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bot_delegation_pkey" PRIMARY KEY ("bot_delegation_id")
+);
+
+-- CreateTable
+CREATE TABLE "bot_action_log" (
+    "bot_action_log_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bot_user_id" UUID NOT NULL,
+    "on_behalf_user_id" UUID NOT NULL,
+    "bot_delegation_id" UUID,
+    "encargo_asignacion_id" UUID,
+    "action" TEXT NOT NULL,
+    "input_payload" JSONB NOT NULL DEFAULT '{}',
+    "output_payload" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bot_action_log_pkey" PRIMARY KEY ("bot_action_log_id")
+);
+
+-- CreateTable
 CREATE TABLE "validacion_milestone" (
     "validacion_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "milestone_id" UUID NOT NULL,
@@ -651,6 +722,9 @@ CREATE TABLE "validacion_milestone" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "app_user_email_key" ON "app_user"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "app_user_whatsapp_e164_key" ON "app_user"("whatsapp_e164");
 
 -- CreateIndex
 CREATE INDEX "idx_bodega_productor" ON "bodega"("productor_id");
@@ -795,6 +869,33 @@ CREATE INDEX "idx_evento_fp_tipo_fecha" ON "evento_fingerprint"("tipo_evento", "
 
 -- CreateIndex
 CREATE INDEX "idx_user_bodega_bodega" ON "user_bodega"("bodega_id");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_bodega_estado" ON "encargo"("bodega_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_created_by" ON "encargo"("created_by");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_asignacion_user_estado" ON "encargo_asignacion"("user_id", "estado");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_encargo_asignacion_unica" ON "encargo_asignacion"("encargo_id", "user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_delegation_grantor_activo" ON "bot_delegation"("granted_by_user_id", "activo");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_delegation_bot_activo" ON "bot_delegation"("bot_user_id", "activo");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_actor_date" ON "bot_action_log"("bot_user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_on_behalf_date" ON "bot_action_log"("on_behalf_user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_encargo_asignacion" ON "bot_action_log"("encargo_asignacion_id");
 
 -- CreateIndex
 CREATE INDEX "idx_validacion_milestone" ON "validacion_milestone"("milestone_id");
@@ -1038,6 +1139,39 @@ ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_rol_id_fkey" FOREIGN KEY ("rol_i
 
 -- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_encargo_id_fkey" FOREIGN KEY ("encargo_id") REFERENCES "encargo"("encargo_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_granted_by_user_id_fkey" FOREIGN KEY ("granted_by_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_bot_user_id_fkey" FOREIGN KEY ("bot_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_bot_user_id_fkey" FOREIGN KEY ("bot_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_on_behalf_user_id_fkey" FOREIGN KEY ("on_behalf_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_bot_delegation_id_fkey" FOREIGN KEY ("bot_delegation_id") REFERENCES "bot_delegation"("bot_delegation_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_encargo_asignacion_id_fkey" FOREIGN KEY ("encargo_asignacion_id") REFERENCES "encargo_asignacion"("encargo_asignacion_id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "validacion_milestone" ADD CONSTRAINT "validacion_milestone_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
