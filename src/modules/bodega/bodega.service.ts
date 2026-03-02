@@ -70,12 +70,14 @@ export async function createBodega({
     const created = await tx.bodega.create({ data });
 
     if (uniqueProductorIds.length > 0) {
-      await tx.productorBodega.createMany({
-        data: uniqueProductorIds.map((id) => ({
-          productor_id: id,
-          bodega_id: created.bodega_id,
-        })),
-        skipDuplicates: true,
+      const primaryProductorId = uniqueProductorIds[0];
+      if (!primaryProductorId) {
+        throw new BodegaError("Productor inválido", 400);
+      }
+      // El esquema actual soporta un productor principal por bodega.
+      await tx.bodega.update({
+        where: { bodega_id: created.bodega_id },
+        data: { productor_id: primaryProductorId },
       });
     }
 
@@ -98,11 +100,21 @@ async function ensureUserBodega(userId: string, bodegaId: string) {
 export async function listProductoresByBodega(bodegaId: string, userId: string) {
   await ensureUserBodega(userId, bodegaId);
 
-  return prisma.productorBodega.findMany({
-    where: { bodega_id: bodegaId, activo: true },
+  const bodega = await prisma.bodega.findUnique({
+    where: { bodega_id: bodegaId },
     include: { productor: true },
-    orderBy: { created_at: "desc" },
   });
+  if (!bodega) {
+    throw new BodegaError("Bodega no encontrada", 404);
+  }
+  if (!bodega.productor) return [];
+  return [
+    {
+      bodega_id: bodega.bodega_id,
+      productor_id: bodega.productor.productor_id,
+      productor: bodega.productor,
+    },
+  ];
 }
 
 export async function linkProductorToBodega({
@@ -150,22 +162,16 @@ export async function linkProductorToBodega({
     throw new BodegaError("Productor no encontrado", 404);
   }
 
-  return prisma.productorBodega.upsert({
-    where: {
-      productor_id_bodega_id: {
-        productor_id: resolvedProductorId,
-        bodega_id: bodegaId,
-      },
-    },
-    update: {
-      activo: true,
-      ...(tipo_relacion ? { tipo_relacion } : {}),
-    },
-    create: {
-      productor_id: resolvedProductorId,
-      bodega_id: bodegaId,
-      ...(tipo_relacion ? { tipo_relacion } : {}),
-    },
+  const updated = await prisma.bodega.update({
+    where: { bodega_id: bodegaId },
+    data: { productor_id: resolvedProductorId },
     include: { productor: true },
   });
+
+  return {
+    bodega_id: updated.bodega_id,
+    productor_id: resolvedProductorId,
+    productor: updated.productor,
+    tipo_relacion: tipo_relacion ?? null,
+  };
 }

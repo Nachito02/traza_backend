@@ -40,7 +40,10 @@ export async function listProductoresHandler(req: Request, res: Response) {
     const search =
       typeof req.query.search === "string" ? req.query.search : undefined;
 
-    const productores = await listProductores({ activo, search });
+    const input: { activo?: boolean; search?: string } = {};
+    if (activo !== undefined) input.activo = activo;
+    if (search !== undefined) input.search = search;
+    const productores = await listProductores(input);
     return res.json(productores);
   } catch (error) {
     return handleError(res, error);
