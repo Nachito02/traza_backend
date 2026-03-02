@@ -25,6 +25,19 @@ npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script >
 2) Run `init.sql` in Supabase:
 - Supabase dashboard -> SQL Editor -> New query -> paste `init.sql` -> Run
 
+`init.sql` también incluye datos base idempotentes para `protocolo`, `protocolo_etapa` y `protocolo_proceso` (cadena vitivinícola v1.0.0).
+
+## SQL workflow (init / update / seed)
+
+- `init.sql`: crea toda la base desde cero y también puebla datos base.
+- `update.sql`: aplica cambios incrementales sobre una base ya existente y vuelve a sincronizar datos base.
+- `seed.sql`: solo puebla/sincroniza datos base (sin cambios de esquema).
+
+Uso recomendado:
+1) Ambiente nuevo: ejecutar `init.sql`.
+2) Ambiente existente tras cambios: ejecutar `update.sql`.
+3) Solo refrescar catálogos/datos iniciales: ejecutar `seed.sql`.
+
 ## Migrations (when direct connection is available)
 
 If you have IPv6 or paid IPv4, use a direct DB URL just for migrations:
