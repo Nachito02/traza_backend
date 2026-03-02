@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prismaClient.js";
+import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 
 type CreateFincaInput = {
   bodegaId: string;
@@ -19,7 +20,48 @@ export class FincaError extends Error {
   }
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function resolveBodegaId(bodegaRef: string) {
+  const ref = bodegaRef.trim();
+  if (!ref) {
+    throw new FincaError("bodegaId requerido", 400);
+  }
+
+  if (UUID_REGEX.test(ref)) {
+    const bodega = await prisma.bodega.findUnique({
+      where: { bodega_id: ref },
+      select: { bodega_id: true },
+    });
+    if (!bodega) {
+      throw new FincaError("Bodega no encontrada", 404);
+    }
+    return bodega.bodega_id;
+  }
+
+  const matches = await prisma.bodega.findMany({
+    where: { nombre: ref, activo: true },
+    select: { bodega_id: true },
+    take: 2,
+  });
+  if (matches.length === 0) {
+    throw new FincaError("Bodega no encontrada", 404);
+  }
+  if (matches.length > 1) {
+    throw new FincaError("Nombre de bodega ambiguo; usá bodegaId", 409);
+  }
+  const only = matches[0];
+  if (!only) {
+    throw new FincaError("Bodega no encontrada", 404);
+  }
+  return only.bodega_id;
+}
+
 async function ensureUserBodega(userId: string, bodegaId: string) {
+  const isSystemAdmin = await userHasAnyRole(userId, ["super_admin", "admin_sistema"]);
+  if (isSystemAdmin) return;
+
   const rel = await prisma.userBodega.findFirst({
     where: { user_id: userId, bodega_id: bodegaId },
   });
@@ -29,8 +71,9 @@ async function ensureUserBodega(userId: string, bodegaId: string) {
 }
 
 export async function listFincasByBodega(bodegaId: string, userId: string) {
-  await ensureUserBodega(userId, bodegaId);
-  return prisma.finca.findMany({ where: { bodega_id: bodegaId } });
+  const resolvedBodegaId = await resolveBodegaId(bodegaId);
+  await ensureUserBodega(userId, resolvedBodegaId);
+  return prisma.finca.findMany({ where: { bodega_id: resolvedBodegaId } });
 }
 
 export async function createFinca({
@@ -46,7 +89,8 @@ export async function createFinca({
     throw new FincaError("Datos incompletos", 400);
   }
 
-  await ensureUserBodega(userId, bodegaId);
+  const resolvedBodegaId = await resolveBodegaId(bodegaId);
+  await ensureUserBodega(userId, resolvedBodegaId);
 
   const data: {
     bodega_id: string;
@@ -55,7 +99,7 @@ export async function createFinca({
     renspa?: string | null;
     catastro?: string | null;
     ubicacion_texto?: string | null;
-  } = { bodega_id: bodegaId, nombre_finca };
+  } = { bodega_id: resolvedBodegaId, nombre_finca };
 
   if (rut !== undefined) data.rut = rut;
   if (renspa !== undefined) data.renspa = renspa;

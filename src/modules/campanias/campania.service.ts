@@ -56,6 +56,15 @@ export async function createCampania({
   if (!bodegaId || !nombre || !fecha_inicio || !fecha_fin) {
     throw new CampaniaError("Datos incompletos", 400);
   }
+  await ensureUserBodega(userId, bodegaId);
+
+  const existing = await prisma.campania.findFirst({
+    where: { bodega_id: bodegaId, nombre },
+    select: { campania_id: true },
+  });
+  if (existing) {
+    throw new CampaniaError("Ya existe una campaña con ese nombre en la bodega", 409);
+  }
 
   await ensureUserBodega(userId, bodegaId);
 
@@ -68,8 +77,8 @@ export async function createCampania({
   } = {
     bodega_id: bodegaId,
     nombre,
-    fecha_inicio: new Date(fecha_inicio),
-    fecha_fin: new Date(fecha_fin),
+    fecha_inicio: parseCampaniaDate(fecha_inicio, "Fecha inicio"),
+    fecha_fin: parseCampaniaDate(fecha_fin, "Fecha fin"),
   };
 
   if (estado !== undefined) data.estado = estado;

@@ -3,11 +3,18 @@ import { prisma } from "../../config/prismaClient.js";
 type CreateTrazabilidadInput = {
   protocoloId: string;
   bodegaId: string;
-  fincaId: string;
-  cuartelId: string;
+  fincaId?: string;
+  cuartelId?: string;
   campaniaId: string;
   nombre_producto?: string;
   imagen_producto?: string;
+  userId: string;
+};
+
+type AddTrazabilidadOrigenInput = {
+  trazabilidadId: string;
+  fincaId: string;
+  cuartelId: string;
   userId: string;
 };
 
@@ -35,6 +42,9 @@ export async function getTrazabilidadById(
 ) {
   const trazabilidad = await prisma.trazabilidad.findUnique({
     where: { trazabilidad_id: trazabilidadId },
+    include: {
+      trazabilidad_origen: true,
+    },
   });
   if (!trazabilidad) {
     throw new TrazabilidadError("Trazabilidad no encontrada", 404);
@@ -46,7 +56,10 @@ export async function getTrazabilidadById(
 export async function listTrazabilidades(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
-    return prisma.trazabilidad.findMany({ where: { bodega_id: bodegaId } });
+    return prisma.trazabilidad.findMany({
+      where: { bodega_id: bodegaId },
+      include: { trazabilidad_origen: true },
+    });
   }
 
   const bodegas = await prisma.userBodega.findMany({
@@ -58,6 +71,7 @@ export async function listTrazabilidades(userId: string, bodegaId?: string) {
 
   return prisma.trazabilidad.findMany({
     where: { bodega_id: { in: ids } },
+    include: { trazabilidad_origen: true },
   });
 }
 
@@ -71,26 +85,32 @@ export async function createTrazabilidad({
   imagen_producto,
   userId,
 }: CreateTrazabilidadInput) {
-  if (!protocoloId || !bodegaId || !fincaId || !cuartelId || !campaniaId) {
+  if (!protocoloId || !bodegaId || !campaniaId) {
     throw new TrazabilidadError("Datos incompletos", 400);
   }
 
   await ensureUserBodega(userId, bodegaId);
 
-  const finca = await prisma.finca.findUnique({
-    where: { finca_id: fincaId },
-    select: { bodega_id: true },
-  });
-  if (!finca || finca.bodega_id !== bodegaId) {
-    throw new TrazabilidadError("La finca no pertenece a la bodega", 400);
+  if ((fincaId && !cuartelId) || (!fincaId && cuartelId)) {
+    throw new TrazabilidadError("fincaId y cuartelId deben enviarse juntos", 400);
   }
 
-  const cuartel = await prisma.cuartel.findUnique({
-    where: { cuartel_id: cuartelId },
-    select: { finca_id: true },
-  });
-  if (!cuartel || cuartel.finca_id !== fincaId) {
-    throw new TrazabilidadError("El cuartel no pertenece a la finca", 400);
+  if (fincaId && cuartelId) {
+    const finca = await prisma.finca.findUnique({
+      where: { finca_id: fincaId },
+      select: { bodega_id: true },
+    });
+    if (!finca || finca.bodega_id !== bodegaId) {
+      throw new TrazabilidadError("La finca no pertenece a la bodega", 400);
+    }
+
+    const cuartel = await prisma.cuartel.findUnique({
+      where: { cuartel_id: cuartelId },
+      select: { finca_id: true },
+    });
+    if (!cuartel || cuartel.finca_id !== fincaId) {
+      throw new TrazabilidadError("El cuartel no pertenece a la finca", 400);
+    }
   }
 
   const protocolo = await prisma.protocolo.findUnique({
@@ -115,23 +135,35 @@ export async function createTrazabilidad({
   const data: {
     protocolo_id: string;
     bodega_id: string;
-    finca_id: string;
-    cuartel_id: string;
+    finca_id?: string;
+    cuartel_id?: string;
     campania_id: string;
     nombre_producto?: string | null;
     imagen_producto?: string | null;
   } = {
     protocolo_id: protocoloId,
     bodega_id: bodegaId,
-    finca_id: fincaId,
-    cuartel_id: cuartelId,
     campania_id: campaniaId,
   };
+  if (fincaId && cuartelId) {
+    data.finca_id = fincaId;
+    data.cuartel_id = cuartelId;
+  }
 
   if (nombre_producto !== undefined) data.nombre_producto = nombre_producto;
   if (imagen_producto !== undefined) data.imagen_producto = imagen_producto;
 
   const trazabilidad = await prisma.trazabilidad.create({ data });
+
+  if (fincaId && cuartelId) {
+    await prisma.trazabilidadOrigen.create({
+      data: {
+        trazabilidad_id: trazabilidad.trazabilidad_id,
+        finca_id: fincaId,
+        cuartel_id: cuartelId,
+      },
+    });
+  }
 
   // Crea milestones automáticamente según el protocolo
   const procesos = await prisma.protocoloProceso.findMany({
@@ -152,4 +184,61 @@ export async function createTrazabilidad({
   }
 
   return trazabilidad;
+}
+
+export async function addTrazabilidadOrigen({
+  trazabilidadId,
+  fincaId,
+  cuartelId,
+  userId,
+}: AddTrazabilidadOrigenInput) {
+  if (!trazabilidadId || !fincaId || !cuartelId) {
+    throw new TrazabilidadError("Datos incompletos", 400);
+  }
+
+  const trazabilidad = await prisma.trazabilidad.findUnique({
+    where: { trazabilidad_id: trazabilidadId },
+    select: { trazabilidad_id: true, bodega_id: true },
+  });
+  if (!trazabilidad) {
+    throw new TrazabilidadError("Trazabilidad no encontrada", 404);
+  }
+  await ensureUserBodega(userId, trazabilidad.bodega_id);
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+    select: { bodega_id: true },
+  });
+  if (!finca || finca.bodega_id !== trazabilidad.bodega_id) {
+    throw new TrazabilidadError("La finca no pertenece a la bodega de la trazabilidad", 400);
+  }
+
+  const cuartel = await prisma.cuartel.findUnique({
+    where: { cuartel_id: cuartelId },
+    select: { finca_id: true },
+  });
+  if (!cuartel || cuartel.finca_id !== fincaId) {
+    throw new TrazabilidadError("El cuartel no pertenece a la finca", 400);
+  }
+
+  await prisma.trazabilidadOrigen.upsert({
+    where: {
+      trazabilidad_id_finca_id_cuartel_id: {
+        trazabilidad_id: trazabilidadId,
+        finca_id: fincaId,
+        cuartel_id: cuartelId,
+      },
+    },
+    create: {
+      trazabilidad_id: trazabilidadId,
+      finca_id: fincaId,
+      cuartel_id: cuartelId,
+    },
+    update: {},
+  });
+
+  return prisma.trazabilidadOrigen.findMany({
+    where: { trazabilidad_id: trazabilidadId },
+    orderBy: [{ finca_id: "asc" }, { cuartel_id: "asc" }],
+  });
 }

@@ -19,11 +19,20 @@ CREATE TYPE "SeveridadRegla" AS ENUM ('bloqueo', 'alerta', 'info');
 -- CreateEnum
 CREATE TYPE "EstadoHallazgo" AS ENUM ('abierto', 'en_proceso', 'resuelto', 'aceptado', 'anulado');
 
+-- CreateEnum
+CREATE TYPE "EncargoEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado');
+
+-- CreateEnum
+CREATE TYPE "EncargoAsignacionEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado');
+
 -- CreateTable
 CREATE TABLE "app_user" (
     "user_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL,
     "email" TEXT,
+    "whatsapp_e164" TEXT,
+    "whatsapp_verified_at" TIMESTAMPTZ(6),
+    "whatsapp_opt_in_at" TIMESTAMPTZ(6),
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "password_hash" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -48,6 +57,7 @@ CREATE TABLE "bodega" (
 -- CreateTable
 CREATE TABLE "campania" (
     "campania_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
     "nombre" TEXT NOT NULL,
     "fecha_inicio" DATE NOT NULL,
     "fecha_fin" DATE NOT NULL,
@@ -557,8 +567,8 @@ CREATE TABLE "trazabilidad" (
     "protocolo_id" UUID NOT NULL,
     "productor_id" UUID,
     "bodega_id" UUID NOT NULL,
-    "finca_id" UUID NOT NULL,
-    "cuartel_id" UUID NOT NULL,
+    "finca_id" UUID,
+    "cuartel_id" UUID,
     "campania_id" UUID NOT NULL,
     "estado" "TrazabilidadEstado" NOT NULL DEFAULT 'draft',
     "nombre_producto" TEXT,
@@ -624,9 +634,17 @@ CREATE TABLE "evento_fingerprint" (
 CREATE TABLE "user_bodega" (
     "user_id" UUID NOT NULL,
     "bodega_id" UUID NOT NULL,
-    "rol_en_bodega" TEXT NOT NULL DEFAULT 'encargado',
 
     CONSTRAINT "user_bodega_pkey" PRIMARY KEY ("user_id","bodega_id")
+);
+
+-- CreateTable
+CREATE TABLE "user_bodega_rol" (
+    "user_id" UUID NOT NULL,
+    "bodega_id" UUID NOT NULL,
+    "rol" TEXT NOT NULL,
+
+    CONSTRAINT "user_bodega_rol_pkey" PRIMARY KEY ("user_id","bodega_id","rol")
 );
 
 -- CreateTable
@@ -635,6 +653,97 @@ CREATE TABLE "user_rol" (
     "rol_id" UUID NOT NULL,
 
     CONSTRAINT "user_rol_pkey" PRIMARY KEY ("user_id","rol_id")
+);
+
+-- CreateTable
+CREATE TABLE "encargo" (
+    "encargo_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "finca_id" UUID,
+    "cuartel_id" UUID,
+    "milestone_id" UUID,
+    "created_by" UUID NOT NULL,
+    "titulo" TEXT NOT NULL,
+    "descripcion" TEXT,
+    "fecha_objetivo" DATE,
+    "prioridad" TEXT NOT NULL DEFAULT 'media',
+    "estado" "EncargoEstado" NOT NULL DEFAULT 'pendiente',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "encargo_pkey" PRIMARY KEY ("encargo_id")
+);
+
+-- CreateTable
+CREATE TABLE "encargo_asignacion" (
+    "encargo_asignacion_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "encargo_id" UUID NOT NULL,
+    "user_id" UUID NOT NULL,
+    "estado" "EncargoAsignacionEstado" NOT NULL DEFAULT 'pendiente',
+    "assigned_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completed_at" TIMESTAMPTZ(6),
+    "whatsapp_contactado_at" TIMESTAMPTZ(6),
+    "ultima_interaccion_bot_at" TIMESTAMPTZ(6),
+    "observaciones" TEXT,
+
+    CONSTRAINT "encargo_asignacion_pkey" PRIMARY KEY ("encargo_asignacion_id")
+);
+
+-- CreateTable
+CREATE TABLE "trazabilidad_origen" (
+    "trazabilidad_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
+    "estado" TEXT NOT NULL DEFAULT 'habilitada',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "trazabilidad_origen_pkey" PRIMARY KEY ("trazabilidad_id","finca_id","cuartel_id")
+);
+
+-- CreateTable
+CREATE TABLE "milestone_asignacion" (
+    "milestone_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
+    "operario_user_id" UUID NOT NULL,
+    "asignado_por_user_id" UUID NOT NULL,
+    "estado" TEXT NOT NULL DEFAULT 'pendiente',
+    "encargo_id" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "milestone_asignacion_pkey" PRIMARY KEY ("milestone_id","operario_user_id")
+);
+
+-- CreateTable
+CREATE TABLE "bot_delegation" (
+    "bot_delegation_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "granted_by_user_id" UUID NOT NULL,
+    "bot_user_id" UUID NOT NULL,
+    "bodega_id" UUID,
+    "scopes" TEXT[],
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "expires_at" TIMESTAMPTZ(6),
+    "revoked_at" TIMESTAMPTZ(6),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bot_delegation_pkey" PRIMARY KEY ("bot_delegation_id")
+);
+
+-- CreateTable
+CREATE TABLE "bot_action_log" (
+    "bot_action_log_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bot_user_id" UUID NOT NULL,
+    "on_behalf_user_id" UUID NOT NULL,
+    "bot_delegation_id" UUID,
+    "encargo_asignacion_id" UUID,
+    "action" TEXT NOT NULL,
+    "input_payload" JSONB NOT NULL DEFAULT '{}',
+    "output_payload" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bot_action_log_pkey" PRIMARY KEY ("bot_action_log_id")
 );
 
 -- CreateTable
@@ -653,10 +762,16 @@ CREATE TABLE "validacion_milestone" (
 CREATE UNIQUE INDEX "app_user_email_key" ON "app_user"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "app_user_whatsapp_e164_key" ON "app_user"("whatsapp_e164");
+
+-- CreateIndex
 CREATE INDEX "idx_bodega_productor" ON "bodega"("productor_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_campania_nombre" ON "campania"("nombre");
+CREATE UNIQUE INDEX "uq_campania_bodega_nombre" ON "campania"("bodega_id", "nombre");
+
+-- CreateIndex
+CREATE INDEX "idx_campania_bodega" ON "campania"("bodega_id");
 
 -- CreateIndex
 CREATE INDEX "idx_cuartel_finca" ON "cuartel"("finca_id");
@@ -797,6 +912,51 @@ CREATE INDEX "idx_evento_fp_tipo_fecha" ON "evento_fingerprint"("tipo_evento", "
 CREATE INDEX "idx_user_bodega_bodega" ON "user_bodega"("bodega_id");
 
 -- CreateIndex
+CREATE INDEX "idx_user_bodega_rol_bodega_rol" ON "user_bodega_rol"("bodega_id", "rol");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_bodega_estado" ON "encargo"("bodega_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_finca_estado" ON "encargo"("finca_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_milestone" ON "encargo"("milestone_id");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_created_by" ON "encargo"("created_by");
+
+-- CreateIndex
+CREATE INDEX "idx_encargo_asignacion_user_estado" ON "encargo_asignacion"("user_id", "estado");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_encargo_asignacion_unica" ON "encargo_asignacion"("encargo_id", "user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_trazabilidad_origen_finca" ON "trazabilidad_origen"("finca_id");
+
+-- CreateIndex
+CREATE INDEX "idx_milestone_asignacion_finca_estado" ON "milestone_asignacion"("finca_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_milestone_asignacion_operario_estado" ON "milestone_asignacion"("operario_user_id", "estado");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_delegation_grantor_activo" ON "bot_delegation"("granted_by_user_id", "activo");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_delegation_bot_activo" ON "bot_delegation"("bot_user_id", "activo");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_actor_date" ON "bot_action_log"("bot_user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_on_behalf_date" ON "bot_action_log"("on_behalf_user_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "idx_bot_action_encargo_asignacion" ON "bot_action_log"("encargo_asignacion_id");
+
+-- CreateIndex
 CREATE INDEX "idx_validacion_milestone" ON "validacion_milestone"("milestone_id");
 
 -- AddForeignKey
@@ -810,6 +970,9 @@ ALTER TABLE "capacitacion_asistente" ADD CONSTRAINT "capacitacion_asistente_pers
 
 -- AddForeignKey
 ALTER TABLE "cuartel" ADD CONSTRAINT "cuartel_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "campania" ADD CONSTRAINT "campania_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "cuartel_campania" ADD CONSTRAINT "cuartel_campania_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1034,11 +1197,156 @@ ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_bodega_id_fkey" FOREIGN KE
 ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "user_bodega_rol_user_bodega_fkey" FOREIGN KEY ("user_id", "bodega_id") REFERENCES "user_bodega"("user_id", "bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddConstraint
+ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "ck_user_bodega_rol_rol"
+CHECK (
+  "rol" IN (
+    'admin_bodega',
+    'encargado_finca',
+    'productor',
+    'operador_campo',
+    'responsable_calidad_inocuidad',
+    'responsable_ssyo'
+  )
+);
+
+-- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_rol_id_fkey" FOREIGN KEY ("rol_id") REFERENCES "rol"("rol_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_trazabilidad_id_fkey" FOREIGN KEY ("trazabilidad_id") REFERENCES "trazabilidad"("trazabilidad_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo" ADD CONSTRAINT "encargo_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_encargo_id_fkey" FOREIGN KEY ("encargo_id") REFERENCES "encargo"("encargo_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_operario_user_id_fkey" FOREIGN KEY ("operario_user_id") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_asignado_por_user_id_fkey" FOREIGN KEY ("asignado_por_user_id") REFERENCES "app_user"("user_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_encargo_id_fkey" FOREIGN KEY ("encargo_id") REFERENCES "encargo"("encargo_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_granted_by_user_id_fkey" FOREIGN KEY ("granted_by_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_bot_user_id_fkey" FOREIGN KEY ("bot_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_delegation" ADD CONSTRAINT "bot_delegation_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_bot_user_id_fkey" FOREIGN KEY ("bot_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_on_behalf_user_id_fkey" FOREIGN KEY ("on_behalf_user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_bot_delegation_id_fkey" FOREIGN KEY ("bot_delegation_id") REFERENCES "bot_delegation"("bot_delegation_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_encargo_asignacion_id_fkey" FOREIGN KEY ("encargo_asignacion_id") REFERENCES "encargo_asignacion"("encargo_asignacion_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "validacion_milestone" ADD CONSTRAINT "validacion_milestone_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
+-- SeedData
+-- Protocolo inicial de cadena vitivinícola (idempotente)
+WITH target_protocolo AS (
+  INSERT INTO "protocolo" ("nombre", "version", "descripcion", "activo")
+  VALUES (
+    'Cadena vitivinícola',
+    '1.0.0',
+    'Protocolo base de trazabilidad para producción en finca, elaboración, distribución y comercialización.',
+    true
+  )
+  ON CONFLICT ("nombre", "version")
+  DO UPDATE SET
+    "descripcion" = EXCLUDED."descripcion",
+    "activo" = EXCLUDED."activo"
+  RETURNING "protocolo_id"
+)
+INSERT INTO "protocolo_etapa" ("protocolo_id", "nombre", "orden")
+SELECT p.protocolo_id, e.nombre, e.orden
+FROM target_protocolo p
+JOIN (
+  VALUES
+    ('Producción en finca', 10),
+    ('Elaboración', 20),
+    ('Distribución', 30),
+    ('Comercialización', 40)
+) AS e(nombre, orden) ON true
+ON CONFLICT ("protocolo_id", "nombre")
+DO UPDATE SET
+  "orden" = EXCLUDED."orden";
+
+INSERT INTO "protocolo_proceso" ("etapa_id", "nombre", "evento_tipo", "obligatorio", "orden")
+SELECT pe."etapa_id", pr.nombre, pr.evento_tipo, pr.obligatorio, pr.orden
+FROM "protocolo_etapa" pe
+JOIN "protocolo" p ON p."protocolo_id" = pe."protocolo_id"
+JOIN (
+  VALUES
+    ('Producción en finca', 'Características del terreno', 'analisis_suelo', true, 10),
+    ('Producción en finca', 'Plantación de la vid', 'labor_suelo', true, 20),
+    ('Producción en finca', 'Sistema de riego', 'riego', true, 30),
+    ('Producción en finca', 'Tratamientos agrícolas', 'aplicacion_fitosanitaria', true, 40),
+    ('Producción en finca', 'Registro fenológico', 'fenologia', true, 50),
+    ('Producción en finca', 'Cosecha', 'cosecha', true, 60),
+    ('Elaboración', 'Recepción de la uva', 'recepcion_uva', true, 10),
+    ('Elaboración', 'Obtención del mosto', 'obtencion_mosto', true, 20),
+    ('Elaboración', 'Fermentación', 'fermentacion', true, 30),
+    ('Elaboración', 'Crianza', 'crianza', true, 40),
+    ('Distribución', 'Envasado', 'envasado', true, 10),
+    ('Distribución', 'Almacenamiento', 'almacenamiento', true, 20),
+    ('Distribución', 'Transporte', 'transporte', true, 30),
+    ('Comercialización', 'Venta', 'venta', true, 10),
+    ('Comercialización', 'Distribución al consumidor', 'distribucion_consumidor', true, 20)
+) AS pr(etapa_nombre, nombre, evento_tipo, obligatorio, orden)
+  ON pr.etapa_nombre = pe."nombre"
+WHERE p."nombre" = 'Cadena vitivinícola'
+  AND p."version" = '1.0.0'
+ON CONFLICT ("etapa_id", "nombre")
+DO UPDATE SET
+  "evento_tipo" = EXCLUDED."evento_tipo",
+  "obligatorio" = EXCLUDED."obligatorio",
+  "orden" = EXCLUDED."orden";
