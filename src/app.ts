@@ -10,6 +10,17 @@ import openapiSpec from "./config/openapi.js";
 
 const app = express();
 
+app.use((req, res, next) => {
+  const start = Date.now();
+  const { method, originalUrl } = req;
+
+  res.on("finish", () => {
+    const durationMs = Date.now() - start;
+    console.log(`[HTTP] ${method} ${originalUrl} -> ${res.statusCode} (${durationMs}ms)`);
+  });
+
+  next();
+});
 
 app.use(express.json());
 app.use(cookieParser());

@@ -4,6 +4,7 @@ import {
   createUser,
   getUserBodegas,
   getUserById,
+  getUserRoles,
   login,
   refreshAccessToken,
   revokeRefreshToken,
@@ -69,8 +70,8 @@ export async function meHandler(req: Request, res: Response) {
 
 export async function createUserHandler(req: Request, res: Response) {
   try {
-    const { email, password, nombre, bodegaId } = req.body ?? {};
-    const user = await createUser({ email, password, nombre, bodegaId });
+    const { email, password, nombre, bodegaId, bodegaNombre } = req.body ?? {};
+    const user = await createUser({ email, password, nombre, bodegaId, bodegaNombre });
     return res.status(201).json({
       id: user.user_id,
       email: user.email,
@@ -88,6 +89,18 @@ export async function meBodegasHandler(req: Request, res: Response) {
     }
     const bodegas = await getUserBodegas(req.user.userId);
     return res.json(bodegas);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function meRolesHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const roles = await getUserRoles(req.user.userId);
+    return res.json({ roles });
   } catch (error) {
     return handleError(res, error);
   }
