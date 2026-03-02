@@ -26,6 +26,21 @@ const openapiSpec = {
       post: {
         summary: "Login",
         security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
       },
     },
@@ -53,6 +68,33 @@ const openapiSpec = {
                     type: "string",
                     description:
                       "Nombre de bodega. Alternativa a bodegaId.",
+                  },
+                  rolEnBodega: {
+                    type: "string",
+                    enum: [
+                      "admin_bodega",
+                      "encargado_finca",
+                      "productor",
+                      "operador_campo",
+                      "responsable_calidad_inocuidad",
+                      "responsable_ssyo",
+                    ],
+                    description: "Rol del usuario dentro de la bodega",
+                  },
+                  rolesEnBodega: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                      enum: [
+                        "admin_bodega",
+                        "encargado_finca",
+                        "productor",
+                        "operador_campo",
+                        "responsable_calidad_inocuidad",
+                        "responsable_ssyo",
+                      ],
+                    },
+                    description: "Roles del usuario dentro de la bodega (recomendado)",
                   },
                 },
               },
@@ -99,9 +141,164 @@ const openapiSpec = {
       },
     },
     "/auth/users": {
+      get: {
+        summary: "List users (admin_sistema/super_admin: todos, admin_bodega: sus bodegas)",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
       post: {
         summary: "Create user",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password", "nombre"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                  nombre: { type: "string" },
+                  bodegaId: { type: "string" },
+                  bodegaNombre: { type: "string" },
+                  rolEnBodega: {
+                    type: "string",
+                    enum: [
+                      "admin_bodega",
+                      "encargado_finca",
+                      "productor",
+                      "operador_campo",
+                      "responsable_calidad_inocuidad",
+                      "responsable_ssyo",
+                    ],
+                  },
+                  rolesEnBodega: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                      enum: [
+                        "admin_bodega",
+                        "encargado_finca",
+                        "productor",
+                        "operador_campo",
+                        "responsable_calidad_inocuidad",
+                        "responsable_ssyo",
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
+      },
+    },
+    "/auth/users/{userId}/bodegas/{name}/role": {
+      patch: {
+        summary: "Assign or replace user roles in bodega by bodega name",
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "name",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  rolEnBodega: {
+                    type: "string",
+                    enum: [
+                      "admin_bodega",
+                      "encargado_finca",
+                      "productor",
+                      "operador_campo",
+                      "responsable_calidad_inocuidad",
+                      "responsable_ssyo",
+                    ],
+                  },
+                  rolesEnBodega: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                      enum: [
+                        "admin_bodega",
+                        "encargado_finca",
+                        "productor",
+                        "operador_campo",
+                        "responsable_calidad_inocuidad",
+                        "responsable_ssyo",
+                      ],
+                    },
+                    description: "Lista completa de roles locales a dejar asignados",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "OK" },
+          403: { description: "Forbidden" },
+          404: { description: "Not found" },
+          409: { description: "Conflict" },
+        },
+      },
+    },
+    "/auth/users/{userId}/global-role": {
+      patch: {
+        summary: "Assign or remove global role (solo admin_sistema/super_admin)",
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["rolGlobal"],
+                properties: {
+                  rolGlobal: { type: "string", example: "auditor" },
+                  enabled: {
+                    type: "boolean",
+                    description: "true para asignar, false para remover",
+                    default: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "OK" },
+          403: { description: "Forbidden" },
+          404: { description: "Not found" },
+        },
       },
     },
     "/bodegas": {
@@ -167,16 +364,54 @@ const openapiSpec = {
     "/campanias": {
       get: {
         summary: "List campanias",
+        parameters: [
+          {
+            name: "bodegaId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
         responses: { 200: { description: "OK" } },
       },
       post: {
         summary: "Create campania",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["bodegaId", "nombre", "fecha_inicio", "fecha_fin"],
+                properties: {
+                  bodegaId: { type: "string" },
+                  nombre: { type: "string" },
+                  fecha_inicio: {
+                    type: "string",
+                    description: "YYYY-MM-DD o DD/MM/YYYY",
+                  },
+                  fecha_fin: {
+                    type: "string",
+                    description: "YYYY-MM-DD o DD/MM/YYYY",
+                  },
+                  estado: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 201: { description: "Created" } },
       },
     },
     "/protocolos": {
       get: {
         summary: "List protocolos",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/protocolos/expanded": {
+      get: {
+        summary: "List protocolos expanded (etapas y procesos)",
         responses: { 200: { description: "OK" } },
       },
     },
@@ -187,6 +422,26 @@ const openapiSpec = {
       },
       post: {
         summary: "Create trazabilidad",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["protocoloId", "bodegaId", "campaniaId"],
+                properties: {
+                  protocoloId: { type: "string" },
+                  bodegaId: { type: "string" },
+                  campaniaId: { type: "string" },
+                  fincaId: { type: "string" },
+                  cuartelId: { type: "string" },
+                  nombre_producto: { type: "string" },
+                  imagen_producto: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 201: { description: "Created" } },
       },
     },
@@ -201,6 +456,35 @@ const openapiSpec = {
             schema: { type: "string" },
           },
         ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/trazabilidades/{id}/origenes": {
+      post: {
+        summary: "Add origen (finca/cuartel) to trazabilidad",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["fincaId", "cuartelId"],
+                properties: {
+                  fincaId: { type: "string" },
+                  cuartelId: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
       },
     },
@@ -244,6 +528,40 @@ const openapiSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/milestones/{id}/asignar": {
+      patch: {
+        summary: "Assign milestone to finca/cuartel and operario",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["fincaId", "cuartelId", "operarioUserId"],
+                properties: {
+                  fincaId: { type: "string" },
+                  cuartelId: { type: "string" },
+                  operarioUserId: { type: "string" },
+                  titulo: { type: "string" },
+                  descripcion: { type: "string" },
+                  fechaObjetivo: { type: "string", description: "YYYY-MM-DD" },
+                  prioridad: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
     "/milestones/{id}/evidence": {
       post: {
         summary: "Upload milestone evidence",
@@ -270,6 +588,26 @@ const openapiSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/encargos/mis-pendientes": {
+      get: {
+        summary: "Compat route: list my pending encargo assignments",
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos/bodega/{bodegaId}/pendientes": {
+      get: {
+        summary: "Compat route: list pending encargos by bodega",
+        parameters: [
+          {
+            name: "bodegaId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
     "/encargos/me/asignaciones/{encargoAsignacionId}/estado": {
       patch: {
         summary: "Update my encargo assignment status",
@@ -281,16 +619,79 @@ const openapiSpec = {
             schema: { type: "string" },
           },
         ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["estado"],
+                properties: {
+                  estado: {
+                    type: "string",
+                    enum: ["pendiente", "en_progreso", "completado", "cancelado"],
+                  },
+                  observaciones: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
       },
     },
     "/encargos": {
       get: {
         summary: "List encargos",
+        parameters: [
+          {
+            name: "bodegaId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          },
+          {
+            name: "fincaId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          },
+          {
+            name: "pendientes",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["1", "true"] },
+          },
+        ],
         responses: { 200: { description: "OK" } },
       },
       post: {
         summary: "Create encargo",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["bodegaId", "titulo"],
+                properties: {
+                  bodegaId: { type: "string" },
+                  fincaId: { type: "string" },
+                  cuartelId: { type: "string" },
+                  milestoneId: { type: "string" },
+                  titulo: { type: "string" },
+                  descripcion: { type: "string" },
+                  fechaObjetivo: { type: "string", description: "YYYY-MM-DD" },
+                  prioridad: { type: "string" },
+                  assigneeUserIds: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
         responses: { 201: { description: "Created" } },
       },
     },
@@ -305,12 +706,125 @@ const openapiSpec = {
             schema: { type: "string" },
           },
         ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["userIds"],
+                properties: {
+                  userIds: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos/{encargoId}/asignar": {
+      patch: {
+        summary: "Compat route: assign one or many users to encargo",
+        parameters: [
+          {
+            name: "encargoId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  userId: { type: "string" },
+                  assigneeUserId: { type: "string" },
+                  userIds: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Compat route: assign one or many users to encargo (POST)",
+        parameters: [
+          {
+            name: "encargoId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  userId: { type: "string" },
+                  assigneeUserId: { type: "string" },
+                  userIds: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/encargos/{encargoId}/cancelar": {
+      patch: {
+        summary: "Cancel encargo (soft delete)",
+        parameters: [
+          {
+            name: "encargoId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
         responses: { 200: { description: "OK" } },
       },
     },
     "/bot/delegaciones": {
       post: {
         summary: "Create bot delegation",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["botUserId", "scopes"],
+                properties: {
+                  botUserId: { type: "string" },
+                  bodegaId: { type: "string" },
+                  scopes: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  expiresAt: { type: "string", description: "ISO datetime" },
+                },
+              },
+            },
+          },
+        },
         responses: { 201: { description: "Created" } },
       },
     },
@@ -331,6 +845,19 @@ const openapiSpec = {
             schema: { type: "string" },
           },
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  message: { type: "string" },
+                },
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
       },
     },
@@ -345,6 +872,17 @@ const openapiSpec = {
             schema: { type: "string" },
           },
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: true,
+              },
+            },
+          },
+        },
         responses: { 200: { description: "OK" } },
       },
     },

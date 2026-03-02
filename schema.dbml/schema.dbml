@@ -21,6 +21,8 @@ Table app_user {
   bot_delegaciones_recibidas bot_delegation [not null]
   bot_action_logs_as_actor bot_action_log [not null]
   bot_action_logs_on_behalf bot_action_log [not null]
+  milestone_asignaciones_as_operario milestone_asignacion [not null]
+  milestone_asignaciones_as_asignador milestone_asignacion [not null]
 }
 
 Table bodega {
@@ -44,6 +46,7 @@ Table bodega {
   evento_sanitizacion_banos evento_sanitizacion_banos [not null]
   evento_sobrante_lavado evento_sobrante_lavado [not null]
   finca finca [not null]
+  campania campania [not null]
   persona persona [not null]
   trazabilidad trazabilidad [not null]
   user_bodega user_bodega [not null]
@@ -53,12 +56,14 @@ Table bodega {
 
 Table campania {
   campania_id String [pk]
-  nombre String [unique, not null]
+  bodega_id String [not null]
+  nombre String [not null]
   fecha_inicio DateTime [not null]
   fecha_fin DateTime [not null]
   estado String [not null, default: 'abierta']
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
   cuartel_campania cuartel_campania [not null]
   evento_analisis_suelo evento_analisis_suelo [not null]
   evento_aplicacion_fitosanitaria evento_aplicacion_fitosanitaria [not null]
@@ -73,6 +78,10 @@ Table campania {
   evento_precipitacion evento_precipitacion [not null]
   evento_riego evento_riego [not null]
   trazabilidad trazabilidad [not null]
+
+  indexes {
+    (bodega_id, nombre) [unique]
+  }
 
   Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
 }
@@ -114,6 +123,9 @@ Table cuartel {
   evento_monitoreo_plaga evento_monitoreo_plaga [not null]
   evento_riego evento_riego [not null]
   trazabilidad trazabilidad [not null]
+  trazabilidad_origen trazabilidad_origen [not null]
+  encargo encargo [not null]
+  milestone_asignacion milestone_asignacion [not null]
 
   indexes {
     (finca_id, codigo_cuartel) [unique]
@@ -470,6 +482,9 @@ Table finca {
   evento_precipitacion evento_precipitacion [not null]
   bodega bodega [not null]
   trazabilidad trazabilidad [not null]
+  trazabilidad_origen trazabilidad_origen [not null]
+  encargo encargo [not null]
+  milestone_asignacion milestone_asignacion [not null]
 }
 
 Table insumo_catalogo {
@@ -517,6 +532,8 @@ Table milestone {
   trazabilidad trazabilidad [not null]
   milestone_evento milestone_evento [not null]
   validacion_milestone validacion_milestone [not null]
+  milestone_asignacion milestone_asignacion [not null]
+  encargo encargo [not null]
 
   indexes {
     (trazabilidad_id, proceso_id) [unique]
@@ -640,8 +657,8 @@ Table trazabilidad {
   protocolo_id String [not null]
   productor_id String
   bodega_id String [not null]
-  finca_id String [not null]
-  cuartel_id String [not null]
+  finca_id String
+  cuartel_id String
   campania_id String [not null]
   estado TrazabilidadEstado [not null, default: 'draft']
   nombre_producto String
@@ -652,10 +669,11 @@ Table trazabilidad {
   hallazgo_cumplimiento hallazgo_cumplimiento [not null]
   bodega bodega [not null]
   campania campania [not null]
-  cuartel cuartel [not null]
-  finca finca [not null]
+  cuartel cuartel
+  finca finca
   productor productor
   protocolo protocolo [not null]
+  trazabilidad_origen trazabilidad_origen [not null]
 
   indexes {
     (protocolo_id, cuartel_id, campania_id) [unique]
@@ -709,12 +727,23 @@ Table evento_fingerprint {
 Table user_bodega {
   user_id String [not null]
   bodega_id String [not null]
-  rol_en_bodega String [not null, default: 'encargado']
   bodega bodega [not null]
   app_user app_user [not null]
+  user_bodega_rol user_bodega_rol [not null]
 
   indexes {
     (user_id, bodega_id) [pk]
+  }
+}
+
+Table user_bodega_rol {
+  user_id String [not null]
+  bodega_id String [not null]
+  rol String [not null]
+  user_bodega user_bodega [not null]
+
+  indexes {
+    (user_id, bodega_id, rol) [pk]
   }
 }
 
@@ -732,6 +761,9 @@ Table user_rol {
 Table encargo {
   encargo_id String [pk]
   bodega_id String [not null]
+  finca_id String
+  cuartel_id String
+  milestone_id String
   created_by String [not null]
   titulo String [not null]
   descripcion String
@@ -741,8 +773,12 @@ Table encargo {
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
   bodega bodega [not null]
+  finca finca
+  cuartel cuartel
+  milestone milestone
   app_user app_user [not null]
   encargo_asignacion encargo_asignacion [not null]
+  milestone_asignacion milestone_asignacion [not null]
 }
 
 Table encargo_asignacion {
@@ -762,6 +798,43 @@ Table encargo_asignacion {
 
   indexes {
     (encargo_id, user_id) [unique]
+  }
+}
+
+Table trazabilidad_origen {
+  trazabilidad_id String [not null]
+  finca_id String [not null]
+  cuartel_id String [not null]
+  estado String [not null, default: 'habilitada']
+  created_at DateTime [default: `now()`, not null]
+  trazabilidad trazabilidad [not null]
+  finca finca [not null]
+  cuartel cuartel [not null]
+
+  indexes {
+    (trazabilidad_id, finca_id, cuartel_id) [pk]
+  }
+}
+
+Table milestone_asignacion {
+  milestone_id String [not null]
+  finca_id String [not null]
+  cuartel_id String [not null]
+  operario_user_id String [not null]
+  asignado_por_user_id String [not null]
+  estado String [not null, default: 'pendiente']
+  encargo_id String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  milestone milestone [not null]
+  finca finca [not null]
+  cuartel cuartel [not null]
+  operario app_user [not null]
+  asignado_por app_user [not null]
+  encargo encargo
+
+  indexes {
+    (milestone_id, operario_user_id) [pk]
   }
 }
 
@@ -863,6 +936,8 @@ Enum EncargoAsignacionEstado {
 }
 
 Ref: bodega.productor_id > productor.productor_id [delete: Restrict]
+
+Ref: campania.bodega_id > bodega.bodega_id [delete: Restrict]
 
 Ref: capacitacion_asistente.evento_capacitacion_id > evento_capacitacion.evento_capacitacion_id [delete: Cascade]
 
@@ -1018,17 +1093,43 @@ Ref: user_bodega.bodega_id > bodega.bodega_id
 
 Ref: user_bodega.user_id > app_user.user_id [delete: Cascade]
 
+Ref: user_bodega_rol.(user_id, bodega_id) > user_bodega.(user_id, bodega_id) [delete: Cascade]
+
 Ref: user_rol.rol_id > rol.rol_id
 
 Ref: user_rol.user_id > app_user.user_id [delete: Cascade]
 
 Ref: encargo.bodega_id > bodega.bodega_id
 
+Ref: encargo.finca_id > finca.finca_id
+
+Ref: encargo.cuartel_id > cuartel.cuartel_id
+
+Ref: encargo.milestone_id > milestone.milestone_id
+
 Ref: encargo.created_by > app_user.user_id
 
 Ref: encargo_asignacion.encargo_id > encargo.encargo_id [delete: Cascade]
 
 Ref: encargo_asignacion.user_id > app_user.user_id [delete: Cascade]
+
+Ref: trazabilidad_origen.trazabilidad_id > trazabilidad.trazabilidad_id [delete: Cascade]
+
+Ref: trazabilidad_origen.finca_id > finca.finca_id
+
+Ref: trazabilidad_origen.cuartel_id > cuartel.cuartel_id
+
+Ref: milestone_asignacion.milestone_id > milestone.milestone_id [delete: Cascade]
+
+Ref: milestone_asignacion.finca_id > finca.finca_id
+
+Ref: milestone_asignacion.cuartel_id > cuartel.cuartel_id
+
+Ref: milestone_asignacion.operario_user_id > app_user.user_id
+
+Ref: milestone_asignacion.asignado_por_user_id > app_user.user_id
+
+Ref: milestone_asignacion.encargo_id > encargo.encargo_id [delete: Set Null]
 
 Ref: bot_delegation.granted_by_user_id > app_user.user_id [delete: Cascade]
 

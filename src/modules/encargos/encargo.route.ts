@@ -1,12 +1,15 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
-import { requireRoles } from "../../middlewares/roles.middleware.js";
 import {
   addEncargoAsignacionesHandler,
+  assignEncargoCompatHandler,
   canManageEncargosHandler,
+  cancelEncargoHandler,
   createEncargoHandler,
+  listBodegaPendientesHandler,
   listEncargosHandler,
   listMyEncargosHandler,
+  listMyPendientesHandler,
   updateMyAsignacionEstadoHandler,
 } from "./encargo.controller.js";
 
@@ -14,6 +17,12 @@ export const encargoRoutes = Router();
 
 encargoRoutes.get("/me/can-manage", authMiddleware, canManageEncargosHandler);
 encargoRoutes.get("/me/asignaciones", authMiddleware, listMyEncargosHandler);
+encargoRoutes.get("/mis-pendientes", authMiddleware, listMyPendientesHandler);
+encargoRoutes.get(
+  "/bodega/:bodegaId/pendientes",
+  authMiddleware,
+  listBodegaPendientesHandler,
+);
 encargoRoutes.patch(
   "/me/asignaciones/:encargoAsignacionId/estado",
   authMiddleware,
@@ -23,18 +32,30 @@ encargoRoutes.patch(
 encargoRoutes.get(
   "/",
   authMiddleware,
-  requireRoles(["super_admin", "bodega_admin", "encargado"]),
   listEncargosHandler,
 );
 encargoRoutes.post(
   "/",
   authMiddleware,
-  requireRoles(["super_admin", "bodega_admin", "encargado"]),
   createEncargoHandler,
 );
 encargoRoutes.post(
   "/:encargoId/asignaciones",
   authMiddleware,
-  requireRoles(["super_admin", "bodega_admin", "encargado"]),
   addEncargoAsignacionesHandler,
+);
+encargoRoutes.patch(
+  "/:encargoId/asignar",
+  authMiddleware,
+  assignEncargoCompatHandler,
+);
+encargoRoutes.post(
+  "/:encargoId/asignar",
+  authMiddleware,
+  assignEncargoCompatHandler,
+);
+encargoRoutes.patch(
+  "/:encargoId/cancelar",
+  authMiddleware,
+  cancelEncargoHandler,
 );
