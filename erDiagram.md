@@ -394,6 +394,13 @@ anulado anulado
     }
   
 
+  "productor_bodega" {
+    String tipo_relacion 
+    Boolean activo 
+    DateTime created_at 
+    }
+  
+
   "protocolo" {
     String protocolo_id "🗝️"
     String nombre 
@@ -507,6 +514,7 @@ anulado anulado
     }
   
     "bodega" }o--|o productor : "productor"
+    "campania" }o--|| bodega : "bodega"
     "capacitacion_asistente" }o--|| evento_capacitacion : "evento_capacitacion"
     "capacitacion_asistente" }o--|| persona : "persona"
     "cuartel" }o--|| finca : "finca"
@@ -573,6 +581,8 @@ anulado anulado
     "milestone" }o--|| trazabilidad : "trazabilidad"
     "milestone_evento" }o--|| milestone : "milestone"
     "persona" }o--|o bodega : "bodega"
+    "productor_bodega" }o--|| bodega : "bodega"
+    "productor_bodega" }o--|| productor : "productor"
     "protocolo_etapa" }o--|| protocolo : "protocolo"
     "protocolo_proceso" }o--|| protocolo_etapa : "protocolo_etapa"
     "refresh_token" }o--|| app_user : "app_user"
