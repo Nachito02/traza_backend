@@ -23,6 +23,9 @@ Table app_user {
   bot_action_logs_on_behalf bot_action_log [not null]
   milestone_asignaciones_as_operario milestone_asignacion [not null]
   milestone_asignaciones_as_asignador milestone_asignacion [not null]
+  ordenes_enologo_creadas orden_enologo [not null]
+  operaciones_vasija operacion_vasija [not null]
+  cortes_responsable corte [not null]
 }
 
 Table bodega {
@@ -52,6 +55,14 @@ Table bodega {
   user_bodega user_bodega [not null]
   encargo encargo [not null]
   bot_delegation bot_delegation [not null]
+  remito_uva remito_uva [not null]
+  ciu ciu [not null]
+  orden_enologo orden_enologo [not null]
+  vasija vasija [not null]
+  qc_ingreso_uva qc_ingreso_uva [not null]
+  operacion_vasija operacion_vasija [not null]
+  corte corte [not null]
+  producto producto [not null]
 }
 
 Table campania {
@@ -78,6 +89,7 @@ Table campania {
   evento_precipitacion evento_precipitacion [not null]
   evento_riego evento_riego [not null]
   trazabilidad trazabilidad [not null]
+  corte corte [not null]
 
   indexes {
     (bodega_id, nombre) [unique]
@@ -229,8 +241,272 @@ Table evento_cosecha {
   campania campania [not null]
   cuartel cuartel [not null]
   persona persona
+  remito_uva remito_uva [not null]
+  vasija_contenido vasija_contenido [not null]
+  corte_componente corte_componente [not null]
 
   Note: 'This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.'
+}
+
+Table remito_uva {
+  remito_uva_id String [pk]
+  bodega_id String [not null]
+  lote_cosecha_id String [not null]
+  salida_finca DateTime [not null]
+  llegada_bodega DateTime
+  transportista String
+  patente String
+  kg_declarados Decimal
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  evento_cosecha evento_cosecha [not null]
+  recepcion_bodega recepcion_bodega [not null]
+}
+
+Table recepcion_bodega {
+  recepcion_bodega_id String [pk]
+  remito_uva_id String [not null]
+  fecha_hora DateTime [not null]
+  kg_pesados Decimal
+  clasificacion String
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  remito_uva remito_uva [not null]
+  analisis_recepcion analisis_recepcion [not null]
+  ciu_recepcion ciu_recepcion [not null]
+  qc_ingreso_uva qc_ingreso_uva [not null]
+  operacion_vasija operacion_vasija [not null]
+}
+
+Table analisis_recepcion {
+  analisis_recepcion_id String [pk]
+  recepcion_bodega_id String [not null]
+  brix Decimal
+  ph Decimal
+  acidez Decimal
+  sanidad String
+  temperatura_uva Decimal
+  created_at DateTime [default: `now()`, not null]
+  recepcion_bodega recepcion_bodega [not null]
+}
+
+Table ciu {
+  ciu_id String [pk]
+  bodega_id String [not null]
+  codigo_ciu String [unique, not null]
+  estado String [not null, default: 'emitido']
+  emitido_at DateTime [not null]
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  ciu_recepcion ciu_recepcion [not null]
+}
+
+Table ciu_recepcion {
+  ciu_id String [not null]
+  recepcion_bodega_id String [not null]
+  created_at DateTime [default: `now()`, not null]
+  ciu ciu [not null]
+  recepcion_bodega recepcion_bodega [not null]
+
+  indexes {
+    (ciu_id, recepcion_bodega_id) [pk]
+  }
+}
+
+Table qc_ingreso_uva {
+  qc_ingreso_uva_id String [pk]
+  bodega_id String [not null]
+  recepcion_bodega_id String [not null]
+  fecha_hora DateTime [not null]
+  brix Decimal
+  ph Decimal
+  acidez Decimal
+  temperatura_uva Decimal
+  estado_pcc String
+  aprobado Boolean
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  recepcion_bodega recepcion_bodega [not null]
+}
+
+Table vasija {
+  vasija_id String [pk]
+  bodega_id String [not null]
+  codigo String [not null]
+  tipo String
+  capacidad_litros Decimal
+  estado String [default: 'disponible']
+  ubicacion String
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  vasija_contenido vasija_contenido [not null]
+  existencia_vasija existencia_vasija [not null]
+  control_fermentacion control_fermentacion [not null]
+  operacion_origen operacion_vasija [not null]
+  operacion_destino operacion_vasija [not null]
+  corte_componente corte_componente [not null]
+
+  indexes {
+    (bodega_id, codigo) [unique]
+  }
+}
+
+Table vasija_contenido {
+  vasija_contenido_id String [pk]
+  vasija_id String [not null]
+  lote_cosecha_id String [not null]
+  desde DateTime [not null]
+  hasta DateTime
+  kg_aportados Decimal
+  porcentaje_aporte Decimal
+  created_at DateTime [default: `now()`, not null]
+  vasija vasija [not null]
+  evento_cosecha evento_cosecha [not null]
+}
+
+Table existencia_vasija {
+  existencia_vasija_id String [pk]
+  vasija_id String [not null]
+  fecha_hora DateTime [not null]
+  volumen_l Decimal
+  grado_alcohol Decimal
+  azucar_residual_g_l Decimal
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  vasija vasija [not null]
+}
+
+Table control_fermentacion {
+  control_fermentacion_id String [pk]
+  vasija_id String [not null]
+  fecha_hora DateTime [not null]
+  densidad Decimal
+  temperatura Decimal
+  brix Decimal
+  ph Decimal
+  acidez Decimal
+  estado_fermentacion String
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  vasija vasija [not null]
+}
+
+Table orden_enologo {
+  orden_enologo_id String [pk]
+  bodega_id String [not null]
+  enologo_user_id String
+  fecha DateTime [not null]
+  instrucciones String
+  estado String [not null, default: 'activa']
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  enologo app_user
+  operacion_vasija operacion_vasija [not null]
+}
+
+Table operacion_vasija {
+  operacion_vasija_id String [pk]
+  bodega_id String [not null]
+  vasija_origen_id String
+  vasija_destino_id String
+  orden_enologo_id String
+  recepcion_bodega_id String
+  tipo TipoOperacionVasija [not null]
+  fecha_hora DateTime [not null]
+  user_id String
+  volumen_movido_l Decimal
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  vasija_origen vasija
+  vasija_destino vasija
+  orden_enologo orden_enologo
+  recepcion_bodega recepcion_bodega
+  app_user app_user
+}
+
+Table corte {
+  corte_id String [pk]
+  bodega_id String [not null]
+  campania_id String
+  fecha DateTime [not null]
+  objetivo String
+  responsable_user_id String
+  observaciones String
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  campania campania
+  responsable app_user
+  corte_componente corte_componente [not null]
+  lote_fraccionamiento lote_fraccionamiento [not null]
+}
+
+Table corte_componente {
+  corte_componente_id String [pk]
+  corte_id String [not null]
+  vasija_id String
+  lote_cosecha_id String
+  volumen_l Decimal
+  porcentaje Decimal
+  created_at DateTime [default: `now()`, not null]
+  corte corte [not null]
+  vasija vasija
+  evento_cosecha evento_cosecha
+}
+
+Table producto {
+  producto_id String [pk]
+  bodega_id String [not null]
+  nombre_comercial String [not null]
+  varietal String
+  anio Int
+  tipo String
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  lote_fraccionamiento lote_fraccionamiento [not null]
+
+  indexes {
+    (bodega_id, nombre_comercial) [unique]
+  }
+}
+
+Table lote_fraccionamiento {
+  lote_fraccionamiento_id String [pk]
+  corte_id String [not null]
+  producto_id String [not null]
+  fecha DateTime [not null]
+  botellas Int
+  formato String
+  codigo_lote_impreso String
+  created_at DateTime [default: `now()`, not null]
+  corte corte [not null]
+  producto producto [not null]
+  codigo_envase codigo_envase [not null]
+  despacho despacho [not null]
+}
+
+Table codigo_envase {
+  codigo_envase_id String [pk]
+  lote_fraccionamiento_id String [not null]
+  codigo_qr String [unique, not null]
+  codigo_lote_impreso String
+  created_at DateTime [default: `now()`, not null]
+  lote_fraccionamiento lote_fraccionamiento [not null]
+}
+
+Table despacho {
+  despacho_id String [pk]
+  lote_fraccionamiento_id String [not null]
+  fecha DateTime [not null]
+  destino String
+  cantidad Int
+  documento String
+  created_at DateTime [default: `now()`, not null]
+  lote_fraccionamiento lote_fraccionamiento [not null]
 }
 
 Table evento_energia {
@@ -935,6 +1211,15 @@ Enum EncargoAsignacionEstado {
   cancelado
 }
 
+Enum TipoOperacionVasija {
+  ingreso
+  fermentacion
+  trasiego
+  descube
+  correccion
+  corte_parcial
+}
+
 Ref: bodega.productor_id > productor.productor_id [delete: Restrict]
 
 Ref: campania.bodega_id > bodega.bodega_id [delete: Restrict]
@@ -978,6 +1263,72 @@ Ref: evento_cosecha.campania_id > campania.campania_id
 Ref: evento_cosecha.cuartel_id > cuartel.cuartel_id
 
 Ref: evento_cosecha.responsable_persona_id > persona.persona_id
+
+Ref: remito_uva.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: remito_uva.lote_cosecha_id > evento_cosecha.lote_cosecha_id [delete: Restrict]
+
+Ref: recepcion_bodega.remito_uva_id > remito_uva.remito_uva_id [delete: Restrict]
+
+Ref: analisis_recepcion.recepcion_bodega_id > recepcion_bodega.recepcion_bodega_id [delete: Cascade]
+
+Ref: ciu.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: ciu_recepcion.ciu_id > ciu.ciu_id [delete: Cascade]
+
+Ref: ciu_recepcion.recepcion_bodega_id > recepcion_bodega.recepcion_bodega_id [delete: Cascade]
+
+Ref: qc_ingreso_uva.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: qc_ingreso_uva.recepcion_bodega_id > recepcion_bodega.recepcion_bodega_id [delete: Restrict]
+
+Ref: vasija.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: vasija_contenido.vasija_id > vasija.vasija_id [delete: Restrict]
+
+Ref: vasija_contenido.lote_cosecha_id > evento_cosecha.lote_cosecha_id [delete: Restrict]
+
+Ref: existencia_vasija.vasija_id > vasija.vasija_id [delete: Restrict]
+
+Ref: control_fermentacion.vasija_id > vasija.vasija_id [delete: Restrict]
+
+Ref: orden_enologo.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: orden_enologo.enologo_user_id > app_user.user_id [delete: Set Null]
+
+Ref: operacion_vasija.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: operacion_vasija.vasija_origen_id > vasija.vasija_id [delete: Set Null]
+
+Ref: operacion_vasija.vasija_destino_id > vasija.vasija_id [delete: Set Null]
+
+Ref: operacion_vasija.orden_enologo_id > orden_enologo.orden_enologo_id [delete: Set Null]
+
+Ref: operacion_vasija.recepcion_bodega_id > recepcion_bodega.recepcion_bodega_id [delete: Set Null]
+
+Ref: operacion_vasija.user_id > app_user.user_id [delete: Set Null]
+
+Ref: corte.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: corte.campania_id > campania.campania_id [delete: Set Null]
+
+Ref: corte.responsable_user_id > app_user.user_id [delete: Set Null]
+
+Ref: corte_componente.corte_id > corte.corte_id [delete: Cascade]
+
+Ref: corte_componente.vasija_id > vasija.vasija_id [delete: Set Null]
+
+Ref: corte_componente.lote_cosecha_id > evento_cosecha.lote_cosecha_id [delete: Set Null]
+
+Ref: producto.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: lote_fraccionamiento.corte_id > corte.corte_id [delete: Restrict]
+
+Ref: lote_fraccionamiento.producto_id > producto.producto_id [delete: Restrict]
+
+Ref: codigo_envase.lote_fraccionamiento_id > lote_fraccionamiento.lote_fraccionamiento_id [delete: Cascade]
+
+Ref: despacho.lote_fraccionamiento_id > lote_fraccionamiento.lote_fraccionamiento_id [delete: Restrict]
 
 Ref: evento_energia.campania_id > campania.campania_id
 

@@ -242,3 +242,152 @@ export async function addTrazabilidadOrigen({
     orderBy: [{ finca_id: "asc" }, { cuartel_id: "asc" }],
   });
 }
+
+export async function getTrazabilidadInversaByCodigoEnvase(
+  codigoQr: string,
+  userId: string,
+) {
+  if (!codigoQr?.trim()) {
+    throw new TrazabilidadError("codigoQr requerido", 400);
+  }
+
+  const codigo = await prisma.codigoEnvase.findUnique({
+    where: { codigo_qr: codigoQr.trim() },
+    include: {
+      lote_fraccionamiento: {
+        include: {
+          producto: {
+            select: {
+              producto_id: true,
+              bodega_id: true,
+              nombre_comercial: true,
+              varietal: true,
+              anio: true,
+              tipo: true,
+            },
+          },
+          corte: {
+            include: {
+              corte_componente: {
+                include: {
+                  evento_cosecha: {
+                    include: {
+                      cuartel: {
+                        include: {
+                          finca: true,
+                        },
+                      },
+                      campania: true,
+                    },
+                  },
+                  vasija: {
+                    include: {
+                      vasija_contenido: {
+                        include: {
+                          evento_cosecha: {
+                            include: {
+                              cuartel: {
+                                include: {
+                                  finca: true,
+                                },
+                              },
+                              campania: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!codigo) {
+    throw new TrazabilidadError("Código de envase no encontrado", 404);
+  }
+
+  const bodegaId = codigo.lote_fraccionamiento.producto.bodega_id;
+  await ensureUserBodega(userId, bodegaId);
+
+  const lotesMap = new Map<
+    string,
+    {
+      lote_cosecha_id: string;
+      fecha_cosecha: Date;
+      campania: { campania_id: string; nombre: string };
+      cuartel: {
+        cuartel_id: string;
+        codigo_cuartel: string;
+        finca: { finca_id: string; nombre_finca: string };
+      };
+    }
+  >();
+
+  for (const componente of codigo.lote_fraccionamiento.corte.corte_componente) {
+    if (componente.evento_cosecha) {
+      const c = componente.evento_cosecha;
+      lotesMap.set(c.lote_cosecha_id, {
+        lote_cosecha_id: c.lote_cosecha_id,
+        fecha_cosecha: c.fecha_cosecha,
+        campania: {
+          campania_id: c.campania.campania_id,
+          nombre: c.campania.nombre,
+        },
+        cuartel: {
+          cuartel_id: c.cuartel.cuartel_id,
+          codigo_cuartel: c.cuartel.codigo_cuartel,
+          finca: {
+            finca_id: c.cuartel.finca.finca_id,
+            nombre_finca: c.cuartel.finca.nombre_finca,
+          },
+        },
+      });
+    }
+
+    if (!componente.vasija) continue;
+    for (const contenido of componente.vasija.vasija_contenido) {
+      const c = contenido.evento_cosecha;
+      lotesMap.set(c.lote_cosecha_id, {
+        lote_cosecha_id: c.lote_cosecha_id,
+        fecha_cosecha: c.fecha_cosecha,
+        campania: {
+          campania_id: c.campania.campania_id,
+          nombre: c.campania.nombre,
+        },
+        cuartel: {
+          cuartel_id: c.cuartel.cuartel_id,
+          codigo_cuartel: c.cuartel.codigo_cuartel,
+          finca: {
+            finca_id: c.cuartel.finca.finca_id,
+            nombre_finca: c.cuartel.finca.nombre_finca,
+          },
+        },
+      });
+    }
+  }
+
+  return {
+    codigo_envase_id: codigo.codigo_envase_id,
+    codigo_qr: codigo.codigo_qr,
+    codigo_lote_impreso: codigo.codigo_lote_impreso,
+    lote_fraccionamiento: {
+      lote_fraccionamiento_id:
+        codigo.lote_fraccionamiento.lote_fraccionamiento_id,
+      fecha: codigo.lote_fraccionamiento.fecha,
+      botellas: codigo.lote_fraccionamiento.botellas,
+      formato: codigo.lote_fraccionamiento.formato,
+    },
+    producto: codigo.lote_fraccionamiento.producto,
+    corte: {
+      corte_id: codigo.lote_fraccionamiento.corte.corte_id,
+      fecha: codigo.lote_fraccionamiento.corte.fecha,
+      objetivo: codigo.lote_fraccionamiento.corte.objetivo,
+    },
+    origenes: Array.from(lotesMap.values()),
+  };
+}

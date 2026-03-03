@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   addTrazabilidadOrigen,
   createTrazabilidad,
+  getTrazabilidadInversaByCodigoEnvase,
   getTrazabilidadById,
   TrazabilidadError,
   listTrazabilidades,
@@ -91,6 +92,28 @@ export async function addTrazabilidadOrigenHandler(req: Request, res: Response) 
       userId: req.user.userId,
     });
     return res.json(origenes);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getTrazabilidadInversaByCodigoEnvaseHandler(
+  req: Request,
+  res: Response,
+) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const codigoQr = String(req.params.codigoQr ?? "");
+    if (!codigoQr) {
+      return res.status(400).json({ error: "codigoQr requerido" });
+    }
+    const payload = await getTrazabilidadInversaByCodigoEnvase(
+      codigoQr,
+      req.user.userId,
+    );
+    return res.json(payload);
   } catch (error) {
     return handleError(res, error);
   }

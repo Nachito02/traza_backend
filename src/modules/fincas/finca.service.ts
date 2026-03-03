@@ -11,6 +11,15 @@ type CreateFincaInput = {
   userId: string;
 };
 
+type UpdateFincaInput = {
+  nombre_finca?: string;
+  rut?: string | null;
+  renspa?: string | null;
+  catastro?: string | null;
+  ubicacion_texto?: string | null;
+  userId: string;
+};
+
 export class FincaError extends Error {
   status: number;
 
@@ -107,4 +116,46 @@ export async function createFinca({
   if (ubicacion_texto !== undefined) data.ubicacion_texto = ubicacion_texto;
 
   return prisma.finca.create({ data });
+}
+
+export async function updateFinca(
+  fincaId: string,
+  { nombre_finca, rut, renspa, catastro, ubicacion_texto, userId }: UpdateFincaInput,
+) {
+  if (!fincaId) {
+    throw new FincaError("fincaId requerido", 400);
+  }
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+    select: { finca_id: true, bodega_id: true },
+  });
+  if (!finca) {
+    throw new FincaError("Finca no encontrada", 404);
+  }
+
+  await ensureUserBodega(userId, finca.bodega_id);
+
+  const data: {
+    nombre_finca?: string;
+    rut?: string | null;
+    renspa?: string | null;
+    catastro?: string | null;
+    ubicacion_texto?: string | null;
+  } = {};
+
+  if (nombre_finca !== undefined) data.nombre_finca = nombre_finca;
+  if (rut !== undefined) data.rut = rut;
+  if (renspa !== undefined) data.renspa = renspa;
+  if (catastro !== undefined) data.catastro = catastro;
+  if (ubicacion_texto !== undefined) data.ubicacion_texto = ubicacion_texto;
+
+  if (Object.keys(data).length === 0) {
+    throw new FincaError("No hay campos para actualizar", 400);
+  }
+
+  return prisma.finca.update({
+    where: { finca_id: fincaId },
+    data,
+  });
 }

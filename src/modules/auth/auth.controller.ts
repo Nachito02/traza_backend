@@ -20,12 +20,27 @@ function handleError(res: Response, error: unknown) {
   return res.status(500).json({ error: 'Error interno' });
 }
 
-function cookieOptions() {
+function cookieOptions(req: Request) {
   const isProd = process.env.NODE_ENV === 'production';
+  const forwardedProto = req.header('x-forwarded-proto');
+  const isHttps = req.secure || forwardedProto?.includes('https') || false;
+  const configuredSameSite = (process.env.COOKIE_SAME_SITE ?? '').toLowerCase();
+  const sameSite =
+    configuredSameSite === 'none' ||
+    configuredSameSite === 'lax' ||
+    configuredSameSite === 'strict'
+      ? configuredSameSite
+      : isProd || isHttps
+      ? 'none'
+      : 'lax';
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : sameSite === 'none' || isProd || isHttps;
+
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax' as const,
+    secure,
+    sameSite: sameSite as 'lax' | 'strict' | 'none',
     path: '/',
   };
 }
@@ -34,7 +49,7 @@ export async function loginHandler(req: Request, res: Response) {
   try {
     const { email, password } = req.body ?? {};
     const result = await login({ email, password });
-    const options = cookieOptions();
+    const options = cookieOptions(req);
     res.cookie('access_token', result.token, {
       ...options,
       maxAge: 15 * 60 * 1000,
@@ -179,7 +194,7 @@ export async function refreshHandler(req: Request, res: Response) {
   try {
     const refreshToken = req.cookies?.refresh_token;
     const result = await refreshAccessToken(refreshToken);
-    const options = cookieOptions();
+    const options = cookieOptions(req);
     res.cookie('access_token', result.token, {
       ...options,
       maxAge: 15 * 60 * 1000,
@@ -198,7 +213,7 @@ export async function logoutHandler(req: Request, res: Response) {
   try {
     const refreshToken = req.cookies?.refresh_token;
     await revokeRefreshToken(refreshToken);
-    const options = cookieOptions();
+    const options = cookieOptions(req);
     res.clearCookie('access_token', options);
     res.clearCookie('refresh_token', options);
     return res.status(204).send();

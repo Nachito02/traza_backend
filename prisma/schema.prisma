@@ -8,39 +8,43 @@ datasource db {
 }
 
 model AppUser {
-  user_id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre                      String
-  email                       String?             @unique
-  whatsapp_e164               String?             @unique
-  whatsapp_verified_at        DateTime?           @db.Timestamptz(6)
-  whatsapp_opt_in_at          DateTime?           @db.Timestamptz(6)
-  created_at                  DateTime            @default(now()) @db.Timestamptz(6)
-  password_hash               String?
-  is_active                   Boolean             @default(true)
-  refresh_token               RefreshToken[]
-  user_bodega                 UserBodega[]
-  user_rol                    UserRol[]
-  encargos_creados            Encargo[]           @relation("EncargoCreatedBy")
-  encargos_asignados          EncargoAsignacion[]
-  bot_delegaciones_otorgadas  BotDelegation[]     @relation("BotDelegationGrantor")
-  bot_delegaciones_recibidas  BotDelegation[]     @relation("BotDelegationBot")
-  bot_action_logs_as_actor    BotActionLog[]      @relation("BotActionActor")
-  bot_action_logs_on_behalf   BotActionLog[]      @relation("BotActionOnBehalf")
+  user_id                             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre                              String
+  email                               String?               @unique
+  whatsapp_e164                       String?               @unique
+  whatsapp_verified_at                DateTime?             @db.Timestamptz(6)
+  whatsapp_opt_in_at                  DateTime?             @db.Timestamptz(6)
+  created_at                          DateTime              @default(now()) @db.Timestamptz(6)
+  password_hash                       String?
+  is_active                           Boolean               @default(true)
+  refresh_token                       RefreshToken[]
+  user_bodega                         UserBodega[]
+  user_rol                            UserRol[]
+  encargos_creados                    Encargo[]             @relation("EncargoCreatedBy")
+  encargos_asignados                  EncargoAsignacion[]
+  bot_delegaciones_otorgadas          BotDelegation[]       @relation("BotDelegationGrantor")
+  bot_delegaciones_recibidas          BotDelegation[]       @relation("BotDelegationBot")
+  bot_action_logs_as_actor            BotActionLog[]        @relation("BotActionActor")
+  bot_action_logs_on_behalf           BotActionLog[]        @relation("BotActionOnBehalf")
   milestone_asignaciones_as_operario  MilestoneAsignacion[] @relation("MilestoneAsignacionOperario")
   milestone_asignaciones_as_asignador MilestoneAsignacion[] @relation("MilestoneAsignacionAsignador")
+  ordenes_enologo_creadas             OrdenEnologo[]        @relation("OrdenEnologoCreador")
+  operaciones_vasija                  OperacionVasija[]
+  cortes_responsable                  Corte[]               @relation("CorteResponsable")
+
   @@map("app_user")
 }
 
 model Bodega {
-  bodega_id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productor_id              String?                     @db.Uuid
+  bodega_id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productor_id              String?                   @db.Uuid
   nombre                    String
   razon_social              String?
   cuit                      String?
-  activo                    Boolean                     @default(true)
-  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
-  productor                 Productor?                  @relation(fields: [productor_id], references: [productor_id], onDelete: Restrict, onUpdate: NoAction)
+  activo                    Boolean                   @default(true)
+  created_at                DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                  @default(now()) @db.Timestamptz(6)
+  productor                 Productor?                @relation(fields: [productor_id], references: [productor_id], onDelete: Restrict, onUpdate: NoAction)
   evento_accidente          EventoAccidente[]
   evento_capacitacion       EventoCapacitacion[]
   evento_entrega_epp        EventoEntregaEpp[]
@@ -58,6 +62,14 @@ model Bodega {
   user_bodega               UserBodega[]
   encargo                   Encargo[]
   bot_delegation            BotDelegation[]
+  remito_uva                RemitoUva[]
+  ciu                       Ciu[]
+  orden_enologo             OrdenEnologo[]
+  vasija                    Vasija[]
+  qc_ingreso_uva            QcIngresoUva[]
+  operacion_vasija          OperacionVasija[]
+  corte                     Corte[]
+  producto                  Producto[]
 
   @@index([productor_id], map: "idx_bodega_productor")
   @@map("bodega")
@@ -65,15 +77,15 @@ model Bodega {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model Campania {
-  campania_id                     String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id                       String                            @db.Uuid
+  campania_id                     String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id                       String                          @db.Uuid
   nombre                          String
-  fecha_inicio                    DateTime                          @db.Date
-  fecha_fin                       DateTime                          @db.Date
-  estado                          String                            @default("abierta")
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  bodega                          Bodega                            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  fecha_inicio                    DateTime                        @db.Date
+  fecha_fin                       DateTime                        @db.Date
+  estado                          String                          @default("abierta")
+  created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                        @default(now()) @db.Timestamptz(6)
+  bodega                          Bodega                          @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
   cuartel_campania                CuartelCampania[]
   evento_analisis_suelo           EventoAnalisisDeSuelo[]
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
@@ -88,34 +100,36 @@ model Campania {
   evento_precipitacion            EventoPrecipitacion[]
   evento_riego                    EventoRiego[]
   trazabilidad                    Trazabilidad[]
+  corte                           Corte[]
+
   @@unique([bodega_id, nombre], map: "uq_campania_bodega_nombre")
   @@index([bodega_id], map: "idx_campania_bodega")
   @@map("campania")
 }
 
 model CapacitacionAsistente {
-  evento_capacitacion_id String              @db.Uuid
-  persona_id             String              @db.Uuid
+  evento_capacitacion_id String             @db.Uuid
+  persona_id             String             @db.Uuid
   evento_capacitacion    EventoCapacitacion @relation(fields: [evento_capacitacion_id], references: [evento_capacitacion_id], onDelete: Cascade, onUpdate: NoAction)
-  persona                Persona             @relation(fields: [persona_id], references: [persona_id], onUpdate: NoAction)
+  persona                Persona            @relation(fields: [persona_id], references: [persona_id], onUpdate: NoAction)
 
   @@id([evento_capacitacion_id, persona_id])
   @@map("capacitacion_asistente")
 }
 
 model Cuartel {
-  cuartel_id                      String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  finca_id                        String                            @db.Uuid
+  cuartel_id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  finca_id                        String                          @db.Uuid
   codigo_cuartel                  String
-  superficie_ha                   Decimal?                          @db.Decimal(10, 2)
+  superficie_ha                   Decimal?                        @db.Decimal(10, 2)
   cultivo                         String?
   variedad                        String?
   sistema_productivo              String?
   sistema_conduccion              String?
-  activo                          Boolean                           @default(true)
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  finca                           Finca                             @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  activo                          Boolean                         @default(true)
+  created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                        @default(now()) @db.Timestamptz(6)
+  finca                           Finca                           @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
   cuartel_campania                CuartelCampania[]
   evento_analisis_suelo           EventoAnalisisDeSuelo[]
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
@@ -158,6 +172,7 @@ model EventoAccidente {
   created_at          DateTime @default(now()) @db.Timestamptz(6)
   bodega              Bodega?  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   persona             Persona  @relation(fields: [persona_id], references: [persona_id], onUpdate: NoAction)
+
   @@map("evento_accidente")
 }
 
@@ -179,21 +194,21 @@ model EventoAnalisisDeSuelo {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model EventoAplicacionFitosanitaria {
-  evento_fito_id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fecha                  DateTime     @db.Date
-  cuartel_id             String       @db.Uuid
-  campania_id            String       @db.Uuid
-  insumo_lote_id         String?      @db.Uuid
-  dosis                  Decimal      @db.Decimal(12, 3)
+  evento_fito_id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha                  DateTime    @db.Date
+  cuartel_id             String      @db.Uuid
+  campania_id            String      @db.Uuid
+  insumo_lote_id         String?     @db.Uuid
+  dosis                  Decimal     @db.Decimal(12, 3)
   unidad                 String
   carencia_dias          Int
   motivo                 String?
-  responsable_persona_id String?      @db.Uuid
-  created_at             DateTime     @default(now()) @db.Timestamptz(6)
-  campania               Campania     @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel                Cuartel      @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  responsable_persona_id String?     @db.Uuid
+  created_at             DateTime    @default(now()) @db.Timestamptz(6)
+  campania               Campania    @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
+  cuartel                Cuartel     @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
   insumo_lote            InsumoLote? @relation(fields: [insumo_lote_id], references: [insumo_lote_id], onDelete: Restrict, onUpdate: NoAction)
-  persona                Persona?     @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
+  persona                Persona?    @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
 
   @@index([cuartel_id, campania_id, fecha], map: "idx_fito_cuartel_campania_fecha")
   @@map("evento_aplicacion_fitosanitaria")
@@ -220,33 +235,359 @@ model EventoCanopia {
 }
 
 model EventoCapacitacion {
-  evento_capacitacion_id String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fecha                  DateTime                 @db.Date
-  bodega_id              String?                  @db.Uuid
+  evento_capacitacion_id String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha                  DateTime                @db.Date
+  bodega_id              String?                 @db.Uuid
   tema                   String
-  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  created_at             DateTime                @default(now()) @db.Timestamptz(6)
   capacitacion_asistente CapacitacionAsistente[]
-  bodega                 Bodega?                  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  bodega                 Bodega?                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+
   @@map("evento_capacitacion")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model EventoCosecha {
-  lote_cosecha_id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fecha_cosecha          DateTime @db.Date
-  cuartel_id             String   @db.Uuid
-  campania_id            String   @db.Uuid
-  cantidad               Decimal  @db.Decimal(12, 3)
+  lote_cosecha_id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha_cosecha          DateTime          @db.Date
+  cuartel_id             String            @db.Uuid
+  campania_id            String            @db.Uuid
+  cantidad               Decimal           @db.Decimal(12, 3)
   unidad                 String
   destino                String?
-  responsable_persona_id String?  @db.Uuid
-  created_at             DateTime @default(now()) @db.Timestamptz(6)
-  campania               Campania @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel                Cuartel  @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  persona                Persona? @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
+  responsable_persona_id String?           @db.Uuid
+  created_at             DateTime          @default(now()) @db.Timestamptz(6)
+  campania               Campania          @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
+  cuartel                Cuartel           @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  persona                Persona?          @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
+  remito_uva             RemitoUva[]
+  vasija_contenido       VasijaContenido[]
+  corte_componente       CorteComponente[]
 
   @@index([cuartel_id, campania_id, fecha_cosecha], map: "idx_cosecha_cuartel_campania_fecha")
   @@map("evento_cosecha")
+}
+
+model RemitoUva {
+  remito_uva_id    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id        String            @db.Uuid
+  lote_cosecha_id  String            @db.Uuid
+  salida_finca     DateTime          @db.Timestamptz(6)
+  llegada_bodega   DateTime?         @db.Timestamptz(6)
+  transportista    String?
+  patente          String?
+  kg_declarados    Decimal?          @db.Decimal(12, 3)
+  created_at       DateTime          @default(now()) @db.Timestamptz(6)
+  bodega           Bodega            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  evento_cosecha   EventoCosecha     @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
+  recepcion_bodega RecepcionBodega[]
+
+  @@index([bodega_id, salida_finca], map: "idx_remito_uva_bodega_fecha")
+  @@index([lote_cosecha_id], map: "idx_remito_uva_lote")
+  @@map("remito_uva")
+}
+
+model RecepcionBodega {
+  recepcion_bodega_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  remito_uva_id       String              @db.Uuid
+  fecha_hora          DateTime            @db.Timestamptz(6)
+  kg_pesados          Decimal?            @db.Decimal(12, 3)
+  clasificacion       String?
+  observaciones       String?
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  remito_uva          RemitoUva           @relation(fields: [remito_uva_id], references: [remito_uva_id], onDelete: Restrict, onUpdate: NoAction)
+  analisis_recepcion  AnalisisRecepcion[]
+  ciu_recepcion       CiuRecepcion[]
+  qc_ingreso_uva      QcIngresoUva[]
+  operacion_vasija    OperacionVasija[]
+
+  @@index([remito_uva_id], map: "idx_recepcion_bodega_remito")
+  @@index([fecha_hora], map: "idx_recepcion_bodega_fecha")
+  @@map("recepcion_bodega")
+}
+
+model AnalisisRecepcion {
+  analisis_recepcion_id String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recepcion_bodega_id   String          @db.Uuid
+  brix                  Decimal?        @db.Decimal(8, 3)
+  ph                    Decimal?        @db.Decimal(5, 2)
+  acidez                Decimal?        @db.Decimal(8, 3)
+  sanidad               String?
+  temperatura_uva       Decimal?        @db.Decimal(8, 3)
+  created_at            DateTime        @default(now()) @db.Timestamptz(6)
+  recepcion_bodega      RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([recepcion_bodega_id], map: "idx_analisis_recepcion_recepcion")
+  @@map("analisis_recepcion")
+}
+
+model Ciu {
+  ciu_id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id     String         @db.Uuid
+  codigo_ciu    String
+  estado        String         @default("emitido")
+  emitido_at    DateTime       @db.Timestamptz(6)
+  observaciones String?
+  created_at    DateTime       @default(now()) @db.Timestamptz(6)
+  bodega        Bodega         @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  ciu_recepcion CiuRecepcion[]
+
+  @@unique([codigo_ciu], map: "ciu_codigo_ciu_key")
+  @@index([bodega_id, emitido_at], map: "idx_ciu_bodega_emitido_at")
+  @@map("ciu")
+}
+
+model CiuRecepcion {
+  ciu_id              String          @db.Uuid
+  recepcion_bodega_id String          @db.Uuid
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  ciu                 Ciu             @relation(fields: [ciu_id], references: [ciu_id], onDelete: Cascade, onUpdate: NoAction)
+  recepcion_bodega    RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([ciu_id, recepcion_bodega_id])
+  @@index([recepcion_bodega_id], map: "idx_ciu_recepcion_recepcion")
+  @@map("ciu_recepcion")
+}
+
+model QcIngresoUva {
+  qc_ingreso_uva_id   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id           String          @db.Uuid
+  recepcion_bodega_id String          @db.Uuid
+  fecha_hora          DateTime        @db.Timestamptz(6)
+  brix                Decimal?        @db.Decimal(8, 3)
+  ph                  Decimal?        @db.Decimal(5, 2)
+  acidez              Decimal?        @db.Decimal(8, 3)
+  temperatura_uva     Decimal?        @db.Decimal(8, 3)
+  estado_pcc          String?
+  aprobado            Boolean?
+  observaciones       String?
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  bodega              Bodega          @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  recepcion_bodega    RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([bodega_id, fecha_hora], map: "idx_qc_ingreso_uva_bodega_fecha")
+  @@index([recepcion_bodega_id], map: "idx_qc_ingreso_uva_recepcion")
+  @@map("qc_ingreso_uva")
+}
+
+model Vasija {
+  vasija_id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id            String                @db.Uuid
+  codigo               String
+  tipo                 String?
+  capacidad_litros     Decimal?              @db.Decimal(12, 3)
+  estado               String?               @default("disponible")
+  ubicacion            String?
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  vasija_contenido     VasijaContenido[]
+  existencia_vasija    ExistenciaVasija[]
+  control_fermentacion ControlFermentacion[]
+  operacion_origen     OperacionVasija[]     @relation("OperacionVasijaOrigen")
+  operacion_destino    OperacionVasija[]     @relation("OperacionVasijaDestino")
+  corte_componente     CorteComponente[]
+
+  @@unique([bodega_id, codigo], map: "uq_vasija_bodega_codigo")
+  @@index([bodega_id], map: "idx_vasija_bodega")
+  @@map("vasija")
+}
+
+model VasijaContenido {
+  vasija_contenido_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vasija_id           String        @db.Uuid
+  lote_cosecha_id     String        @db.Uuid
+  desde               DateTime      @db.Timestamptz(6)
+  hasta               DateTime?     @db.Timestamptz(6)
+  kg_aportados        Decimal?      @db.Decimal(12, 3)
+  porcentaje_aporte   Decimal?      @db.Decimal(7, 4)
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  vasija              Vasija        @relation(fields: [vasija_id], references: [vasija_id], onDelete: Restrict, onUpdate: NoAction)
+  evento_cosecha      EventoCosecha @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([vasija_id, desde], map: "idx_vasija_contenido_vasija_desde")
+  @@index([lote_cosecha_id], map: "idx_vasija_contenido_lote")
+  @@map("vasija_contenido")
+}
+
+model ExistenciaVasija {
+  existencia_vasija_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vasija_id            String   @db.Uuid
+  fecha_hora           DateTime @db.Timestamptz(6)
+  volumen_l            Decimal? @db.Decimal(12, 3)
+  grado_alcohol        Decimal? @db.Decimal(5, 2)
+  azucar_residual_g_l  Decimal? @db.Decimal(8, 3)
+  observaciones        String?
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  vasija               Vasija   @relation(fields: [vasija_id], references: [vasija_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([vasija_id, fecha_hora], map: "idx_existencia_vasija_vasija_fecha")
+  @@map("existencia_vasija")
+}
+
+model ControlFermentacion {
+  control_fermentacion_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vasija_id               String   @db.Uuid
+  fecha_hora              DateTime @db.Timestamptz(6)
+  densidad                Decimal? @db.Decimal(8, 3)
+  temperatura             Decimal? @db.Decimal(8, 3)
+  brix                    Decimal? @db.Decimal(8, 3)
+  ph                      Decimal? @db.Decimal(5, 2)
+  acidez                  Decimal? @db.Decimal(8, 3)
+  estado_fermentacion     String?
+  observaciones           String?
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  vasija                  Vasija   @relation(fields: [vasija_id], references: [vasija_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([vasija_id, fecha_hora], map: "idx_control_fermentacion_vasija_fecha")
+  @@map("control_fermentacion")
+}
+
+model OrdenEnologo {
+  orden_enologo_id String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id        String            @db.Uuid
+  enologo_user_id  String?           @db.Uuid
+  fecha            DateTime          @db.Timestamptz(6)
+  instrucciones    String?
+  estado           String            @default("activa")
+  created_at       DateTime          @default(now()) @db.Timestamptz(6)
+  bodega           Bodega            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  enologo          AppUser?          @relation("OrdenEnologoCreador", fields: [enologo_user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+  operacion_vasija OperacionVasija[]
+
+  @@index([bodega_id, fecha], map: "idx_orden_enologo_bodega_fecha")
+  @@index([enologo_user_id], map: "idx_orden_enologo_enologo")
+  @@map("orden_enologo")
+}
+
+model OperacionVasija {
+  operacion_vasija_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id           String              @db.Uuid
+  vasija_origen_id    String?             @db.Uuid
+  vasija_destino_id   String?             @db.Uuid
+  orden_enologo_id    String?             @db.Uuid
+  recepcion_bodega_id String?             @db.Uuid
+  tipo                TipoOperacionVasija
+  fecha_hora          DateTime            @db.Timestamptz(6)
+  user_id             String?             @db.Uuid
+  volumen_movido_l    Decimal?            @db.Decimal(12, 3)
+  observaciones       String?
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  bodega              Bodega              @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  vasija_origen       Vasija?             @relation("OperacionVasijaOrigen", fields: [vasija_origen_id], references: [vasija_id], onDelete: SetNull, onUpdate: NoAction)
+  vasija_destino      Vasija?             @relation("OperacionVasijaDestino", fields: [vasija_destino_id], references: [vasija_id], onDelete: SetNull, onUpdate: NoAction)
+  orden_enologo       OrdenEnologo?       @relation(fields: [orden_enologo_id], references: [orden_enologo_id], onDelete: SetNull, onUpdate: NoAction)
+  recepcion_bodega    RecepcionBodega?    @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: SetNull, onUpdate: NoAction)
+  app_user            AppUser?            @relation(fields: [user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([bodega_id, fecha_hora], map: "idx_operacion_vasija_bodega_fecha")
+  @@index([vasija_origen_id], map: "idx_operacion_vasija_origen")
+  @@index([vasija_destino_id], map: "idx_operacion_vasija_destino")
+  @@index([orden_enologo_id], map: "idx_operacion_vasija_orden")
+  @@map("operacion_vasija")
+}
+
+model Corte {
+  corte_id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id            String                @db.Uuid
+  campania_id          String?               @db.Uuid
+  fecha                DateTime              @db.Timestamptz(6)
+  objetivo             String?
+  responsable_user_id  String?               @db.Uuid
+  observaciones        String?
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  campania             Campania?             @relation(fields: [campania_id], references: [campania_id], onDelete: SetNull, onUpdate: NoAction)
+  responsable          AppUser?              @relation("CorteResponsable", fields: [responsable_user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+  corte_componente     CorteComponente[]
+  lote_fraccionamiento LoteFraccionamiento[]
+
+  @@index([bodega_id, fecha], map: "idx_corte_bodega_fecha")
+  @@index([campania_id], map: "idx_corte_campania")
+  @@index([responsable_user_id], map: "idx_corte_responsable")
+  @@map("corte")
+}
+
+model CorteComponente {
+  corte_componente_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corte_id            String         @db.Uuid
+  vasija_id           String?        @db.Uuid
+  lote_cosecha_id     String?        @db.Uuid
+  volumen_l           Decimal?       @db.Decimal(12, 3)
+  porcentaje          Decimal?       @db.Decimal(7, 4)
+  created_at          DateTime       @default(now()) @db.Timestamptz(6)
+  corte               Corte          @relation(fields: [corte_id], references: [corte_id], onDelete: Cascade, onUpdate: NoAction)
+  vasija              Vasija?        @relation(fields: [vasija_id], references: [vasija_id], onDelete: SetNull, onUpdate: NoAction)
+  evento_cosecha      EventoCosecha? @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([corte_id], map: "idx_corte_componente_corte")
+  @@index([vasija_id], map: "idx_corte_componente_vasija")
+  @@index([lote_cosecha_id], map: "idx_corte_componente_lote")
+  @@map("corte_componente")
+}
+
+model Producto {
+  producto_id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id            String                @db.Uuid
+  nombre_comercial     String
+  varietal             String?
+  anio                 Int?
+  tipo                 String?
+  activo               Boolean               @default(true)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  lote_fraccionamiento LoteFraccionamiento[]
+
+  @@unique([bodega_id, nombre_comercial], map: "uq_producto_bodega_nombre")
+  @@index([bodega_id], map: "idx_producto_bodega")
+  @@map("producto")
+}
+
+model LoteFraccionamiento {
+  lote_fraccionamiento_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corte_id                String         @db.Uuid
+  producto_id             String         @db.Uuid
+  fecha                   DateTime       @db.Date
+  botellas                Int?
+  formato                 String?
+  codigo_lote_impreso     String?
+  created_at              DateTime       @default(now()) @db.Timestamptz(6)
+  corte                   Corte          @relation(fields: [corte_id], references: [corte_id], onDelete: Restrict, onUpdate: NoAction)
+  producto                Producto       @relation(fields: [producto_id], references: [producto_id], onDelete: Restrict, onUpdate: NoAction)
+  codigo_envase           CodigoEnvase[]
+  despacho                Despacho[]
+
+  @@index([corte_id], map: "idx_lote_fraccionamiento_corte")
+  @@index([producto_id], map: "idx_lote_fraccionamiento_producto")
+  @@index([fecha], map: "idx_lote_fraccionamiento_fecha")
+  @@map("lote_fraccionamiento")
+}
+
+model CodigoEnvase {
+  codigo_envase_id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lote_fraccionamiento_id String              @db.Uuid
+  codigo_qr               String              @unique
+  codigo_lote_impreso     String?
+  created_at              DateTime            @default(now()) @db.Timestamptz(6)
+  lote_fraccionamiento    LoteFraccionamiento @relation(fields: [lote_fraccionamiento_id], references: [lote_fraccionamiento_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([lote_fraccionamiento_id], map: "idx_codigo_envase_lote")
+  @@map("codigo_envase")
+}
+
+model Despacho {
+  despacho_id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lote_fraccionamiento_id String              @db.Uuid
+  fecha                   DateTime            @db.Date
+  destino                 String?
+  cantidad                Int?
+  documento               String?
+  created_at              DateTime            @default(now()) @db.Timestamptz(6)
+  lote_fraccionamiento    LoteFraccionamiento @relation(fields: [lote_fraccionamiento_id], references: [lote_fraccionamiento_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([lote_fraccionamiento_id], map: "idx_despacho_lote")
+  @@index([fecha], map: "idx_despacho_fecha")
+  @@map("despacho")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -275,6 +616,7 @@ model EventoEntregaEpp {
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   bodega                Bodega?  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   persona               Persona  @relation(fields: [persona_id], references: [persona_id], onUpdate: NoAction)
+
   @@map("evento_entrega_epp")
 }
 
@@ -298,20 +640,20 @@ model EventoFenologia {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model EventoFertilizacion {
-  evento_fertilizacion_id String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fecha                   DateTime         @db.Date
-  cuartel_id              String           @db.Uuid
-  campania_id             String           @db.Uuid
-  insumo_id               String?          @db.Uuid
-  dosis                   Decimal          @db.Decimal(12, 3)
+  evento_fertilizacion_id String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha                   DateTime        @db.Date
+  cuartel_id              String          @db.Uuid
+  campania_id             String          @db.Uuid
+  insumo_id               String?         @db.Uuid
+  dosis                   Decimal         @db.Decimal(12, 3)
   unidad                  String
-  cantidad_total          Decimal?         @db.Decimal(12, 3)
-  responsable_persona_id  String?          @db.Uuid
-  created_at              DateTime         @default(now()) @db.Timestamptz(6)
-  campania                Campania         @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel                 Cuartel          @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  cantidad_total          Decimal?        @db.Decimal(12, 3)
+  responsable_persona_id  String?         @db.Uuid
+  created_at              DateTime        @default(now()) @db.Timestamptz(6)
+  campania                Campania        @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
+  cuartel                 Cuartel         @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
   insumo_catalogo         InsumoCatalogo? @relation(fields: [insumo_id], references: [insumo_id], onDelete: Restrict, onUpdate: NoAction)
-  persona                 Persona?         @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
+  persona                 Persona?        @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
 
   @@index([cuartel_id, campania_id, fecha], map: "idx_fertilizacion_cuartel_campania_fecha")
   @@map("evento_fertilizacion")
@@ -409,6 +751,7 @@ model EventoNoConforme {
   estado                String   @default("abierta")
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   bodega                Bodega?  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+
   @@map("evento_no_conforme")
 }
 
@@ -436,6 +779,7 @@ model EventoReclamo {
   descripcion       String?
   created_at        DateTime @default(now()) @db.Timestamptz(6)
   bodega            Bodega?  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+
   @@map("evento_reclamo")
 }
 
@@ -452,6 +796,7 @@ model EventoResiduo {
   created_at             DateTime @default(now()) @db.Timestamptz(6)
   bodega                 Bodega?  @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   persona                Persona? @relation(fields: [responsable_persona_id], references: [persona_id], onUpdate: NoAction)
+
   @@map("evento_residuo")
 }
 
@@ -507,31 +852,31 @@ model EventoSobranteLavado {
 }
 
 model Evidencia {
-  evidencia_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  milestone_id String         @db.Uuid
+  evidencia_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  milestone_id String        @db.Uuid
   tipo         EvidenciaTipo @default(otro)
   url          String
   hash         String?
-  created_at   DateTime       @default(now()) @db.Timestamptz(6)
-  milestone    Milestone      @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  milestone    Milestone     @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([milestone_id], map: "idx_evidencia_milestone")
   @@map("evidencia")
 }
 
 model Finca {
-  finca_id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id            String                 @db.Uuid
+  finca_id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id            String                @db.Uuid
   nombre_finca         String
   rut                  String?
   renspa               String?
   catastro             String?
   ubicacion_texto      String?
-  created_at           DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
   cuartel              Cuartel[]
   evento_precipitacion EventoPrecipitacion[]
-  bodega               Bodega                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   trazabilidad         Trazabilidad[]
   trazabilidad_origen  TrazabilidadOrigen[]
   encargo              Encargo[]
@@ -542,12 +887,12 @@ model Finca {
 }
 
 model InsumoCatalogo {
-  insumo_id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumo_id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tipo                 String
   nombre_comercial     String
   principio_activo     String?
   unidad_base          String
-  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
   evento_fertilizacion EventoFertilizacion[]
   insumo_lote          InsumoLote[]
 
@@ -556,36 +901,36 @@ model InsumoCatalogo {
 }
 
 model InsumoLote {
-  insumo_lote_id                  String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  insumo_id                       String                            @db.Uuid
+  insumo_lote_id                  String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumo_id                       String                          @db.Uuid
   nro_lote                        String
-  fecha_vencimiento               DateTime                          @db.Date
-  estado                          String                            @default("habilitado")
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  fecha_vencimiento               DateTime                        @db.Date
+  estado                          String                          @default("habilitado")
+  created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
-  insumo_catalogo                 InsumoCatalogo                   @relation(fields: [insumo_id], references: [insumo_id], onUpdate: NoAction)
+  insumo_catalogo                 InsumoCatalogo                  @relation(fields: [insumo_id], references: [insumo_id], onUpdate: NoAction)
 
   @@unique([insumo_id, nro_lote])
   @@map("insumo_lote")
 }
 
 model Milestone {
-  milestone_id         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trazabilidad_id      String                 @db.Uuid
-  proceso_id           String                 @db.Uuid
-  estado               MilestoneEstado       @default(pendiente)
-  event_date           DateTime?              @db.Date
-  created_by           String?                @db.Uuid
-  created_at           DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
-  evidencia            Evidencia[]
+  milestone_id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trazabilidad_id       String                 @db.Uuid
+  proceso_id            String                 @db.Uuid
+  estado                MilestoneEstado        @default(pendiente)
+  event_date            DateTime?              @db.Date
+  created_by            String?                @db.Uuid
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  evidencia             Evidencia[]
   hallazgo_cumplimiento HallazgoCumplimiento[]
-  protocolo_proceso    ProtocoloProceso      @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
-  trazabilidad         Trazabilidad           @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: Cascade, onUpdate: NoAction)
-  milestone_evento     MilestoneEvento[]
-  validacion_milestone ValidacionMilestone[]
-  milestone_asignacion MilestoneAsignacion[]
-  encargo              Encargo[]
+  protocolo_proceso     ProtocoloProceso       @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
+  trazabilidad          Trazabilidad           @relation(fields: [trazabilidad_id], references: [trazabilidad_id], onDelete: Cascade, onUpdate: NoAction)
+  milestone_evento      MilestoneEvento[]
+  validacion_milestone  ValidacionMilestone[]
+  milestone_asignacion  MilestoneAsignacion[]
+  encargo               Encargo[]
 
   @@unique([trazabilidad_id, proceso_id])
   @@index([trazabilidad_id], map: "idx_milestone_trazabilidad")
@@ -606,12 +951,12 @@ model MilestoneEvento {
 }
 
 model Persona {
-  persona_id                      String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id                       String?                           @db.Uuid
+  persona_id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id                       String?                         @db.Uuid
   nombre_apellido                 String
-  tipo                            String                            @default("empleado")
-  activo                          Boolean                           @default(true)
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  tipo                            String                          @default("empleado")
+  activo                          Boolean                         @default(true)
+  created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
   capacitacion_asistente          CapacitacionAsistente[]
   evento_accidente                EventoAccidente[]
   evento_aplicacion_fitosanitaria EventoAplicacionFitosanitaria[]
@@ -629,7 +974,7 @@ model Persona {
   evento_riego                    EventoRiego[]
   evento_sanitizacion_banos       EventoSanitizacionBanos[]
   evento_sobrante_lavado          EventoSobranteLavado[]
-  bodega                          Bodega?                           @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  bodega                          Bodega?                         @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
 
   @@index([bodega_id], map: "idx_persona_bodega")
   @@map("persona")
@@ -644,16 +989,17 @@ model Productor {
   updated_at   DateTime       @default(now()) @db.Timestamptz(6)
   bodega       Bodega[]
   trazabilidad Trazabilidad[]
+
   @@map("productor")
 }
 
 model Protocolo {
-  protocolo_id    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  protocolo_id    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombre          String
-  version         String            @default("1.0.0")
+  version         String           @default("1.0.0")
   descripcion     String?
-  activo          Boolean           @default(true)
-  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  activo          Boolean          @default(true)
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
   protocolo_etapa ProtocoloEtapa[]
   trazabilidad    Trazabilidad[]
 
@@ -662,11 +1008,11 @@ model Protocolo {
 }
 
 model ProtocoloEtapa {
-  etapa_id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  protocolo_id      String              @db.Uuid
+  etapa_id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  protocolo_id      String             @db.Uuid
   nombre            String
   orden             Int
-  protocolo         Protocolo           @relation(fields: [protocolo_id], references: [protocolo_id], onDelete: Cascade, onUpdate: NoAction)
+  protocolo         Protocolo          @relation(fields: [protocolo_id], references: [protocolo_id], onDelete: Cascade, onUpdate: NoAction)
   protocolo_proceso ProtocoloProceso[]
 
   @@unique([protocolo_id, nombre])
@@ -676,11 +1022,11 @@ model ProtocoloEtapa {
 }
 
 model ProtocoloProceso {
-  proceso_id      String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  etapa_id        String          @db.Uuid
+  proceso_id      String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  etapa_id        String         @db.Uuid
   nombre          String
   evento_tipo     String
-  obligatorio     Boolean         @default(false)
+  obligatorio     Boolean        @default(false)
   orden           Int
   milestone       Milestone[]
   protocolo_etapa ProtocoloEtapa @relation(fields: [etapa_id], references: [etapa_id], onDelete: Cascade, onUpdate: NoAction)
@@ -698,41 +1044,42 @@ model RefreshToken {
   expires_at DateTime  @db.Timestamptz(6)
   revoked_at DateTime? @db.Timestamptz(6)
   created_at DateTime  @default(now()) @db.Timestamptz(6)
-  app_user   AppUser  @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user   AppUser   @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id], map: "idx_refresh_user")
   @@map("refresh_token")
 }
 
 model Rol {
-  rol_id   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre   String     @unique
+  rol_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre   String    @unique
   user_rol UserRol[]
+
   @@map("rol")
 }
 
 model Trazabilidad {
-  trazabilidad_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  protocolo_id    String              @db.Uuid
-  productor_id    String?             @db.Uuid
-  bodega_id       String              @db.Uuid
-  finca_id        String?             @db.Uuid
-  cuartel_id      String?             @db.Uuid
-  campania_id     String              @db.Uuid
-  estado          TrazabilidadEstado @default(draft)
-  nombre_producto String?
-  imagen_producto String?
-  created_at      DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime            @default(now()) @db.Timestamptz(6)
-  milestone       Milestone[]
+  trazabilidad_id       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  protocolo_id          String                 @db.Uuid
+  productor_id          String?                @db.Uuid
+  bodega_id             String                 @db.Uuid
+  finca_id              String?                @db.Uuid
+  cuartel_id            String?                @db.Uuid
+  campania_id           String                 @db.Uuid
+  estado                TrazabilidadEstado     @default(draft)
+  nombre_producto       String?
+  imagen_producto       String?
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  milestone             Milestone[]
   hallazgo_cumplimiento HallazgoCumplimiento[]
-  bodega          Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  campania        Campania            @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel         Cuartel?            @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  finca           Finca?              @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
-  productor       Productor?          @relation(fields: [productor_id], references: [productor_id], onDelete: Restrict, onUpdate: NoAction)
-  protocolo       Protocolo           @relation(fields: [protocolo_id], references: [protocolo_id], onUpdate: NoAction)
-  trazabilidad_origen TrazabilidadOrigen[]
+  bodega                Bodega                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  campania              Campania               @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
+  cuartel               Cuartel?               @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  finca                 Finca?                 @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  productor             Productor?             @relation(fields: [productor_id], references: [productor_id], onDelete: Restrict, onUpdate: NoAction)
+  protocolo             Protocolo              @relation(fields: [protocolo_id], references: [protocolo_id], onUpdate: NoAction)
+  trazabilidad_origen   TrazabilidadOrigen[]
 
   @@unique([protocolo_id, cuartel_id, campania_id], map: "uq_trazabilidad_unica")
   @@index([bodega_id, finca_id, cuartel_id, campania_id], map: "idx_trazabilidad_origen")
@@ -795,11 +1142,11 @@ model EventoFingerprint {
 }
 
 model UserBodega {
-  user_id          String          @db.Uuid
-  bodega_id        String          @db.Uuid
-  bodega           Bodega          @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  app_user         AppUser         @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  user_bodega_rol  UserBodegaRol[]
+  user_id         String          @db.Uuid
+  bodega_id       String          @db.Uuid
+  bodega          Bodega          @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  app_user        AppUser         @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  user_bodega_rol UserBodegaRol[]
 
   @@id([user_id, bodega_id])
   @@index([bodega_id], map: "idx_user_bodega_bodega")
@@ -807,9 +1154,9 @@ model UserBodega {
 }
 
 model UserBodegaRol {
-  user_id    String     @db.Uuid
-  bodega_id  String     @db.Uuid
-  rol        String
+  user_id     String     @db.Uuid
+  bodega_id   String     @db.Uuid
+  rol         String
   user_bodega UserBodega @relation(fields: [user_id, bodega_id], references: [user_id, bodega_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([user_id, bodega_id, rol])
@@ -818,9 +1165,9 @@ model UserBodegaRol {
 }
 
 model UserRol {
-  user_id  String   @db.Uuid
-  rol_id   String   @db.Uuid
-  rol      Rol      @relation(fields: [rol_id], references: [rol_id], onUpdate: NoAction)
+  user_id  String  @db.Uuid
+  rol_id   String  @db.Uuid
+  rol      Rol     @relation(fields: [rol_id], references: [rol_id], onUpdate: NoAction)
   app_user AppUser @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([user_id, rol_id])
@@ -828,25 +1175,25 @@ model UserRol {
 }
 
 model Encargo {
-  encargo_id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id           String              @db.Uuid
-  finca_id            String?             @db.Uuid
-  cuartel_id          String?             @db.Uuid
-  milestone_id        String?             @db.Uuid
-  created_by          String              @db.Uuid
-  titulo              String
-  descripcion         String?
-  fecha_objetivo      DateTime?           @db.Date
-  prioridad           String              @default("media")
-  estado              EncargoEstado       @default(pendiente)
-  created_at          DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
-  bodega              Bodega              @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  finca               Finca?              @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
-  cuartel             Cuartel?            @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  milestone           Milestone?          @relation(fields: [milestone_id], references: [milestone_id], onUpdate: NoAction)
-  app_user            AppUser             @relation("EncargoCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
-  encargo_asignacion  EncargoAsignacion[]
+  encargo_id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id            String                @db.Uuid
+  finca_id             String?               @db.Uuid
+  cuartel_id           String?               @db.Uuid
+  milestone_id         String?               @db.Uuid
+  created_by           String                @db.Uuid
+  titulo               String
+  descripcion          String?
+  fecha_objetivo       DateTime?             @db.Date
+  prioridad            String                @default("media")
+  estado               EncargoEstado         @default(pendiente)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  finca                Finca?                @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel              Cuartel?              @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  milestone            Milestone?            @relation(fields: [milestone_id], references: [milestone_id], onUpdate: NoAction)
+  app_user             AppUser               @relation("EncargoCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
+  encargo_asignacion   EncargoAsignacion[]
   milestone_asignacion MilestoneAsignacion[]
 
   @@index([bodega_id, estado], map: "idx_encargo_bodega_estado")
@@ -857,19 +1204,19 @@ model Encargo {
 }
 
 model EncargoAsignacion {
-  encargo_asignacion_id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  encargo_id                      String                 @db.Uuid
-  user_id                         String                 @db.Uuid
-  estado                          EncargoAsignacionEstado @default(pendiente)
-  assigned_at                     DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at                      DateTime               @default(now()) @db.Timestamptz(6)
-  completed_at                    DateTime?              @db.Timestamptz(6)
-  whatsapp_contactado_at          DateTime?              @db.Timestamptz(6)
-  ultima_interaccion_bot_at       DateTime?              @db.Timestamptz(6)
-  observaciones                   String?
-  encargo                         Encargo                @relation(fields: [encargo_id], references: [encargo_id], onDelete: Cascade, onUpdate: NoAction)
-  app_user                        AppUser                @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  bot_action_log                  BotActionLog[]
+  encargo_asignacion_id     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encargo_id                String                  @db.Uuid
+  user_id                   String                  @db.Uuid
+  estado                    EncargoAsignacionEstado @default(pendiente)
+  assigned_at               DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                @default(now()) @db.Timestamptz(6)
+  completed_at              DateTime?               @db.Timestamptz(6)
+  whatsapp_contactado_at    DateTime?               @db.Timestamptz(6)
+  ultima_interaccion_bot_at DateTime?               @db.Timestamptz(6)
+  observaciones             String?
+  encargo                   Encargo                 @relation(fields: [encargo_id], references: [encargo_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user                  AppUser                 @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_action_log            BotActionLog[]
 
   @@unique([encargo_id, user_id], map: "uq_encargo_asignacion_unica")
   @@index([user_id, estado], map: "idx_encargo_asignacion_user_estado")
@@ -915,19 +1262,19 @@ model MilestoneAsignacion {
 }
 
 model BotDelegation {
-  bot_delegation_id    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  granted_by_user_id   String         @db.Uuid
-  bot_user_id          String         @db.Uuid
-  bodega_id            String?        @db.Uuid
-  scopes               String[]
-  activo               Boolean        @default(true)
-  expires_at           DateTime?      @db.Timestamptz(6)
-  revoked_at           DateTime?      @db.Timestamptz(6)
-  created_at           DateTime       @default(now()) @db.Timestamptz(6)
-  granted_by_user      AppUser        @relation("BotDelegationGrantor", fields: [granted_by_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  bot_user             AppUser        @relation("BotDelegationBot", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  bodega               Bodega?        @relation(fields: [bodega_id], references: [bodega_id], onDelete: SetNull, onUpdate: NoAction)
-  bot_action_log       BotActionLog[]
+  bot_delegation_id  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  granted_by_user_id String         @db.Uuid
+  bot_user_id        String         @db.Uuid
+  bodega_id          String?        @db.Uuid
+  scopes             String[]
+  activo             Boolean        @default(true)
+  expires_at         DateTime?      @db.Timestamptz(6)
+  revoked_at         DateTime?      @db.Timestamptz(6)
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  granted_by_user    AppUser        @relation("BotDelegationGrantor", fields: [granted_by_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_user           AppUser        @relation("BotDelegationBot", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bodega             Bodega?        @relation(fields: [bodega_id], references: [bodega_id], onDelete: SetNull, onUpdate: NoAction)
+  bot_action_log     BotActionLog[]
 
   @@index([granted_by_user_id, activo], map: "idx_bot_delegation_grantor_activo")
   @@index([bot_user_id, activo], map: "idx_bot_delegation_bot_activo")
@@ -935,19 +1282,19 @@ model BotDelegation {
 }
 
 model BotActionLog {
-  bot_action_log_id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bot_user_id              String             @db.Uuid
-  on_behalf_user_id        String             @db.Uuid
-  bot_delegation_id        String?            @db.Uuid
-  encargo_asignacion_id    String?            @db.Uuid
-  action                   String
-  input_payload            Json               @default("{}")
-  output_payload           Json               @default("{}")
-  created_at               DateTime           @default(now()) @db.Timestamptz(6)
-  bot_user                 AppUser            @relation("BotActionActor", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  on_behalf_user           AppUser            @relation("BotActionOnBehalf", fields: [on_behalf_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
-  bot_delegation           BotDelegation?     @relation(fields: [bot_delegation_id], references: [bot_delegation_id], onDelete: SetNull, onUpdate: NoAction)
-  encargo_asignacion       EncargoAsignacion? @relation(fields: [encargo_asignacion_id], references: [encargo_asignacion_id], onDelete: SetNull, onUpdate: NoAction)
+  bot_action_log_id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bot_user_id           String             @db.Uuid
+  on_behalf_user_id     String             @db.Uuid
+  bot_delegation_id     String?            @db.Uuid
+  encargo_asignacion_id String?            @db.Uuid
+  action                String
+  input_payload         Json               @default("{}")
+  output_payload        Json               @default("{}")
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  bot_user              AppUser            @relation("BotActionActor", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  on_behalf_user        AppUser            @relation("BotActionOnBehalf", fields: [on_behalf_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  bot_delegation        BotDelegation?     @relation(fields: [bot_delegation_id], references: [bot_delegation_id], onDelete: SetNull, onUpdate: NoAction)
+  encargo_asignacion    EncargoAsignacion? @relation(fields: [encargo_asignacion_id], references: [encargo_asignacion_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([bot_user_id, created_at], map: "idx_bot_action_actor_date")
   @@index([on_behalf_user_id, created_at], map: "idx_bot_action_on_behalf_date")
@@ -956,13 +1303,13 @@ model BotActionLog {
 }
 
 model ValidacionMilestone {
-  validacion_id String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  milestone_id  String            @db.Uuid
+  validacion_id String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  milestone_id  String          @db.Uuid
   validado      Boolean
   observacion   String?
   validado_por  ValidadoPorTipo @default(sistema)
-  created_at    DateTime          @default(now()) @db.Timestamptz(6)
-  milestone     Milestone         @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  milestone     Milestone       @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([milestone_id], map: "idx_validacion_milestone")
   @@map("validacion_milestone")
@@ -1021,6 +1368,15 @@ enum EncargoAsignacionEstado {
   en_progreso
   completado
   cancelado
+}
+
+enum TipoOperacionVasija {
+  ingreso
+  fermentacion
+  trasiego
+  descube
+  correccion
+  corte_parcial
 }
 
 generator erd {

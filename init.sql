@@ -25,6 +25,9 @@ CREATE TYPE "EncargoEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', '
 -- CreateEnum
 CREATE TYPE "EncargoAsignacionEstado" AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado');
 
+-- CreateEnum
+CREATE TYPE "TipoOperacionVasija" AS ENUM ('ingreso', 'fermentacion', 'trasiego', 'descube', 'correccion', 'corte_parcial');
+
 -- CreateTable
 CREATE TABLE "app_user" (
     "user_id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -185,6 +188,258 @@ CREATE TABLE "evento_cosecha" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "evento_cosecha_pkey" PRIMARY KEY ("lote_cosecha_id")
+);
+
+-- CreateTable
+CREATE TABLE "remito_uva" (
+    "remito_uva_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "lote_cosecha_id" UUID NOT NULL,
+    "salida_finca" TIMESTAMPTZ(6) NOT NULL,
+    "llegada_bodega" TIMESTAMPTZ(6),
+    "transportista" TEXT,
+    "patente" TEXT,
+    "kg_declarados" DECIMAL(12,3),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "remito_uva_pkey" PRIMARY KEY ("remito_uva_id")
+);
+
+-- CreateTable
+CREATE TABLE "recepcion_bodega" (
+    "recepcion_bodega_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "remito_uva_id" UUID NOT NULL,
+    "fecha_hora" TIMESTAMPTZ(6) NOT NULL,
+    "kg_pesados" DECIMAL(12,3),
+    "clasificacion" TEXT,
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "recepcion_bodega_pkey" PRIMARY KEY ("recepcion_bodega_id")
+);
+
+-- CreateTable
+CREATE TABLE "analisis_recepcion" (
+    "analisis_recepcion_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "recepcion_bodega_id" UUID NOT NULL,
+    "brix" DECIMAL(8,3),
+    "ph" DECIMAL(5,2),
+    "acidez" DECIMAL(8,3),
+    "sanidad" TEXT,
+    "temperatura_uva" DECIMAL(8,3),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "analisis_recepcion_pkey" PRIMARY KEY ("analisis_recepcion_id")
+);
+
+-- CreateTable
+CREATE TABLE "ciu" (
+    "ciu_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "codigo_ciu" TEXT NOT NULL,
+    "estado" TEXT NOT NULL DEFAULT 'emitido',
+    "emitido_at" TIMESTAMPTZ(6) NOT NULL,
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ciu_pkey" PRIMARY KEY ("ciu_id")
+);
+
+-- CreateTable
+CREATE TABLE "ciu_recepcion" (
+    "ciu_id" UUID NOT NULL,
+    "recepcion_bodega_id" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ciu_recepcion_pkey" PRIMARY KEY ("ciu_id","recepcion_bodega_id")
+);
+
+-- CreateTable
+CREATE TABLE "qc_ingreso_uva" (
+    "qc_ingreso_uva_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "recepcion_bodega_id" UUID NOT NULL,
+    "fecha_hora" TIMESTAMPTZ(6) NOT NULL,
+    "brix" DECIMAL(8,3),
+    "ph" DECIMAL(5,2),
+    "acidez" DECIMAL(8,3),
+    "temperatura_uva" DECIMAL(8,3),
+    "estado_pcc" TEXT,
+    "aprobado" BOOLEAN,
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "qc_ingreso_uva_pkey" PRIMARY KEY ("qc_ingreso_uva_id")
+);
+
+-- CreateTable
+CREATE TABLE "vasija" (
+    "vasija_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "codigo" TEXT NOT NULL,
+    "tipo" TEXT,
+    "capacidad_litros" DECIMAL(12,3),
+    "estado" TEXT DEFAULT 'disponible',
+    "ubicacion" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "vasija_pkey" PRIMARY KEY ("vasija_id")
+);
+
+-- CreateTable
+CREATE TABLE "vasija_contenido" (
+    "vasija_contenido_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "vasija_id" UUID NOT NULL,
+    "lote_cosecha_id" UUID NOT NULL,
+    "desde" TIMESTAMPTZ(6) NOT NULL,
+    "hasta" TIMESTAMPTZ(6),
+    "kg_aportados" DECIMAL(12,3),
+    "porcentaje_aporte" DECIMAL(7,4),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "vasija_contenido_pkey" PRIMARY KEY ("vasija_contenido_id")
+);
+
+-- CreateTable
+CREATE TABLE "existencia_vasija" (
+    "existencia_vasija_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "vasija_id" UUID NOT NULL,
+    "fecha_hora" TIMESTAMPTZ(6) NOT NULL,
+    "volumen_l" DECIMAL(12,3),
+    "grado_alcohol" DECIMAL(5,2),
+    "azucar_residual_g_l" DECIMAL(8,3),
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "existencia_vasija_pkey" PRIMARY KEY ("existencia_vasija_id")
+);
+
+-- CreateTable
+CREATE TABLE "control_fermentacion" (
+    "control_fermentacion_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "vasija_id" UUID NOT NULL,
+    "fecha_hora" TIMESTAMPTZ(6) NOT NULL,
+    "densidad" DECIMAL(8,3),
+    "temperatura" DECIMAL(8,3),
+    "brix" DECIMAL(8,3),
+    "ph" DECIMAL(5,2),
+    "acidez" DECIMAL(8,3),
+    "estado_fermentacion" TEXT,
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "control_fermentacion_pkey" PRIMARY KEY ("control_fermentacion_id")
+);
+
+-- CreateTable
+CREATE TABLE "orden_enologo" (
+    "orden_enologo_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "enologo_user_id" UUID,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "instrucciones" TEXT,
+    "estado" TEXT NOT NULL DEFAULT 'activa',
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "orden_enologo_pkey" PRIMARY KEY ("orden_enologo_id")
+);
+
+-- CreateTable
+CREATE TABLE "operacion_vasija" (
+    "operacion_vasija_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "vasija_origen_id" UUID,
+    "vasija_destino_id" UUID,
+    "orden_enologo_id" UUID,
+    "recepcion_bodega_id" UUID,
+    "tipo" "TipoOperacionVasija" NOT NULL,
+    "fecha_hora" TIMESTAMPTZ(6) NOT NULL,
+    "user_id" UUID,
+    "volumen_movido_l" DECIMAL(12,3),
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "operacion_vasija_pkey" PRIMARY KEY ("operacion_vasija_id")
+);
+
+-- CreateTable
+CREATE TABLE "corte" (
+    "corte_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "campania_id" UUID,
+    "fecha" TIMESTAMPTZ(6) NOT NULL,
+    "objetivo" TEXT,
+    "responsable_user_id" UUID,
+    "observaciones" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "corte_pkey" PRIMARY KEY ("corte_id")
+);
+
+-- CreateTable
+CREATE TABLE "corte_componente" (
+    "corte_componente_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "corte_id" UUID NOT NULL,
+    "vasija_id" UUID,
+    "lote_cosecha_id" UUID,
+    "volumen_l" DECIMAL(12,3),
+    "porcentaje" DECIMAL(7,4),
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "corte_componente_pkey" PRIMARY KEY ("corte_componente_id")
+);
+
+-- CreateTable
+CREATE TABLE "producto" (
+    "producto_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "bodega_id" UUID NOT NULL,
+    "nombre_comercial" TEXT NOT NULL,
+    "varietal" TEXT,
+    "anio" INTEGER,
+    "tipo" TEXT,
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "producto_pkey" PRIMARY KEY ("producto_id")
+);
+
+-- CreateTable
+CREATE TABLE "lote_fraccionamiento" (
+    "lote_fraccionamiento_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "corte_id" UUID NOT NULL,
+    "producto_id" UUID NOT NULL,
+    "fecha" DATE NOT NULL,
+    "botellas" INTEGER,
+    "formato" TEXT,
+    "codigo_lote_impreso" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "lote_fraccionamiento_pkey" PRIMARY KEY ("lote_fraccionamiento_id")
+);
+
+-- CreateTable
+CREATE TABLE "codigo_envase" (
+    "codigo_envase_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "lote_fraccionamiento_id" UUID NOT NULL,
+    "codigo_qr" TEXT NOT NULL,
+    "codigo_lote_impreso" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "codigo_envase_pkey" PRIMARY KEY ("codigo_envase_id")
+);
+
+-- CreateTable
+CREATE TABLE "despacho" (
+    "despacho_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "lote_fraccionamiento_id" UUID NOT NULL,
+    "fecha" DATE NOT NULL,
+    "destino" TEXT,
+    "cantidad" INTEGER,
+    "documento" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "despacho_pkey" PRIMARY KEY ("despacho_id")
 );
 
 -- CreateTable
@@ -768,10 +1023,10 @@ CREATE UNIQUE INDEX "app_user_whatsapp_e164_key" ON "app_user"("whatsapp_e164");
 CREATE INDEX "idx_bodega_productor" ON "bodega"("productor_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_campania_bodega_nombre" ON "campania"("bodega_id", "nombre");
+CREATE INDEX "idx_campania_bodega" ON "campania"("bodega_id");
 
 -- CreateIndex
-CREATE INDEX "idx_campania_bodega" ON "campania"("bodega_id");
+CREATE UNIQUE INDEX "uq_campania_bodega_nombre" ON "campania"("bodega_id", "nombre");
 
 -- CreateIndex
 CREATE INDEX "idx_cuartel_finca" ON "cuartel"("finca_id");
@@ -790,6 +1045,117 @@ CREATE INDEX "idx_canopia_cuartel_campania_fecha" ON "evento_canopia"("cuartel_i
 
 -- CreateIndex
 CREATE INDEX "idx_cosecha_cuartel_campania_fecha" ON "evento_cosecha"("cuartel_id", "campania_id", "fecha_cosecha");
+
+-- CreateIndex
+CREATE INDEX "idx_remito_uva_bodega_fecha" ON "remito_uva"("bodega_id", "salida_finca");
+
+-- CreateIndex
+CREATE INDEX "idx_remito_uva_lote" ON "remito_uva"("lote_cosecha_id");
+
+-- CreateIndex
+CREATE INDEX "idx_recepcion_bodega_remito" ON "recepcion_bodega"("remito_uva_id");
+
+-- CreateIndex
+CREATE INDEX "idx_recepcion_bodega_fecha" ON "recepcion_bodega"("fecha_hora");
+
+-- CreateIndex
+CREATE INDEX "idx_analisis_recepcion_recepcion" ON "analisis_recepcion"("recepcion_bodega_id");
+
+-- CreateIndex
+CREATE INDEX "idx_ciu_bodega_emitido_at" ON "ciu"("bodega_id", "emitido_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ciu_codigo_ciu_key" ON "ciu"("codigo_ciu");
+
+-- CreateIndex
+CREATE INDEX "idx_ciu_recepcion_recepcion" ON "ciu_recepcion"("recepcion_bodega_id");
+
+-- CreateIndex
+CREATE INDEX "idx_qc_ingreso_uva_bodega_fecha" ON "qc_ingreso_uva"("bodega_id", "fecha_hora");
+
+-- CreateIndex
+CREATE INDEX "idx_qc_ingreso_uva_recepcion" ON "qc_ingreso_uva"("recepcion_bodega_id");
+
+-- CreateIndex
+CREATE INDEX "idx_vasija_bodega" ON "vasija"("bodega_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_vasija_bodega_codigo" ON "vasija"("bodega_id", "codigo");
+
+-- CreateIndex
+CREATE INDEX "idx_vasija_contenido_vasija_desde" ON "vasija_contenido"("vasija_id", "desde");
+
+-- CreateIndex
+CREATE INDEX "idx_vasija_contenido_lote" ON "vasija_contenido"("lote_cosecha_id");
+
+-- CreateIndex
+CREATE INDEX "idx_existencia_vasija_vasija_fecha" ON "existencia_vasija"("vasija_id", "fecha_hora");
+
+-- CreateIndex
+CREATE INDEX "idx_control_fermentacion_vasija_fecha" ON "control_fermentacion"("vasija_id", "fecha_hora");
+
+-- CreateIndex
+CREATE INDEX "idx_orden_enologo_bodega_fecha" ON "orden_enologo"("bodega_id", "fecha");
+
+-- CreateIndex
+CREATE INDEX "idx_orden_enologo_enologo" ON "orden_enologo"("enologo_user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_operacion_vasija_bodega_fecha" ON "operacion_vasija"("bodega_id", "fecha_hora");
+
+-- CreateIndex
+CREATE INDEX "idx_operacion_vasija_origen" ON "operacion_vasija"("vasija_origen_id");
+
+-- CreateIndex
+CREATE INDEX "idx_operacion_vasija_destino" ON "operacion_vasija"("vasija_destino_id");
+
+-- CreateIndex
+CREATE INDEX "idx_operacion_vasija_orden" ON "operacion_vasija"("orden_enologo_id");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_bodega_fecha" ON "corte"("bodega_id", "fecha");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_campania" ON "corte"("campania_id");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_responsable" ON "corte"("responsable_user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_componente_corte" ON "corte_componente"("corte_id");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_componente_vasija" ON "corte_componente"("vasija_id");
+
+-- CreateIndex
+CREATE INDEX "idx_corte_componente_lote" ON "corte_componente"("lote_cosecha_id");
+
+-- CreateIndex
+CREATE INDEX "idx_producto_bodega" ON "producto"("bodega_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_producto_bodega_nombre" ON "producto"("bodega_id", "nombre_comercial");
+
+-- CreateIndex
+CREATE INDEX "idx_lote_fraccionamiento_corte" ON "lote_fraccionamiento"("corte_id");
+
+-- CreateIndex
+CREATE INDEX "idx_lote_fraccionamiento_producto" ON "lote_fraccionamiento"("producto_id");
+
+-- CreateIndex
+CREATE INDEX "idx_lote_fraccionamiento_fecha" ON "lote_fraccionamiento"("fecha");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "codigo_envase_codigo_qr_key" ON "codigo_envase"("codigo_qr");
+
+-- CreateIndex
+CREATE INDEX "idx_codigo_envase_lote" ON "codigo_envase"("lote_fraccionamiento_id");
+
+-- CreateIndex
+CREATE INDEX "idx_despacho_lote" ON "despacho"("lote_fraccionamiento_id");
+
+-- CreateIndex
+CREATE INDEX "idx_despacho_fecha" ON "despacho"("fecha");
 
 -- CreateIndex
 CREATE INDEX "idx_energia_periodo_tipo" ON "evento_energia"("periodo", "tipo");
@@ -963,6 +1329,9 @@ CREATE INDEX "idx_validacion_milestone" ON "validacion_milestone"("milestone_id"
 ALTER TABLE "bodega" ADD CONSTRAINT "bodega_productor_id_fkey" FOREIGN KEY ("productor_id") REFERENCES "productor"("productor_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "campania" ADD CONSTRAINT "campania_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "capacitacion_asistente" ADD CONSTRAINT "capacitacion_asistente_evento_capacitacion_id_fkey" FOREIGN KEY ("evento_capacitacion_id") REFERENCES "evento_capacitacion"("evento_capacitacion_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
@@ -970,9 +1339,6 @@ ALTER TABLE "capacitacion_asistente" ADD CONSTRAINT "capacitacion_asistente_pers
 
 -- AddForeignKey
 ALTER TABLE "cuartel" ADD CONSTRAINT "cuartel_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "campania" ADD CONSTRAINT "campania_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "cuartel_campania" ADD CONSTRAINT "cuartel_campania_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1024,6 +1390,105 @@ ALTER TABLE "evento_cosecha" ADD CONSTRAINT "evento_cosecha_cuartel_id_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "evento_cosecha" ADD CONSTRAINT "evento_cosecha_responsable_persona_id_fkey" FOREIGN KEY ("responsable_persona_id") REFERENCES "persona"("persona_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_lote_cosecha_id_fkey" FOREIGN KEY ("lote_cosecha_id") REFERENCES "evento_cosecha"("lote_cosecha_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "recepcion_bodega" ADD CONSTRAINT "recepcion_bodega_remito_uva_id_fkey" FOREIGN KEY ("remito_uva_id") REFERENCES "remito_uva"("remito_uva_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "analisis_recepcion" ADD CONSTRAINT "analisis_recepcion_recepcion_bodega_id_fkey" FOREIGN KEY ("recepcion_bodega_id") REFERENCES "recepcion_bodega"("recepcion_bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "ciu" ADD CONSTRAINT "ciu_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "ciu_recepcion" ADD CONSTRAINT "ciu_recepcion_ciu_id_fkey" FOREIGN KEY ("ciu_id") REFERENCES "ciu"("ciu_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "ciu_recepcion" ADD CONSTRAINT "ciu_recepcion_recepcion_bodega_id_fkey" FOREIGN KEY ("recepcion_bodega_id") REFERENCES "recepcion_bodega"("recepcion_bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "qc_ingreso_uva" ADD CONSTRAINT "qc_ingreso_uva_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "qc_ingreso_uva" ADD CONSTRAINT "qc_ingreso_uva_recepcion_bodega_id_fkey" FOREIGN KEY ("recepcion_bodega_id") REFERENCES "recepcion_bodega"("recepcion_bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "vasija" ADD CONSTRAINT "vasija_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "vasija_contenido" ADD CONSTRAINT "vasija_contenido_vasija_id_fkey" FOREIGN KEY ("vasija_id") REFERENCES "vasija"("vasija_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "vasija_contenido" ADD CONSTRAINT "vasija_contenido_lote_cosecha_id_fkey" FOREIGN KEY ("lote_cosecha_id") REFERENCES "evento_cosecha"("lote_cosecha_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "existencia_vasija" ADD CONSTRAINT "existencia_vasija_vasija_id_fkey" FOREIGN KEY ("vasija_id") REFERENCES "vasija"("vasija_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "control_fermentacion" ADD CONSTRAINT "control_fermentacion_vasija_id_fkey" FOREIGN KEY ("vasija_id") REFERENCES "vasija"("vasija_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "orden_enologo" ADD CONSTRAINT "orden_enologo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "orden_enologo" ADD CONSTRAINT "orden_enologo_enologo_user_id_fkey" FOREIGN KEY ("enologo_user_id") REFERENCES "app_user"("user_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_vasija_origen_id_fkey" FOREIGN KEY ("vasija_origen_id") REFERENCES "vasija"("vasija_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_vasija_destino_id_fkey" FOREIGN KEY ("vasija_destino_id") REFERENCES "vasija"("vasija_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_orden_enologo_id_fkey" FOREIGN KEY ("orden_enologo_id") REFERENCES "orden_enologo"("orden_enologo_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_recepcion_bodega_id_fkey" FOREIGN KEY ("recepcion_bodega_id") REFERENCES "recepcion_bodega"("recepcion_bodega_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "operacion_vasija" ADD CONSTRAINT "operacion_vasija_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte" ADD CONSTRAINT "corte_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte" ADD CONSTRAINT "corte_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte" ADD CONSTRAINT "corte_responsable_user_id_fkey" FOREIGN KEY ("responsable_user_id") REFERENCES "app_user"("user_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte_componente" ADD CONSTRAINT "corte_componente_corte_id_fkey" FOREIGN KEY ("corte_id") REFERENCES "corte"("corte_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte_componente" ADD CONSTRAINT "corte_componente_vasija_id_fkey" FOREIGN KEY ("vasija_id") REFERENCES "vasija"("vasija_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "corte_componente" ADD CONSTRAINT "corte_componente_lote_cosecha_id_fkey" FOREIGN KEY ("lote_cosecha_id") REFERENCES "evento_cosecha"("lote_cosecha_id") ON DELETE SET NULL ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "producto" ADD CONSTRAINT "producto_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "lote_fraccionamiento" ADD CONSTRAINT "lote_fraccionamiento_corte_id_fkey" FOREIGN KEY ("corte_id") REFERENCES "corte"("corte_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "lote_fraccionamiento" ADD CONSTRAINT "lote_fraccionamiento_producto_id_fkey" FOREIGN KEY ("producto_id") REFERENCES "producto"("producto_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "codigo_envase" ADD CONSTRAINT "codigo_envase_lote_fraccionamiento_id_fkey" FOREIGN KEY ("lote_fraccionamiento_id") REFERENCES "lote_fraccionamiento"("lote_fraccionamiento_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "despacho" ADD CONSTRAINT "despacho_lote_fraccionamiento_id_fkey" FOREIGN KEY ("lote_fraccionamiento_id") REFERENCES "lote_fraccionamiento"("lote_fraccionamiento_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "evento_energia" ADD CONSTRAINT "evento_energia_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE SET NULL ON UPDATE NO ACTION;
@@ -1173,10 +1638,10 @@ ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_bodega_id_fkey" FOREIGN 
 ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_campania_id_fkey" FOREIGN KEY ("campania_id") REFERENCES "campania"("campania_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "trazabilidad" ADD CONSTRAINT "trazabilidad_productor_id_fkey" FOREIGN KEY ("productor_id") REFERENCES "productor"("productor_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1197,35 +1662,13 @@ ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_bodega_id_fkey" FOREIGN KE
 ALTER TABLE "user_bodega" ADD CONSTRAINT "user_bodega_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "user_bodega_rol_user_bodega_fkey" FOREIGN KEY ("user_id", "bodega_id") REFERENCES "user_bodega"("user_id", "bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddConstraint
-ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "ck_user_bodega_rol_rol"
-CHECK (
-  "rol" IN (
-    'admin_bodega',
-    'encargado_finca',
-    'productor',
-    'operador_campo',
-    'responsable_calidad_inocuidad',
-    'responsable_ssyo'
-  )
-);
+ALTER TABLE "user_bodega_rol" ADD CONSTRAINT "user_bodega_rol_user_id_bodega_id_fkey" FOREIGN KEY ("user_id", "bodega_id") REFERENCES "user_bodega"("user_id", "bodega_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_rol_id_fkey" FOREIGN KEY ("rol_id") REFERENCES "rol"("rol_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "user_rol" ADD CONSTRAINT "user_rol_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_trazabilidad_id_fkey" FOREIGN KEY ("trazabilidad_id") REFERENCES "trazabilidad"("trazabilidad_id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
-
--- AddForeignKey
-ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "encargo" ADD CONSTRAINT "encargo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
@@ -1247,6 +1690,15 @@ ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_encargo_id_f
 
 -- AddForeignKey
 ALTER TABLE "encargo_asignacion" ADD CONSTRAINT "encargo_asignacion_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_trazabilidad_id_fkey" FOREIGN KEY ("trazabilidad_id") REFERENCES "trazabilidad"("trazabilidad_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "trazabilidad_origen" ADD CONSTRAINT "trazabilidad_origen_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "milestone_asignacion" ADD CONSTRAINT "milestone_asignacion_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -1290,63 +1742,3 @@ ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_encargo_asignacion_i
 -- AddForeignKey
 ALTER TABLE "validacion_milestone" ADD CONSTRAINT "validacion_milestone_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
--- SeedData
--- Protocolo inicial de cadena vitivinícola (idempotente)
-WITH target_protocolo AS (
-  INSERT INTO "protocolo" ("nombre", "version", "descripcion", "activo")
-  VALUES (
-    'Cadena vitivinícola',
-    '1.0.0',
-    'Protocolo base de trazabilidad para producción en finca, elaboración, distribución y comercialización.',
-    true
-  )
-  ON CONFLICT ("nombre", "version")
-  DO UPDATE SET
-    "descripcion" = EXCLUDED."descripcion",
-    "activo" = EXCLUDED."activo"
-  RETURNING "protocolo_id"
-)
-INSERT INTO "protocolo_etapa" ("protocolo_id", "nombre", "orden")
-SELECT p.protocolo_id, e.nombre, e.orden
-FROM target_protocolo p
-JOIN (
-  VALUES
-    ('Producción en finca', 10),
-    ('Elaboración', 20),
-    ('Distribución', 30),
-    ('Comercialización', 40)
-) AS e(nombre, orden) ON true
-ON CONFLICT ("protocolo_id", "nombre")
-DO UPDATE SET
-  "orden" = EXCLUDED."orden";
-
-INSERT INTO "protocolo_proceso" ("etapa_id", "nombre", "evento_tipo", "obligatorio", "orden")
-SELECT pe."etapa_id", pr.nombre, pr.evento_tipo, pr.obligatorio, pr.orden
-FROM "protocolo_etapa" pe
-JOIN "protocolo" p ON p."protocolo_id" = pe."protocolo_id"
-JOIN (
-  VALUES
-    ('Producción en finca', 'Características del terreno', 'analisis_suelo', true, 10),
-    ('Producción en finca', 'Plantación de la vid', 'labor_suelo', true, 20),
-    ('Producción en finca', 'Sistema de riego', 'riego', true, 30),
-    ('Producción en finca', 'Tratamientos agrícolas', 'aplicacion_fitosanitaria', true, 40),
-    ('Producción en finca', 'Registro fenológico', 'fenologia', true, 50),
-    ('Producción en finca', 'Cosecha', 'cosecha', true, 60),
-    ('Elaboración', 'Recepción de la uva', 'recepcion_uva', true, 10),
-    ('Elaboración', 'Obtención del mosto', 'obtencion_mosto', true, 20),
-    ('Elaboración', 'Fermentación', 'fermentacion', true, 30),
-    ('Elaboración', 'Crianza', 'crianza', true, 40),
-    ('Distribución', 'Envasado', 'envasado', true, 10),
-    ('Distribución', 'Almacenamiento', 'almacenamiento', true, 20),
-    ('Distribución', 'Transporte', 'transporte', true, 30),
-    ('Comercialización', 'Venta', 'venta', true, 10),
-    ('Comercialización', 'Distribución al consumidor', 'distribucion_consumidor', true, 20)
-) AS pr(etapa_nombre, nombre, evento_tipo, obligatorio, orden)
-  ON pr.etapa_nombre = pe."nombre"
-WHERE p."nombre" = 'Cadena vitivinícola'
-  AND p."version" = '1.0.0'
-ON CONFLICT ("etapa_id", "nombre")
-DO UPDATE SET
-  "evento_tipo" = EXCLUDED."evento_tipo",
-  "obligatorio" = EXCLUDED."obligatorio",
-  "orden" = EXCLUDED."orden";
