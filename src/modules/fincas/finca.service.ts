@@ -118,6 +118,22 @@ export async function createFinca({
   return prisma.finca.create({ data });
 }
 
+export async function getFincaById(fincaId: string, userId: string) {
+  if (!fincaId) {
+    throw new FincaError("fincaId requerido", 400);
+  }
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+  });
+  if (!finca) {
+    throw new FincaError("Finca no encontrada", 404);
+  }
+
+  await ensureUserBodega(userId, finca.bodega_id);
+  return finca;
+}
+
 export async function updateFinca(
   fincaId: string,
   { nombre_finca, rut, renspa, catastro, ubicacion_texto, userId }: UpdateFincaInput,

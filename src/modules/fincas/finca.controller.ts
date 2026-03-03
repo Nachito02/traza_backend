@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   createFinca,
   FincaError,
+  getFincaById,
   listFincasByBodega,
   updateFinca,
 } from "./finca.service.js";
@@ -46,6 +47,22 @@ export async function listFincasByBodegaHandler(req: Request, res: Response) {
     }
     const fincas = await listFincasByBodega(bodegaId, req.user.userId);
     return res.json(fincas);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getFincaByIdHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const fincaId = String(req.params.fincaId ?? "");
+    if (!fincaId) {
+      return res.status(400).json({ error: "fincaId requerido" });
+    }
+    const finca = await getFincaById(fincaId, req.user.userId);
+    return res.json(finca);
   } catch (error) {
     return handleError(res, error);
   }
