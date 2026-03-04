@@ -18,13 +18,13 @@ botRoutes.delete("/delegaciones/:botDelegationId", authMiddleware, revokeDelegat
 botRoutes.post(
   "/asignaciones/:encargoAsignacionId/contactar",
   authMiddleware,
-  requireRoles(["bot_agent", "super_admin"]),
+  requireRoles(["bot_agent", "admin_sistema"]),
   botContactarAsignacionHandler,
 );
 
 botRoutes.post(
   "/asignaciones/:encargoAsignacionId/ayudar-carga",
   authMiddleware,
-  requireRoles(["bot_agent", "super_admin"]),
+  requireRoles(["bot_agent", "admin_sistema"]),
   botAyudarCargaHandler,
 );

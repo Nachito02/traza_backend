@@ -9,6 +9,14 @@ type CreateCampaniaInput = {
   userId: string;
 };
 
+type UpdateCampaniaInput = {
+  nombre?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  estado?: string;
+  userId: string;
+};
+
 export class CampaniaError extends Error {
   status: number;
 
@@ -47,6 +55,20 @@ export async function listCampanias(userId: string, bodegaId?: string) {
     where: { bodega_id: { in: ids } },
     orderBy: [{ fecha_inicio: "desc" }, { nombre: "asc" }],
   });
+}
+
+async function getCampaniaScoped(campaniaId: string, userId: string) {
+  if (!campaniaId) {
+    throw new CampaniaError("campaniaId requerido", 400);
+  }
+  const campania = await prisma.campania.findUnique({
+    where: { campania_id: campaniaId },
+  });
+  if (!campania) {
+    throw new CampaniaError("Campaña no encontrada", 404);
+  }
+  await ensureUserBodega(userId, campania.bodega_id);
+  return campania;
 }
 
 function parseCampaniaDate(input: string, fieldLabel: string): Date {
@@ -110,4 +132,63 @@ export async function createCampania({
   if (estado !== undefined) data.estado = estado;
 
   return prisma.campania.create({ data });
+}
+
+export async function getCampaniaById(campaniaId: string, userId: string) {
+  await getCampaniaScoped(campaniaId, userId);
+  return prisma.campania.findUnique({
+    where: { campania_id: campaniaId },
+  });
+}
+
+export async function updateCampania(
+  campaniaId: string,
+  { nombre, fecha_inicio, fecha_fin, estado, userId }: UpdateCampaniaInput,
+) {
+  const campania = await getCampaniaScoped(campaniaId, userId);
+
+  if (
+    nombre === undefined &&
+    fecha_inicio === undefined &&
+    fecha_fin === undefined &&
+    estado === undefined
+  ) {
+    throw new CampaniaError("No hay campos para actualizar", 400);
+  }
+
+  if (nombre !== undefined && nombre !== campania.nombre) {
+    const existing = await prisma.campania.findFirst({
+      where: {
+        bodega_id: campania.bodega_id,
+        nombre,
+        campania_id: { not: campania.campania_id },
+      },
+      select: { campania_id: true },
+    });
+    if (existing) {
+      throw new CampaniaError("Ya existe una campaña con ese nombre en la bodega", 409);
+    }
+  }
+
+  return prisma.campania.update({
+    where: { campania_id: campaniaId },
+    data: {
+      ...(nombre !== undefined ? { nombre } : {}),
+      ...(fecha_inicio !== undefined
+        ? { fecha_inicio: parseCampaniaDate(fecha_inicio, "Fecha inicio") }
+        : {}),
+      ...(fecha_fin !== undefined
+        ? { fecha_fin: parseCampaniaDate(fecha_fin, "Fecha fin") }
+        : {}),
+      ...(estado !== undefined ? { estado } : {}),
+    },
+  });
+}
+
+export async function deleteCampania(campaniaId: string, userId: string) {
+  await getCampaniaScoped(campaniaId, userId);
+  await prisma.campania.delete({
+    where: { campania_id: campaniaId },
+  });
+  return { deleted: true };
 }

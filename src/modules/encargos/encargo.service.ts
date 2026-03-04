@@ -1,7 +1,9 @@
 import { prisma } from "../../config/prismaClient.js";
-import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
-
-const MANAGER_BODEGA_ROLES = ["admin_bodega", "encargado_finca"];
+import {
+  canManageBodega,
+  hasAnyFincaRole,
+  isSystemAdmin,
+} from "../auth/scope-permissions.service.js";
 
 type CreateEncargoInput = {
   bodegaId: string;
@@ -32,19 +34,25 @@ export class EncargoError extends Error {
 }
 
 async function ensureCanManageBodega(userId: string, bodegaId: string) {
-  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
-  if (isSuperAdmin) return;
-
-  const rel = await prisma.userBodegaRol.findFirst({
-    where: {
-      user_id: userId,
-      bodega_id: bodegaId,
-      rol: { in: MANAGER_BODEGA_ROLES },
-    },
-  });
-  if (!rel) {
+  const ok = await canManageBodega(userId, bodegaId);
+  if (!ok) {
     throw new EncargoError("No autorizado para administrar esta bodega", 403);
   }
+}
+
+async function ensureCanManageEncargoScope(userId: string, bodegaId: string, fincaId?: string) {
+  const [isAdminSistema, canManageBodegaRole] = await Promise.all([
+    isSystemAdmin(userId),
+    canManageBodega(userId, bodegaId),
+  ]);
+  if (isAdminSistema || canManageBodegaRole) return;
+
+  if (fincaId) {
+    const hasFincaManagerRole = await hasAnyFincaRole(userId, fincaId, ["encargado_finca"]);
+    if (hasFincaManagerRole) return;
+  }
+
+  throw new EncargoError("No autorizado para administrar este alcance", 403);
 }
 
 async function ensureUsersBelongToBodega(userIds: string[], bodegaId: string) {
@@ -67,7 +75,7 @@ export async function createEncargo(input: CreateEncargoInput, actorUserId: stri
   if (!input.bodegaId || !input.titulo) {
     throw new EncargoError("bodegaId y titulo son requeridos", 400);
   }
-  await ensureCanManageBodega(actorUserId, input.bodegaId);
+  await ensureCanManageEncargoScope(actorUserId, input.bodegaId, input.fincaId);
 
   const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
   await ensureUsersBelongToBodega(assigneeUserIds, input.bodegaId);
@@ -139,8 +147,8 @@ export async function listEncargos(
   const estadoFilter = soloPendientes
     ? { in: ["pendiente", "en_progreso"] as Array<"pendiente" | "en_progreso"> }
     : undefined;
-  const isSuperAdmin = await userHasAnyRole(actorUserId, ["super_admin"]);
-  if (isSuperAdmin) {
+  const isSystemAdminUser = await isSystemAdmin(actorUserId);
+  if (isSystemAdminUser) {
     return prisma.encargo.findMany({
       where: {
         ...(bodegaId ? { bodega_id: bodegaId } : {}),
@@ -152,31 +160,55 @@ export async function listEncargos(
     });
   }
 
-  const memberships = await prisma.userBodegaRol.findMany({
-    where: {
-      user_id: actorUserId,
-      rol: { in: MANAGER_BODEGA_ROLES },
-    },
-    select: { bodega_id: true },
-  });
-  const allowedBodegas = memberships.map((m) => m.bodega_id);
-  if (allowedBodegas.length === 0) {
+  const [managedBodegas, fincasAsignadas] = await Promise.all([
+    prisma.userBodegaRol.findMany({
+      where: { user_id: actorUserId, rol: { in: ["admin_bodega", "encargado_bodega"] } },
+      select: { bodega_id: true },
+    }),
+    prisma.$queryRaw<Array<{ finca_id: string }>>`
+      SELECT DISTINCT "finca_id"
+      FROM "user_finca_rol"
+      WHERE "user_id" = ${actorUserId}::uuid
+    `,
+  ]);
+
+  const allowedBodegas = managedBodegas.map((m) => m.bodega_id);
+  const allowedFincas = fincasAsignadas.map((f) => f.finca_id);
+
+  if (allowedBodegas.length === 0 && allowedFincas.length === 0) {
     throw new EncargoError("No autorizado para ver encargos", 403);
   }
 
-  if (bodegaId && !allowedBodegas.includes(bodegaId)) {
-    throw new EncargoError("No autorizado para ver encargos de esta bodega", 403);
+  if (bodegaId) {
+    const canSeeBodega =
+      allowedBodegas.includes(bodegaId) ||
+      (allowedFincas.length > 0 &&
+        (await prisma.finca.count({
+          where: {
+            bodega_id: bodegaId,
+            finca_id: { in: allowedFincas },
+          },
+        })) > 0);
+    if (!canSeeBodega) {
+      throw new EncargoError("No autorizado para ver encargos de esta bodega", 403);
+    }
   }
 
-  return prisma.encargo.findMany({
-    where: {
-      bodega_id: bodegaId ?? { in: allowedBodegas },
-      ...(fincaId ? { finca_id: fincaId } : {}),
-      ...(estadoFilter ? { estado: estadoFilter } : {}),
-    },
-    orderBy: [{ created_at: "desc" }],
-    include: { encargo_asignacion: true },
-  });
+  const where = {
+    ...(estadoFilter ? { estado: estadoFilter } : {}),
+    ...(fincaId ? { finca_id: fincaId } : {}),
+    ...(bodegaId ? { bodega_id: bodegaId } : {}),
+    ...(bodegaId || fincaId
+      ? {}
+      : {
+          OR: [
+            ...(allowedBodegas.length > 0 ? [{ bodega_id: { in: allowedBodegas } }] : []),
+            ...(allowedFincas.length > 0 ? [{ finca_id: { in: allowedFincas } }] : []),
+          ],
+        }),
+  };
+
+  return prisma.encargo.findMany({ where, orderBy: [{ created_at: "desc" }], include: { encargo_asignacion: true } });
 }
 
 export async function addEncargoAsignaciones(
@@ -194,7 +226,7 @@ export async function addEncargoAsignaciones(
   if (!encargo) {
     throw new EncargoError("Encargo no encontrado", 404);
   }
-  await ensureCanManageBodega(actorUserId, encargo.bodega_id);
+  await ensureCanManageEncargoScope(actorUserId, encargo.bodega_id);
 
   const uniqueUserIds = Array.from(new Set(userIds));
   await ensureUsersBelongToBodega(uniqueUserIds, encargo.bodega_id);
@@ -361,14 +393,19 @@ export async function updateMyEncargoAsignacionEstado(input: UpdateEncargoAsigna
 }
 
 export async function canUserManageEncargos(userId: string) {
-  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
-  if (isSuperAdmin) return true;
-  const membership = await prisma.userBodegaRol.findFirst({
-    where: {
-      user_id: userId,
-      rol: { in: MANAGER_BODEGA_ROLES },
-    },
-    select: { user_id: true },
-  });
-  return Boolean(membership);
+  if (await isSystemAdmin(userId)) return true;
+  const [bodegaRole, fincaRole] = await Promise.all([
+    prisma.userBodegaRol.findFirst({
+      where: { user_id: userId, rol: { in: ["admin_bodega", "encargado_bodega"] } },
+      select: { user_id: true },
+    }),
+    prisma.$queryRaw<Array<{ user_id: string }>>`
+      SELECT "user_id"
+      FROM "user_finca_rol"
+      WHERE "user_id" = ${userId}::uuid
+        AND "rol" = 'encargado_finca'
+      LIMIT 1
+    `,
+  ]);
+  return Boolean(bodegaRole) || fincaRole.length > 0;
 }

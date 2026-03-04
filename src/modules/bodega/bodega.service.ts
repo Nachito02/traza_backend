@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prismaClient.js";
+import { canAccessBodega, canManageBodega } from "../auth/scope-permissions.service.js";
 
 type CreateBodegaInput = {
   nombre: string;
@@ -15,6 +16,14 @@ type LinkProductorInput = {
   razon_social?: string;
   cuit?: string;
   tipo_relacion?: string;
+};
+
+type UpsertBodegaFincaVinculoInput = {
+  bodegaId: string;
+  fincaId: string;
+  userId: string;
+  tipoVinculo?: string;
+  activo?: boolean;
 };
 
 export class BodegaError extends Error {
@@ -87,18 +96,22 @@ export async function createBodega({
   return bodega;
 }
 
-async function ensureUserBodega(userId: string, bodegaId: string) {
-  const rel = await prisma.userBodega.findFirst({
-    where: { user_id: userId, bodega_id: bodegaId },
-    select: { user_id: true },
-  });
-  if (!rel) {
+async function ensureUserCanAccessBodega(userId: string, bodegaId: string) {
+  const ok = await canAccessBodega(userId, bodegaId);
+  if (!ok) {
+    throw new BodegaError("No autorizado para esta bodega", 403);
+  }
+}
+
+async function ensureUserCanManageBodega(userId: string, bodegaId: string) {
+  const ok = await canManageBodega(userId, bodegaId);
+  if (!ok) {
     throw new BodegaError("No autorizado para esta bodega", 403);
   }
 }
 
 export async function listProductoresByBodega(bodegaId: string, userId: string) {
-  await ensureUserBodega(userId, bodegaId);
+  await ensureUserCanAccessBodega(userId, bodegaId);
 
   const bodega = await prisma.bodega.findUnique({
     where: { bodega_id: bodegaId },
@@ -129,7 +142,7 @@ export async function linkProductorToBodega({
     throw new BodegaError("bodegaId es requerido", 400);
   }
 
-  await ensureUserBodega(userId, bodegaId);
+  await ensureUserCanManageBodega(userId, bodegaId);
 
   const bodega = await prisma.bodega.findUnique({
     where: { bodega_id: bodegaId },
@@ -173,5 +186,123 @@ export async function linkProductorToBodega({
     productor_id: resolvedProductorId,
     productor: updated.productor,
     tipo_relacion: tipo_relacion ?? null,
+  };
+}
+
+export async function listFincaVinculosByBodega(bodegaId: string, userId: string) {
+  await ensureUserCanAccessBodega(userId, bodegaId);
+
+  const bodega = await prisma.bodega.findUnique({
+    where: { bodega_id: bodegaId },
+    select: { bodega_id: true },
+  });
+  if (!bodega) {
+    throw new BodegaError("Bodega no encontrada", 404);
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      bodega_id: string;
+      finca_id: string;
+      tipo_vinculo: string;
+      activo: boolean;
+      created_at: Date;
+      updated_at: Date;
+      finca_nombre: string;
+      finca_bodega_id: string;
+    }>
+  >`
+    SELECT
+      v."bodega_id",
+      v."finca_id",
+      v."tipo_vinculo",
+      v."activo",
+      v."created_at",
+      v."updated_at",
+      f."nombre_finca" AS "finca_nombre",
+      f."bodega_id" AS "finca_bodega_id"
+    FROM "bodega_finca_vinculo" v
+    JOIN "finca" f ON f."finca_id" = v."finca_id"
+    WHERE v."bodega_id" = ${bodegaId}::uuid
+    ORDER BY f."nombre_finca" ASC
+  `;
+
+  return rows;
+}
+
+export async function upsertBodegaFincaVinculo({
+  bodegaId,
+  fincaId,
+  userId,
+  tipoVinculo,
+  activo,
+}: UpsertBodegaFincaVinculoInput) {
+  if (!bodegaId || !fincaId) {
+    throw new BodegaError("bodegaId y fincaId son requeridos", 400);
+  }
+
+  await ensureUserCanManageBodega(userId, bodegaId);
+
+  const normalizedTipo = (tipoVinculo ?? "propia").trim().toLowerCase();
+  if (!["propia", "proveedor_tercero"].includes(normalizedTipo)) {
+    throw new BodegaError("tipo_vinculo inválido (propia|proveedor_tercero)", 400);
+  }
+  const normalizedActivo = activo ?? true;
+
+  const [bodega, finca] = await Promise.all([
+    prisma.bodega.findUnique({
+      where: { bodega_id: bodegaId },
+      select: { bodega_id: true, nombre: true },
+    }),
+    prisma.finca.findUnique({
+      where: { finca_id: fincaId },
+      select: { finca_id: true, nombre_finca: true, bodega_id: true },
+    }),
+  ]);
+
+  if (!bodega) {
+    throw new BodegaError("Bodega no encontrada", 404);
+  }
+  if (!finca) {
+    throw new BodegaError("Finca no encontrada", 404);
+  }
+
+  await prisma.$executeRaw`
+    INSERT INTO "bodega_finca_vinculo" ("bodega_id", "finca_id", "tipo_vinculo", "activo")
+    VALUES (${bodegaId}::uuid, ${fincaId}::uuid, ${normalizedTipo}, ${normalizedActivo})
+    ON CONFLICT ("bodega_id", "finca_id")
+    DO UPDATE SET
+      "tipo_vinculo" = EXCLUDED."tipo_vinculo",
+      "activo" = EXCLUDED."activo",
+      "updated_at" = CURRENT_TIMESTAMP
+  `;
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      bodega_id: string;
+      finca_id: string;
+      tipo_vinculo: string;
+      activo: boolean;
+      created_at: Date;
+      updated_at: Date;
+    }>
+  >`
+    SELECT "bodega_id", "finca_id", "tipo_vinculo", "activo", "created_at", "updated_at"
+    FROM "bodega_finca_vinculo"
+    WHERE "bodega_id" = ${bodegaId}::uuid
+      AND "finca_id" = ${fincaId}::uuid
+    LIMIT 1
+  `;
+
+  const relation = rows[0];
+  if (!relation) {
+    throw new BodegaError("No se pudo persistir el vínculo", 500);
+  }
+
+  return {
+    ...relation,
+    bodega_nombre: bodega.nombre,
+    finca_nombre: finca.nombre_finca,
+    finca_bodega_id: finca.bodega_id,
   };
 }

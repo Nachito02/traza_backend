@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
 import {
   createFinca,
+  deleteFinca,
   FincaError,
   getFincaById,
+  listFincasConDetalles,
   listFincasByBodega,
   updateFinca,
 } from "./finca.service.js";
@@ -52,6 +54,19 @@ export async function listFincasByBodegaHandler(req: Request, res: Response) {
   }
 }
 
+export async function listFincasConDetallesHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const bodegaId = typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
+    const fincas = await listFincasConDetalles(req.user.userId, bodegaId);
+    return res.json(fincas);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function getFincaByIdHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
@@ -84,6 +99,19 @@ export async function updateFincaHandler(req: Request, res: Response) {
       userId: req.user.userId,
     });
     return res.json(finca);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function deleteFincaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const fincaId = String(req.params.fincaId ?? "");
+    const result = await deleteFinca(fincaId, req.user.userId);
+    return res.json(result);
   } catch (error) {
     return handleError(res, error);
   }

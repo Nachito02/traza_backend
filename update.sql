@@ -638,3 +638,83 @@ BEGIN
         ALTER TABLE "despacho" ADD CONSTRAINT "despacho_lote_fraccionamiento_id_fkey" FOREIGN KEY ("lote_fraccionamiento_id") REFERENCES "lote_fraccionamiento"("lote_fraccionamiento_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
     END IF;
 END $$;
+
+-- CreateTable (vinculo bodega<->finca, propia o proveedor tercero)
+CREATE TABLE IF NOT EXISTS "bodega_finca_vinculo" (
+    "bodega_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "tipo_vinculo" TEXT NOT NULL DEFAULT 'propia',
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "bodega_finca_vinculo_pkey" PRIMARY KEY ("bodega_id","finca_id")
+);
+
+-- AddCheckConstraint
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'bodega_finca_vinculo_tipo_vinculo_check'
+    ) THEN
+        ALTER TABLE "bodega_finca_vinculo"
+        ADD CONSTRAINT "bodega_finca_vinculo_tipo_vinculo_check"
+        CHECK ("tipo_vinculo" IN ('propia', 'proveedor_tercero'));
+    END IF;
+END $$;
+
+-- CreateTable (roles por finca puntual)
+CREATE TABLE IF NOT EXISTS "user_finca_rol" (
+    "user_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "rol" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "user_finca_rol_pkey" PRIMARY KEY ("user_id","finca_id","rol")
+);
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "idx_bodega_finca_vinculo_finca" ON "bodega_finca_vinculo"("finca_id");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "idx_bodega_finca_vinculo_tipo" ON "bodega_finca_vinculo"("tipo_vinculo", "activo");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "idx_user_finca_rol_finca_rol" ON "user_finca_rol"("finca_id", "rol");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "idx_user_finca_rol_user" ON "user_finca_rol"("user_id");
+
+-- AddForeignKey
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bodega_finca_vinculo_bodega_id_fkey') THEN
+        ALTER TABLE "bodega_finca_vinculo" ADD CONSTRAINT "bodega_finca_vinculo_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+    END IF;
+END $$;
+
+-- AddForeignKey
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bodega_finca_vinculo_finca_id_fkey') THEN
+        ALTER TABLE "bodega_finca_vinculo" ADD CONSTRAINT "bodega_finca_vinculo_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+    END IF;
+END $$;
+
+-- AddForeignKey
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_finca_rol_user_id_fkey') THEN
+        ALTER TABLE "user_finca_rol" ADD CONSTRAINT "user_finca_rol_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "app_user"("user_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+    END IF;
+END $$;
+
+-- AddForeignKey
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_finca_rol_finca_id_fkey') THEN
+        ALTER TABLE "user_finca_rol" ADD CONSTRAINT "user_finca_rol_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE CASCADE ON UPDATE NO ACTION;
+    END IF;
+END $$;

@@ -137,7 +137,7 @@ gcloud run services logs read "$SERVICE" --region="$REGION" --limit=100
 Se implementó autorización por roles usando las tablas `rol` y `user_rol`.
 
 Roles sugeridos:
-- `super_admin`: control total de la plataforma
+- `admin_sistema`: control total de la plataforma
 - `bodega_admin`: administración de una o más bodegas
 - `encargado`: crea y asigna encargos diarios
 - `operario`: recibe encargos y reporta avance
@@ -154,9 +154,9 @@ Endpoints:
 - `GET /api/encargos/me/can-manage`
 - `GET /api/encargos/me/asignaciones`
 - `PATCH /api/encargos/me/asignaciones/:encargoAsignacionId/estado`
-- `GET /api/encargos` (requiere `super_admin|bodega_admin|encargado`)
-- `POST /api/encargos` (requiere `super_admin|bodega_admin|encargado`)
-- `POST /api/encargos/:encargoId/asignaciones` (requiere `super_admin|bodega_admin|encargado`)
+- `GET /api/encargos` (requiere `admin_sistema|bodega_admin|encargado`)
+- `POST /api/encargos` (requiere `admin_sistema|bodega_admin|encargado`)
+- `POST /api/encargos/:encargoId/asignaciones` (requiere `admin_sistema|bodega_admin|encargado`)
 
 ### Bot con delegación por usuario
 
@@ -170,8 +170,8 @@ Endpoints:
 - `POST /api/bot/delegaciones`
 - `GET /api/bot/delegaciones/me`
 - `DELETE /api/bot/delegaciones/:botDelegationId`
-- `POST /api/bot/asignaciones/:encargoAsignacionId/contactar` (requiere `bot_agent|super_admin`)
-- `POST /api/bot/asignaciones/:encargoAsignacionId/ayudar-carga` (requiere `bot_agent|super_admin`)
+- `POST /api/bot/asignaciones/:encargoAsignacionId/contactar` (requiere `bot_agent|admin_sistema`)
+- `POST /api/bot/asignaciones/:encargoAsignacionId/ayudar-carga` (requiere `bot_agent|admin_sistema`)
 
 ### WhatsApp en usuarios
 

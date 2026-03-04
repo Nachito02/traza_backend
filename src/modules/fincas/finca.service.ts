@@ -1,5 +1,9 @@
 import { prisma } from "../../config/prismaClient.js";
-import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
+import {
+  canManageBodega,
+  canManageFinca,
+  isSystemAdmin,
+} from "../auth/scope-permissions.service.js";
 
 type CreateFincaInput = {
   bodegaId: string;
@@ -67,22 +71,258 @@ async function resolveBodegaId(bodegaRef: string) {
   return only.bodega_id;
 }
 
-async function ensureUserBodega(userId: string, bodegaId: string) {
-  const isSystemAdmin = await userHasAnyRole(userId, ["super_admin", "admin_sistema"]);
-  if (isSystemAdmin) return;
-
-  const rel = await prisma.userBodega.findFirst({
-    where: { user_id: userId, bodega_id: bodegaId },
-  });
-  if (!rel) {
+async function ensureUserCanManageBodega(userId: string, bodegaId: string) {
+  const ok = await canManageBodega(userId, bodegaId);
+  if (!ok) {
     throw new FincaError("No autorizado para esta bodega", 403);
   }
 }
 
 export async function listFincasByBodega(bodegaId: string, userId: string) {
   const resolvedBodegaId = await resolveBodegaId(bodegaId);
-  await ensureUserBodega(userId, resolvedBodegaId);
-  return prisma.finca.findMany({ where: { bodega_id: resolvedBodegaId } });
+
+  const [isAdminSistema, canManage] = await Promise.all([
+    isSystemAdmin(userId),
+    canManageBodega(userId, resolvedBodegaId),
+  ]);
+
+  if (isAdminSistema || canManage) {
+    return prisma.finca.findMany({ where: { bodega_id: resolvedBodegaId } });
+  }
+
+  return prisma.$queryRaw<Array<{
+    finca_id: string;
+    bodega_id: string;
+    nombre_finca: string;
+    rut: string | null;
+    renspa: string | null;
+    catastro: string | null;
+    ubicacion_texto: string | null;
+    created_at: Date;
+    updated_at: Date;
+  }>>`
+    SELECT f.*
+    FROM "finca" f
+    JOIN "user_finca_rol" ufr ON ufr."finca_id" = f."finca_id"
+    WHERE f."bodega_id" = ${resolvedBodegaId}::uuid
+      AND ufr."user_id" = ${userId}::uuid
+    ORDER BY f."nombre_finca" ASC
+  `;
+}
+
+type FincaDetalleRow = {
+  finca_id: string;
+  bodega_id: string;
+  nombre_finca: string;
+  rut: string | null;
+  renspa: string | null;
+  catastro: string | null;
+  ubicacion_texto: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type VinculoRow = {
+  bodega_id: string;
+  finca_id: string;
+  tipo_vinculo: string;
+  activo: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function buildFincasDetalleResponse(
+  fincas: FincaDetalleRow[],
+  vinculos: VinculoRow[],
+  filteredBodegaId?: string,
+) {
+  const vinculosByFinca = new Map<string, VinculoRow[]>();
+  for (const vinculo of vinculos) {
+    const existing = vinculosByFinca.get(vinculo.finca_id) ?? [];
+    existing.push(vinculo);
+    vinculosByFinca.set(vinculo.finca_id, existing);
+  }
+
+  return fincas.map((finca) => {
+    const fincaVinculos = vinculosByFinca.get(finca.finca_id) ?? [];
+
+    if (!filteredBodegaId) {
+      return {
+        ...finca,
+        vinculos: fincaVinculos,
+      };
+    }
+
+    const vinculoSeleccionado =
+      fincaVinculos.find((v) => v.bodega_id === filteredBodegaId) ??
+      (finca.bodega_id === filteredBodegaId
+        ? {
+            bodega_id: filteredBodegaId,
+            finca_id: finca.finca_id,
+            tipo_vinculo: "propia",
+            activo: true,
+            created_at: finca.created_at,
+            updated_at: finca.updated_at,
+          }
+        : null);
+
+    return {
+      ...finca,
+      vinculo: vinculoSeleccionado,
+      vinculos: vinculoSeleccionado ? [vinculoSeleccionado] : [],
+    };
+  });
+}
+
+export async function listFincasConDetalles(userId: string, bodegaId?: string) {
+  const normalizedBodegaId = bodegaId?.trim();
+
+  if (normalizedBodegaId) {
+    const resolvedBodegaId = await resolveBodegaId(normalizedBodegaId);
+
+    const [isAdminSistema, canManage] = await Promise.all([
+      isSystemAdmin(userId),
+      canManageBodega(userId, resolvedBodegaId),
+    ]);
+
+    const fincas = isAdminSistema || canManage
+      ? await prisma.$queryRaw<FincaDetalleRow[]>`
+          SELECT DISTINCT
+            f."finca_id",
+            f."bodega_id",
+            f."nombre_finca",
+            f."rut",
+            f."renspa",
+            f."catastro",
+            f."ubicacion_texto",
+            f."created_at",
+            f."updated_at"
+          FROM "finca" f
+          LEFT JOIN "bodega_finca_vinculo" v
+            ON v."finca_id" = f."finca_id"
+           AND v."bodega_id" = ${resolvedBodegaId}::uuid
+          WHERE f."bodega_id" = ${resolvedBodegaId}::uuid
+             OR v."bodega_id" IS NOT NULL
+          ORDER BY f."nombre_finca" ASC
+        `
+      : await prisma.$queryRaw<FincaDetalleRow[]>`
+          SELECT DISTINCT
+            f."finca_id",
+            f."bodega_id",
+            f."nombre_finca",
+            f."rut",
+            f."renspa",
+            f."catastro",
+            f."ubicacion_texto",
+            f."created_at",
+            f."updated_at"
+          FROM "finca" f
+          JOIN "user_finca_rol" ufr
+            ON ufr."finca_id" = f."finca_id"
+           AND ufr."user_id" = ${userId}::uuid
+          LEFT JOIN "bodega_finca_vinculo" v
+            ON v."finca_id" = f."finca_id"
+           AND v."bodega_id" = ${resolvedBodegaId}::uuid
+          WHERE f."bodega_id" = ${resolvedBodegaId}::uuid
+             OR v."bodega_id" IS NOT NULL
+          ORDER BY f."nombre_finca" ASC
+        `;
+
+    const vinculos = await prisma.$queryRaw<VinculoRow[]>`
+      SELECT
+        "bodega_id",
+        "finca_id",
+        "tipo_vinculo",
+        "activo",
+        "created_at",
+        "updated_at"
+      FROM "bodega_finca_vinculo"
+      WHERE "bodega_id" = ${resolvedBodegaId}::uuid
+    `;
+
+    return buildFincasDetalleResponse(fincas, vinculos, resolvedBodegaId);
+  }
+
+  const adminSistema = await isSystemAdmin(userId);
+
+  const fincas = adminSistema
+    ? await prisma.$queryRaw<FincaDetalleRow[]>`
+        SELECT
+          "finca_id",
+          "bodega_id",
+          "nombre_finca",
+          "rut",
+          "renspa",
+          "catastro",
+          "ubicacion_texto",
+          "created_at",
+          "updated_at"
+        FROM "finca"
+        ORDER BY "nombre_finca" ASC
+      `
+    : await prisma.$queryRaw<FincaDetalleRow[]>`
+        SELECT DISTINCT
+          f."finca_id",
+          f."bodega_id",
+          f."nombre_finca",
+          f."rut",
+          f."renspa",
+          f."catastro",
+          f."ubicacion_texto",
+          f."created_at",
+          f."updated_at"
+        FROM "finca" f
+        WHERE f."bodega_id" IN (
+          SELECT ubr."bodega_id"
+          FROM "user_bodega_rol" ubr
+          WHERE ubr."user_id" = ${userId}::uuid
+            AND ubr."rol" IN ('admin_bodega', 'encargado_bodega')
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM "user_finca_rol" ufr
+          WHERE ufr."user_id" = ${userId}::uuid
+            AND ufr."finca_id" = f."finca_id"
+        )
+        ORDER BY f."nombre_finca" ASC
+      `;
+
+  const vinculos = adminSistema
+    ? await prisma.$queryRaw<VinculoRow[]>`
+        SELECT
+          "bodega_id",
+          "finca_id",
+          "tipo_vinculo",
+          "activo",
+          "created_at",
+          "updated_at"
+        FROM "bodega_finca_vinculo"
+      `
+    : await prisma.$queryRaw<VinculoRow[]>`
+        SELECT
+          v."bodega_id",
+          v."finca_id",
+          v."tipo_vinculo",
+          v."activo",
+          v."created_at",
+          v."updated_at"
+        FROM "bodega_finca_vinculo" v
+        JOIN "finca" f ON f."finca_id" = v."finca_id"
+        WHERE f."bodega_id" IN (
+          SELECT ubr."bodega_id"
+          FROM "user_bodega_rol" ubr
+          WHERE ubr."user_id" = ${userId}::uuid
+            AND ubr."rol" IN ('admin_bodega', 'encargado_bodega')
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM "user_finca_rol" ufr
+          WHERE ufr."user_id" = ${userId}::uuid
+            AND ufr."finca_id" = f."finca_id"
+        )
+      `;
+
+  return buildFincasDetalleResponse(fincas, vinculos);
 }
 
 export async function createFinca({
@@ -99,7 +339,7 @@ export async function createFinca({
   }
 
   const resolvedBodegaId = await resolveBodegaId(bodegaId);
-  await ensureUserBodega(userId, resolvedBodegaId);
+  await ensureUserCanManageBodega(userId, resolvedBodegaId);
 
   const data: {
     bodega_id: string;
@@ -130,7 +370,10 @@ export async function getFincaById(fincaId: string, userId: string) {
     throw new FincaError("Finca no encontrada", 404);
   }
 
-  await ensureUserBodega(userId, finca.bodega_id);
+  const canManage = await canManageFinca(userId, finca.finca_id);
+  if (!canManage) {
+    throw new FincaError("No autorizado para esta finca", 403);
+  }
   return finca;
 }
 
@@ -150,7 +393,10 @@ export async function updateFinca(
     throw new FincaError("Finca no encontrada", 404);
   }
 
-  await ensureUserBodega(userId, finca.bodega_id);
+  const canManage = await canManageFinca(userId, finca.finca_id);
+  if (!canManage) {
+    throw new FincaError("No autorizado para esta finca", 403);
+  }
 
   const data: {
     nombre_finca?: string;
@@ -174,4 +420,57 @@ export async function updateFinca(
     where: { finca_id: fincaId },
     data,
   });
+}
+
+export async function deleteFinca(fincaId: string, userId: string) {
+  if (!fincaId) {
+    throw new FincaError("fincaId requerido", 400);
+  }
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+    select: { finca_id: true },
+  });
+  if (!finca) {
+    throw new FincaError("Finca no encontrada", 404);
+  }
+
+  const canManage = await canManageFinca(userId, finca.finca_id);
+  if (!canManage) {
+    throw new FincaError("No autorizado para esta finca", 403);
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        DELETE FROM "user_finca_rol"
+        WHERE "finca_id" = ${finca.finca_id}::uuid
+      `;
+
+      await tx.$executeRaw`
+        DELETE FROM "bodega_finca_vinculo"
+        WHERE "finca_id" = ${finca.finca_id}::uuid
+      `;
+
+      await tx.finca.delete({
+        where: { finca_id: finca.finca_id },
+      });
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      ((error as { code?: string }).code === "P2003" ||
+        (error as { code?: string }).code === "P2014")
+    ) {
+      throw new FincaError(
+        "No se puede eliminar la finca porque tiene registros relacionados",
+        409,
+      );
+    }
+    throw error;
+  }
+
+  return { deleted: true };
 }

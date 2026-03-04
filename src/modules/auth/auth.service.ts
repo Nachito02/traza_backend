@@ -11,6 +11,7 @@ type LoginInput = {
 };
 
 type CreateUserInput = {
+  actorUserId?: string;
   email: string;
   password: string;
   nombre: string;
@@ -23,9 +24,18 @@ type CreateUserInput = {
 type UpdateUserBodegaRoleInput = {
   actorUserId: string;
   targetUserId: string;
-  bodegaName: string;
+  bodegaName?: string;
+  bodegaId?: string;
   rolEnBodega?: string;
   rolesEnBodega?: string[];
+};
+
+type UpdateUserFincaRoleInput = {
+  actorUserId: string;
+  targetUserId: string;
+  fincaId: string;
+  rolEnFinca?: string;
+  rolesEnFinca?: string[];
 };
 
 type UpdateUserGlobalRoleInput = {
@@ -35,6 +45,15 @@ type UpdateUserGlobalRoleInput = {
   enabled?: boolean;
 };
 
+type UpdateUserInput = {
+  actorUserId: string;
+  targetUserId: string;
+  nombre?: string;
+  email?: string;
+  password?: string;
+  is_active?: boolean;
+};
+
 type JwtPayload = {
   userId: string;
   email: string | null;
@@ -42,19 +61,24 @@ type JwtPayload = {
 
 const LOCAL_BODEGA_ROLES = [
   "admin_bodega",
-  "encargado_finca",
+  "encargado_bodega",
   "productor",
-  "operador_campo",
   "responsable_calidad_inocuidad",
   "responsable_ssyo",
+  "enologo",
 ] as const;
 
-function normalizeLocalRolesInput(rolesEnBodega?: string[], rolEnBodega?: string): string[] {
+const BODEGA_MANAGER_ROLES = [
+  "admin_bodega",
+  "encargado_bodega",
+] as const;
+
+function normalizeLocalRolesInputForCreate(rolesEnBodega?: string[], rolEnBodega?: string): string[] {
   const source = rolesEnBodega?.length
     ? rolesEnBodega
     : rolEnBodega
       ? [rolEnBodega]
-      : ["operador_campo"];
+      : ["productor"];
 
   const normalized = Array.from(
     new Set(
@@ -71,9 +95,81 @@ function normalizeLocalRolesInput(rolesEnBodega?: string[], rolEnBodega?: string
   const invalid = normalized.filter((role) => !LOCAL_BODEGA_ROLES.includes(role as (typeof LOCAL_BODEGA_ROLES)[number]));
   if (invalid.length > 0) {
     throw new AuthError(
-      "rolesEnBodega inválido (admin_bodega|encargado_finca|productor|operador_campo|responsable_calidad_inocuidad|responsable_ssyo)",
+      "rolesEnBodega inválido (admin_bodega|encargado_bodega|productor|responsable_calidad_inocuidad|responsable_ssyo|enologo)",
       400,
     );
+  }
+
+  return normalized;
+}
+
+function normalizeLocalRolesInputForUpdate(rolesEnBodega?: string[], rolEnBodega?: string): string[] {
+  if (rolesEnBodega === undefined && rolEnBodega === undefined) {
+    throw new AuthError("rolEnBodega o rolesEnBodega requerido", 400);
+  }
+
+  const source =
+    rolesEnBodega !== undefined
+      ? rolesEnBodega
+      : rolEnBodega !== undefined
+        ? [rolEnBodega]
+        : [];
+
+  const normalized = Array.from(
+    new Set(
+      source
+        .map((role) => role.trim().toLowerCase())
+        .filter((role) => role.length > 0),
+    ),
+  );
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const invalid = normalized.filter((role) => !LOCAL_BODEGA_ROLES.includes(role as (typeof LOCAL_BODEGA_ROLES)[number]));
+  if (invalid.length > 0) {
+    throw new AuthError(
+      "rolesEnBodega inválido (admin_bodega|encargado_bodega|productor|responsable_calidad_inocuidad|responsable_ssyo|enologo)",
+      400,
+    );
+  }
+
+  return normalized;
+}
+
+const LOCAL_FINCA_ROLES = [
+  "encargado_finca",
+  "operador_campo",
+] as const;
+
+function normalizeFincaRolesInput(rolesEnFinca?: string[], rolEnFinca?: string): string[] {
+  if (rolesEnFinca === undefined && rolEnFinca === undefined) {
+    throw new AuthError("rolEnFinca o rolesEnFinca requerido", 400);
+  }
+
+  const source =
+    rolesEnFinca !== undefined
+      ? rolesEnFinca
+      : rolEnFinca !== undefined
+        ? [rolEnFinca]
+        : [];
+
+  const normalized = Array.from(
+    new Set(
+      source
+        .map((role) => role.trim().toLowerCase())
+        .filter((role) => role.length > 0),
+    ),
+  );
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const invalid = normalized.filter((role) => !LOCAL_FINCA_ROLES.includes(role as (typeof LOCAL_FINCA_ROLES)[number]));
+  if (invalid.length > 0) {
+    throw new AuthError("rolesEnFinca inválido (encargado_finca|operador_campo)", 400);
   }
 
   return normalized;
@@ -203,7 +299,7 @@ export async function getUserRoles(userId: string) {
 }
 
 export async function listUsers(actorUserId: string, bodegaName?: string) {
-  const isSystemAdmin = await userHasAnyRole(actorUserId, ["super_admin", "admin_sistema"]);
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
 
   let scopedBodegaIds: string[] | undefined;
   let filteredBodegaId: string | undefined;
@@ -225,7 +321,7 @@ export async function listUsers(actorUserId: string, bodegaName?: string) {
 
   if (!isSystemAdmin) {
     const managedBodegas = await prisma.userBodegaRol.findMany({
-      where: { user_id: actorUserId, rol: "admin_bodega" },
+      where: { user_id: actorUserId, rol: { in: [...BODEGA_MANAGER_ROLES] } },
       select: { bodega_id: true },
     });
     const ids = managedBodegas.map((m) => m.bodega_id);
@@ -272,7 +368,276 @@ export async function listUsers(actorUserId: string, bodegaName?: string) {
   }));
 }
 
+async function getManagedBodegaIds(actorUserId: string) {
+  const managedBodegas = await prisma.userBodegaRol.findMany({
+    where: { user_id: actorUserId, rol: { in: [...BODEGA_MANAGER_ROLES] } },
+    select: { bodega_id: true },
+  });
+  return managedBodegas.map((b) => b.bodega_id);
+}
+
+async function getTargetUserWithScopes(targetUserId: string) {
+  const targetUser = await prisma.appUser.findUnique({
+    where: { user_id: targetUserId },
+    include: {
+      user_rol: { include: { rol: true } },
+      user_bodega: {
+        include: {
+          bodega: true,
+          user_bodega_rol: true,
+        },
+      },
+    },
+  });
+  if (!targetUser) {
+    throw new AuthError("Usuario no encontrado", 404);
+  }
+  return targetUser;
+}
+
+function hasIntersection(values: string[], allowed: string[]) {
+  const allowedSet = new Set(allowed);
+  return values.some((value) => allowedSet.has(value));
+}
+
+function isSubset(values: string[], allowed: string[]) {
+  const allowedSet = new Set(allowed);
+  return values.every((value) => allowedSet.has(value));
+}
+
+async function ensureCanReadUser(actorUserId: string, targetUserId: string) {
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+  const targetUser = await getTargetUserWithScopes(targetUserId);
+
+  if (isSystemAdmin) {
+    return { isSystemAdmin, targetUser, scopedBodegaIds: undefined as string[] | undefined };
+  }
+
+  const managedBodegaIds = await getManagedBodegaIds(actorUserId);
+  if (managedBodegaIds.length === 0) {
+    throw new AuthError("No autorizado", 403);
+  }
+
+  const targetBodegaIds = targetUser.user_bodega.map((ub) => ub.bodega_id);
+  if (!hasIntersection(targetBodegaIds, managedBodegaIds)) {
+    throw new AuthError("No autorizado para este usuario", 403);
+  }
+
+  const targetGlobalRoles = targetUser.user_rol.map((ur) => ur.rol.nombre);
+  if (targetGlobalRoles.includes("admin_sistema")) {
+    throw new AuthError("No autorizado para este usuario", 403);
+  }
+
+  return { isSystemAdmin, targetUser, scopedBodegaIds: managedBodegaIds };
+}
+
+async function ensureCanManageUser(actorUserId: string, targetUserId: string) {
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+  const targetUser = await getTargetUserWithScopes(targetUserId);
+
+  if (isSystemAdmin) {
+    return { isSystemAdmin, targetUser, scopedBodegaIds: undefined as string[] | undefined };
+  }
+
+  const managedBodegaIds = await getManagedBodegaIds(actorUserId);
+  if (managedBodegaIds.length === 0) {
+    throw new AuthError("No autorizado", 403);
+  }
+
+  const targetBodegaIds = targetUser.user_bodega.map((ub) => ub.bodega_id);
+  if (targetBodegaIds.length === 0 || !isSubset(targetBodegaIds, managedBodegaIds)) {
+    throw new AuthError("No autorizado para administrar este usuario", 403);
+  }
+
+  const targetGlobalRoles = targetUser.user_rol.map((ur) => ur.rol.nombre);
+  if (targetGlobalRoles.includes("admin_sistema")) {
+    throw new AuthError("No autorizado para administrar este usuario", 403);
+  }
+
+  return { isSystemAdmin, targetUser, scopedBodegaIds: managedBodegaIds };
+}
+
+export async function getUserDetail(actorUserId: string, targetUserId: string) {
+  if (!targetUserId) {
+    throw new AuthError("userId requerido", 400);
+  }
+
+  const { targetUser, scopedBodegaIds } = await ensureCanReadUser(actorUserId, targetUserId);
+
+  const scopedUserBodegas = scopedBodegaIds
+    ? targetUser.user_bodega.filter((ub) => scopedBodegaIds.includes(ub.bodega_id))
+    : targetUser.user_bodega;
+
+  const fincas = await prisma.$queryRaw<
+    Array<{
+      finca_id: string;
+      nombre_finca: string;
+      bodega_id: string;
+      rol: string;
+    }>
+  >`
+    SELECT
+      ufr."finca_id",
+      f."nombre_finca",
+      f."bodega_id",
+      ufr."rol"
+    FROM "user_finca_rol" ufr
+    JOIN "finca" f ON f."finca_id" = ufr."finca_id"
+    WHERE ufr."user_id" = ${targetUserId}::uuid
+    ORDER BY f."nombre_finca" ASC, ufr."rol" ASC
+  `;
+
+  const filteredFincas = scopedBodegaIds
+    ? fincas.filter((f) => scopedBodegaIds.includes(f.bodega_id))
+    : fincas;
+
+  const fincasById = new Map<
+    string,
+    {
+      finca_id: string;
+      nombre_finca: string;
+      bodega_id: string;
+      roles_en_finca: string[];
+    }
+  >();
+
+  for (const row of filteredFincas) {
+    const current = fincasById.get(row.finca_id);
+    if (!current) {
+      fincasById.set(row.finca_id, {
+        finca_id: row.finca_id,
+        nombre_finca: row.nombre_finca,
+        bodega_id: row.bodega_id,
+        roles_en_finca: [row.rol],
+      });
+      continue;
+    }
+    current.roles_en_finca.push(row.rol);
+  }
+
+  return {
+    id: targetUser.user_id,
+    email: targetUser.email,
+    nombre: targetUser.nombre,
+    is_active: targetUser.is_active,
+    roles_globales: targetUser.user_rol.map((ur) => ur.rol.nombre).sort(),
+    bodegas: scopedUserBodegas
+      .filter((ub) => ub.bodega)
+      .map((ub) => ({
+        bodega_id: ub.bodega_id,
+        nombre: ub.bodega?.nombre ?? "",
+        roles_en_bodega: ub.user_bodega_rol.map((role) => role.rol).sort(),
+      })),
+    fincas: Array.from(fincasById.values()),
+  };
+}
+
+export async function updateUser({
+  actorUserId,
+  targetUserId,
+  nombre,
+  email,
+  password,
+  is_active,
+}: UpdateUserInput) {
+  if (!targetUserId) {
+    throw new AuthError("userId requerido", 400);
+  }
+
+  await ensureCanManageUser(actorUserId, targetUserId);
+
+  const data: {
+    nombre?: string;
+    email?: string;
+    password_hash?: string;
+    is_active?: boolean;
+  } = {};
+
+  if (nombre !== undefined) {
+    const normalizedNombre = nombre.trim();
+    if (!normalizedNombre) {
+      throw new AuthError("nombre inválido", 400);
+    }
+    data.nombre = normalizedNombre;
+  }
+
+  if (email !== undefined) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new AuthError("email inválido", 400);
+    }
+    data.email = normalizedEmail;
+  }
+
+  if (password !== undefined) {
+    const normalizedPassword = password.trim();
+    if (normalizedPassword.length < 8) {
+      throw new AuthError("password debe tener al menos 8 caracteres", 400);
+    }
+    data.password_hash = await bcrypt.hash(normalizedPassword, 10);
+  }
+
+  if (is_active !== undefined) {
+    data.is_active = is_active;
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw new AuthError("No hay campos para actualizar", 400);
+  }
+
+  try {
+    const updated = await prisma.appUser.update({
+      where: { user_id: targetUserId },
+      data,
+      select: {
+        user_id: true,
+        email: true,
+        nombre: true,
+        is_active: true,
+      },
+    });
+
+    return {
+      id: updated.user_id,
+      email: updated.email,
+      nombre: updated.nombre,
+      is_active: updated.is_active,
+    };
+  } catch (error: unknown) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
+      throw new AuthError("El email ya está en uso", 409);
+    }
+    throw error;
+  }
+}
+
+export async function deleteUser(actorUserId: string, targetUserId: string) {
+  if (!targetUserId) {
+    throw new AuthError("userId requerido", 400);
+  }
+
+  await ensureCanManageUser(actorUserId, targetUserId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.appUser.update({
+      where: { user_id: targetUserId },
+      data: { is_active: false },
+    });
+
+    await tx.refreshToken.updateMany({
+      where: {
+        user_id: targetUserId,
+        revoked_at: null,
+      },
+      data: { revoked_at: new Date() },
+    });
+  });
+
+  return { ok: true, user_id: targetUserId, deleted: true };
+}
+
 export async function createUser({
+  actorUserId,
   email,
   password,
   nombre,
@@ -290,7 +655,7 @@ export async function createUser({
     throw new AuthError("El usuario ya existe", 409);
   }
 
-  const normalizedRolesEnBodega = normalizeLocalRolesInput(rolesEnBodega, rolEnBodega);
+  const normalizedRolesEnBodega = normalizeLocalRolesInputForCreate(rolesEnBodega, rolEnBodega);
 
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -329,6 +694,23 @@ export async function createUser({
     throw new AuthError("bodegaId inválido", 400);
   }
 
+  if (actorUserId) {
+    const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+    if (!isSystemAdmin) {
+      const canManageBodega = await prisma.userBodegaRol.findFirst({
+        where: {
+          user_id: actorUserId,
+          bodega_id: resolvedBodegaId,
+          rol: { in: [...BODEGA_MANAGER_ROLES] },
+        },
+        select: { user_id: true },
+      });
+      if (!canManageBodega) {
+        throw new AuthError("No autorizado para crear usuarios en esta bodega", 403);
+      }
+    }
+  }
+
   const password_hash = await bcrypt.hash(password, 10);
   const user = await prisma.appUser.create({
     data: {
@@ -358,26 +740,36 @@ export async function updateUserBodegaRole({
   actorUserId,
   targetUserId,
   bodegaName,
+  bodegaId,
   rolEnBodega,
   rolesEnBodega,
 }: UpdateUserBodegaRoleInput) {
-  const normalizedRolesEnBodega = normalizeLocalRolesInput(rolesEnBodega, rolEnBodega);
+  const normalizedRolesEnBodega = normalizeLocalRolesInputForUpdate(rolesEnBodega, rolEnBodega);
 
-  const bodegas = await prisma.bodega.findMany({
-    where: { nombre: bodegaName, activo: true },
-    select: { bodega_id: true, nombre: true },
-    take: 2,
-  });
-  if (bodegas.length === 0) {
-    throw new AuthError("Bodega no encontrada", 404);
-  }
-  if (bodegas.length > 1) {
-    throw new AuthError("Nombre de bodega ambiguo", 409);
-  }
-  const bodega = bodegas[0];
-  if (!bodega) {
-    throw new AuthError("Bodega no encontrada", 404);
-  }
+  const bodega = bodegaId
+    ? await prisma.bodega.findFirst({
+        where: { bodega_id: bodegaId, activo: true },
+        select: { bodega_id: true, nombre: true },
+      })
+    : await (async () => {
+        const normalizedName = (bodegaName ?? "").trim();
+        if (!normalizedName) {
+          throw new AuthError("bodegaName o bodegaId requerido", 400);
+        }
+        const bodegas = await prisma.bodega.findMany({
+          where: { nombre: normalizedName, activo: true },
+          select: { bodega_id: true, nombre: true },
+          take: 2,
+        });
+        if (bodegas.length === 0) {
+          throw new AuthError("Bodega no encontrada", 404);
+        }
+        if (bodegas.length > 1) {
+          throw new AuthError("Nombre de bodega ambiguo", 409);
+        }
+        return bodegas[0];
+      })();
+  if (!bodega) throw new AuthError("Bodega no encontrada", 404);
 
   const targetUser = await prisma.appUser.findUnique({
     where: { user_id: targetUserId },
@@ -387,13 +779,13 @@ export async function updateUserBodegaRole({
     throw new AuthError("Usuario destino no encontrado", 404);
   }
 
-  const isSystemAdmin = await userHasAnyRole(actorUserId, ["super_admin", "admin_sistema"]);
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
   if (!isSystemAdmin) {
     const actorMembership = await prisma.userBodegaRol.findFirst({
       where: {
         user_id: actorUserId,
         bodega_id: bodega.bodega_id,
-        rol: "admin_bodega",
+        rol: { in: [...BODEGA_MANAGER_ROLES] },
       },
       select: { user_id: true },
     });
@@ -402,36 +794,60 @@ export async function updateUserBodegaRole({
     }
   }
 
-  await prisma.userBodega.upsert({
-    where: {
-      user_id_bodega_id: {
+  try {
+    await prisma.userBodega.upsert({
+      where: {
+        user_id_bodega_id: {
+          user_id: targetUserId,
+          bodega_id: bodega.bodega_id,
+        },
+      },
+      create: {
         user_id: targetUserId,
         bodega_id: bodega.bodega_id,
       },
-    },
-    create: {
-      user_id: targetUserId,
-      bodega_id: bodega.bodega_id,
-    },
-    update: {},
-  });
+      update: {},
+    });
 
-  await prisma.userBodegaRol.createMany({
-    data: normalizedRolesEnBodega.map((role) => ({
-      user_id: targetUserId,
-      bodega_id: bodega.bodega_id,
-      rol: role,
-    })),
-    skipDuplicates: true,
-  });
+    if (normalizedRolesEnBodega.length > 0) {
+      await prisma.userBodegaRol.createMany({
+        data: normalizedRolesEnBodega.map((role) => ({
+          user_id: targetUserId,
+          bodega_id: bodega.bodega_id,
+          rol: role,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
-  await prisma.userBodegaRol.deleteMany({
-    where: {
-      user_id: targetUserId,
-      bodega_id: bodega.bodega_id,
-      rol: { notIn: normalizedRolesEnBodega },
-    },
-  });
+    if (normalizedRolesEnBodega.length > 0) {
+      await prisma.userBodegaRol.deleteMany({
+        where: {
+          user_id: targetUserId,
+          bodega_id: bodega.bodega_id,
+          rol: { notIn: normalizedRolesEnBodega },
+        },
+      });
+    } else {
+      await prisma.userBodegaRol.deleteMany({
+        where: {
+          user_id: targetUserId,
+          bodega_id: bodega.bodega_id,
+        },
+      });
+    }
+  } catch (error: unknown) {
+    if (typeof error === "object" && error !== null && "code" in error) {
+      const code = (error as { code?: string }).code;
+      if (code === "P2003") {
+        throw new AuthError("Error de integridad al actualizar roles de bodega", 409);
+      }
+      if (code === "P2025") {
+        throw new AuthError("Registro no encontrado al actualizar roles", 404);
+      }
+    }
+    throw error;
+  }
 
   const roles = await prisma.userBodegaRol.findMany({
     where: {
@@ -458,7 +874,7 @@ export async function updateUserGlobalRole({
   rolGlobal,
   enabled = true,
 }: UpdateUserGlobalRoleInput) {
-  const isSystemAdmin = await userHasAnyRole(actorUserId, ["super_admin", "admin_sistema"]);
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
   if (!isSystemAdmin) {
     throw new AuthError("No autorizado", 403);
   }
@@ -476,16 +892,18 @@ export async function updateUserGlobalRole({
     throw new AuthError("rolGlobal requerido", 400);
   }
 
-  const forbiddenBodegaRoles = new Set([
+  const forbiddenScopedRoles = new Set([
     "admin_bodega",
+    "encargado_bodega",
     "encargado_finca",
     "productor",
     "operador_campo",
     "responsable_calidad_inocuidad",
     "responsable_ssyo",
+    "enologo",
   ]);
-  if (forbiddenBodegaRoles.has(normalizedRole)) {
-    throw new AuthError("Ese rol corresponde a bodega (user_bodega), no a rol global", 400);
+  if (forbiddenScopedRoles.has(normalizedRole)) {
+    throw new AuthError("Ese rol corresponde a bodega/finca, no a rol global", 400);
   }
 
   const role = await prisma.rol.findUnique({
@@ -523,6 +941,92 @@ export async function updateUserGlobalRole({
     rol_global: role.nombre,
     enabled,
     roles_globales: updatedRoles,
+  };
+}
+
+export async function updateUserFincaRole({
+  actorUserId,
+  targetUserId,
+  fincaId,
+  rolEnFinca,
+  rolesEnFinca,
+}: UpdateUserFincaRoleInput) {
+  const normalizedRolesEnFinca = normalizeFincaRolesInput(rolesEnFinca, rolEnFinca);
+
+  const targetUser = await prisma.appUser.findUnique({
+    where: { user_id: targetUserId },
+    select: { user_id: true, email: true, nombre: true },
+  });
+  if (!targetUser) {
+    throw new AuthError("Usuario destino no encontrado", 404);
+  }
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+    select: { finca_id: true, nombre_finca: true, bodega_id: true },
+  });
+  if (!finca) {
+    throw new AuthError("Finca no encontrada", 404);
+  }
+
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+  if (!isSystemAdmin) {
+    const [actorAdminBodega, actorEncargadoFinca] = await Promise.all([
+      prisma.userBodegaRol.findFirst({
+        where: {
+          user_id: actorUserId,
+          bodega_id: finca.bodega_id,
+          rol: { in: [...BODEGA_MANAGER_ROLES] },
+        },
+        select: { user_id: true },
+      }),
+      prisma.$queryRaw<Array<{ user_id: string }>>`
+        SELECT "user_id"
+        FROM "user_finca_rol"
+        WHERE "user_id" = ${actorUserId}::uuid
+          AND "finca_id" = ${fincaId}::uuid
+          AND "rol" = 'encargado_finca'
+        LIMIT 1
+      `,
+    ]);
+
+    if (!actorAdminBodega && actorEncargadoFinca.length === 0) {
+      throw new AuthError("No autorizado para administrar esta finca", 403);
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      DELETE FROM "user_finca_rol"
+      WHERE "user_id" = ${targetUserId}::uuid
+        AND "finca_id" = ${fincaId}::uuid
+    `;
+
+    for (const role of normalizedRolesEnFinca) {
+      await tx.$executeRaw`
+        INSERT INTO "user_finca_rol" ("user_id", "finca_id", "rol")
+        VALUES (${targetUserId}::uuid, ${fincaId}::uuid, ${role})
+        ON CONFLICT ("user_id", "finca_id", "rol") DO NOTHING
+      `;
+    }
+  });
+
+  const roles = await prisma.$queryRaw<Array<{ rol: string }>>`
+    SELECT "rol"
+    FROM "user_finca_rol"
+    WHERE "user_id" = ${targetUserId}::uuid
+      AND "finca_id" = ${fincaId}::uuid
+    ORDER BY "rol" ASC
+  `;
+
+  return {
+    user: targetUser,
+    finca: {
+      finca_id: finca.finca_id,
+      nombre_finca: finca.nombre_finca,
+      bodega_id: finca.bodega_id,
+    },
+    roles_en_finca: roles.map((row) => row.rol),
   };
 }
 

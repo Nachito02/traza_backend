@@ -1,7 +1,11 @@
 import { prisma } from '../../config/prismaClient.js';
-import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
+import {
+  canManageBodega,
+  hasAnyFincaRole,
+  isSystemAdmin,
+} from "../auth/scope-permissions.service.js";
 
-const MANAGER_BODEGA_ROLES = ["admin_bodega", "encargado_finca"];
+const FIELD_ASSIGNABLE_ROLES = ["encargado_finca", "operador_campo"];
 
 export async function getUserMilestones(userId: string) {
   const milestones = await prisma.milestone.findMany({
@@ -15,15 +19,19 @@ export async function getUserMilestones(userId: string) {
 async function ensureUserTrazabilidad(userId: string, trazabilidadId: string) {
   const trazabilidad = await prisma.trazabilidad.findUnique({
     where: { trazabilidad_id: trazabilidadId },
-    select: { bodega_id: true },
+    select: { bodega_id: true, finca_id: true },
   });
   if (!trazabilidad) {
     throw new Error('Trazabilidad no encontrada');
   }
-  const rel = await prisma.userBodega.findFirst({
-    where: { user_id: userId, bodega_id: trazabilidad.bodega_id },
-  });
-  if (!rel) {
+
+  const [isAdminSistema, canManageBodegaRole, hasFincaRole] = await Promise.all([
+    isSystemAdmin(userId),
+    canManageBodega(userId, trazabilidad.bodega_id),
+    trazabilidad.finca_id ? hasAnyFincaRole(userId, trazabilidad.finca_id) : Promise.resolve(false),
+  ]);
+
+  if (!isAdminSistema && !canManageBodegaRole && !hasFincaRole) {
     throw new Error('No autorizado');
   }
 }
@@ -105,19 +113,13 @@ export async function assignMilestoneToOrigen({
     throw new Error("Trazabilidad no encontrada");
   }
 
-  const isSystemAdmin = await userHasAnyRole(actorUserId, ["super_admin", "admin_sistema"]);
-  if (!isSystemAdmin) {
-    const managerRel = await prisma.userBodegaRol.findFirst({
-      where: {
-        user_id: actorUserId,
-        bodega_id: trazabilidad.bodega_id,
-        rol: { in: MANAGER_BODEGA_ROLES },
-      },
-      select: { user_id: true },
-    });
-    if (!managerRel) {
-      throw new Error("No autorizado para asignar milestones en esta bodega");
-    }
+  const [isAdminSistema, canManageBodegaRole, hasFincaManagerRole] = await Promise.all([
+    isSystemAdmin(actorUserId),
+    canManageBodega(actorUserId, trazabilidad.bodega_id),
+    hasAnyFincaRole(actorUserId, fincaId, ["encargado_finca"]),
+  ]);
+  if (!isAdminSistema && !canManageBodegaRole && !hasFincaManagerRole) {
+    throw new Error("No autorizado para asignar milestones en esta finca");
   }
 
   const origen = await prisma.trazabilidadOrigen.findFirst({
@@ -132,16 +134,9 @@ export async function assignMilestoneToOrigen({
     throw new Error("El origen (finca/cuartel) no está vinculado a la trazabilidad");
   }
 
-  const operarioRel = await prisma.userBodegaRol.findFirst({
-    where: {
-      user_id: operarioUserId,
-      bodega_id: trazabilidad.bodega_id,
-      rol: "operador_campo",
-    },
-    select: { user_id: true },
-  });
-  if (!operarioRel) {
-    throw new Error("El usuario asignado no es operario de la bodega");
+  const operarioConRolEnFinca = await hasAnyFincaRole(operarioUserId, fincaId, FIELD_ASSIGNABLE_ROLES);
+  if (!operarioConRolEnFinca) {
+    throw new Error("El usuario asignado no tiene rol de campo en la finca");
   }
 
   const existingAssignment = await prisma.milestoneAsignacion.findUnique({

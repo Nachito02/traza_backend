@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prismaClient.js";
+import { canAccessFinca, canOperateFinca } from "../auth/scope-permissions.service.js";
 
 type CreateCuartelInput = {
   fincaId: string;
@@ -33,16 +34,14 @@ export class CuartelError extends Error {
 async function ensureUserFinca(userId: string, fincaId: string) {
   const finca = await prisma.finca.findUnique({
     where: { finca_id: fincaId },
-    select: { bodega_id: true },
+    select: { finca_id: true },
   });
   if (!finca) {
     throw new CuartelError("Finca no encontrada", 404);
   }
-  const rel = await prisma.userBodega.findFirst({
-    where: { user_id: userId, bodega_id: finca.bodega_id },
-  });
-  if (!rel) {
-    throw new CuartelError("No autorizado para esta bodega", 403);
+  const canAccess = await canAccessFinca(userId, fincaId);
+  if (!canAccess) {
+    throw new CuartelError("No autorizado para esta finca", 403);
   }
   return finca;
 }
@@ -66,7 +65,11 @@ export async function createCuartel({
     throw new CuartelError("Datos incompletos", 400);
   }
 
-  await ensureUserFinca(userId, fincaId);
+  const finca = await ensureUserFinca(userId, fincaId);
+  const canOperate = await canOperateFinca(userId, fincaId);
+  if (!canOperate) {
+    throw new CuartelError("No autorizado para operar esta finca", 403);
+  }
 
   const data: {
     finca_id: string;
@@ -76,7 +79,7 @@ export async function createCuartel({
     variedad?: string | null;
     sistema_productivo?: string | null;
     sistema_conduccion?: string | null;
-  } = { finca_id: fincaId, codigo_cuartel };
+  } = { finca_id: finca.finca_id, codigo_cuartel };
 
   if (superficie_ha !== undefined) data.superficie_ha = superficie_ha;
   if (cultivo !== undefined) data.cultivo = cultivo;
@@ -116,6 +119,10 @@ export async function updateCuartel(
   }: UpdateCuartelInput,
 ) {
   const cuartel = await getCuartelById(cuartelId, userId);
+  const canOperate = await canOperateFinca(userId, cuartel.finca_id);
+  if (!canOperate) {
+    throw new CuartelError("No autorizado para operar esta finca", 403);
+  }
 
   const data: {
     codigo_cuartel?: string;
@@ -145,6 +152,10 @@ export async function updateCuartel(
 
 export async function deleteCuartel(cuartelId: string, userId: string) {
   const cuartel = await getCuartelById(cuartelId, userId);
+  const canOperate = await canOperateFinca(userId, cuartel.finca_id);
+  if (!canOperate) {
+    throw new CuartelError("No autorizado para operar esta finca", 403);
+  }
   await prisma.cuartel.delete({ where: { cuartel_id: cuartel.cuartel_id } });
   return { deleted: true };
 }

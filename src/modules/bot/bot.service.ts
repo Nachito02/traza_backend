@@ -38,7 +38,7 @@ async function ensureBotUser(botUserId: string) {
   if (!exists) {
     throw new BotError("Usuario bot no encontrado", 404);
   }
-  const isBotAgent = await userHasAnyRole(botUserId, ["bot_agent", "super_admin"]);
+  const isBotAgent = await userHasAnyRole(botUserId, ["bot_agent", "admin_sistema"]);
   if (!isBotAgent) {
     throw new BotError("El usuario indicado no tiene rol bot_agent", 400);
   }
@@ -46,8 +46,8 @@ async function ensureBotUser(botUserId: string) {
 
 async function ensureBodegaMembership(userId: string, bodegaId?: string) {
   if (!bodegaId) return;
-  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
-  if (isSuperAdmin) return;
+  const isSystemAdmin = await userHasAnyRole(userId, ["admin_sistema"]);
+  if (isSystemAdmin) return;
 
   const rel = await prisma.userBodega.findFirst({
     where: {
@@ -113,8 +113,8 @@ export async function revokeBotDelegation(botDelegationId: string, userId: strin
     throw new BotError("Delegación no encontrada", 404);
   }
 
-  const isSuperAdmin = await userHasAnyRole(userId, ["super_admin"]);
-  if (!isSuperAdmin && delegation.granted_by_user_id !== userId) {
+  const isSystemAdmin = await userHasAnyRole(userId, ["admin_sistema"]);
+  if (!isSystemAdmin && delegation.granted_by_user_id !== userId) {
     throw new BotError("No autorizado para revocar esta delegación", 403);
   }
 
@@ -128,7 +128,7 @@ export async function revokeBotDelegation(botDelegationId: string, userId: strin
 }
 
 async function validateBotActionAndGetContext(input: BotActionInput) {
-  const isBot = await userHasAnyRole(input.botUserId, ["bot_agent", "super_admin"]);
+  const isBot = await userHasAnyRole(input.botUserId, ["bot_agent", "admin_sistema"]);
   if (!isBot) {
     throw new BotError("El actor no tiene permisos de bot", 403);
   }

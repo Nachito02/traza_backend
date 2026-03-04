@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import {
   AuthError,
   createUser,
+  deleteUser,
+  getUserDetail,
   getUserBodegas,
   getUserById,
   getUserRoles,
@@ -11,6 +13,8 @@ import {
   revokeRefreshToken,
   updateUserGlobalRole,
   updateUserBodegaRole,
+  updateUser,
+  updateUserFincaRole,
 } from './auth.service.js';
 
 function handleError(res: Response, error: unknown) {
@@ -90,6 +94,7 @@ export async function createUserHandler(req: Request, res: Response) {
   try {
     const { email, password, nombre, bodegaId, bodegaNombre, rolEnBodega, rolesEnBodega } = req.body ?? {};
     const user = await createUser({
+      ...(req.user?.userId ? { actorUserId: req.user.userId } : {}),
       email,
       password,
       nombre,
@@ -146,6 +151,53 @@ export async function listUsersHandler(req: Request, res: Response) {
   }
 }
 
+export async function getUserDetailHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const userId = String(req.params.userId ?? "");
+    const user = await getUserDetail(req.user.userId, userId);
+    return res.json(user);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function updateUserHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const userId = String(req.params.userId ?? "");
+    const { nombre, email, password, is_active } = req.body ?? {};
+    const updated = await updateUser({
+      actorUserId: req.user.userId,
+      targetUserId: userId,
+      ...(nombre !== undefined ? { nombre: String(nombre) } : {}),
+      ...(email !== undefined ? { email: String(email) } : {}),
+      ...(password !== undefined ? { password: String(password) } : {}),
+      ...(is_active !== undefined ? { is_active: Boolean(is_active) } : {}),
+    });
+    return res.json(updated);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function deleteUserHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const userId = String(req.params.userId ?? "");
+    const result = await deleteUser(req.user.userId, userId);
+    return res.json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function updateUserBodegaRoleHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
@@ -170,6 +222,30 @@ export async function updateUserBodegaRoleHandler(req: Request, res: Response) {
   }
 }
 
+export async function updateUserBodegaRoleByIdHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const targetUserId = String(req.params.userId ?? "");
+    const bodegaId = String(req.params.bodegaId ?? "");
+    const hasRolEnBodega = req.body?.rolEnBodega !== undefined;
+    const rolesEnBodega = Array.isArray(req.body?.rolesEnBodega)
+      ? req.body.rolesEnBodega.map((role: unknown) => String(role))
+      : undefined;
+    const result = await updateUserBodegaRole({
+      actorUserId: req.user.userId,
+      targetUserId,
+      bodegaId,
+      ...(hasRolEnBodega ? { rolEnBodega: String(req.body?.rolEnBodega ?? "") } : {}),
+      ...(rolesEnBodega ? { rolesEnBodega } : {}),
+    });
+    return res.json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function updateUserGlobalRoleHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
@@ -183,6 +259,31 @@ export async function updateUserGlobalRoleHandler(req: Request, res: Response) {
       targetUserId,
       rolGlobal,
       enabled,
+    });
+    return res.json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function updateUserFincaRoleHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const targetUserId = String(req.params.userId ?? "");
+    const fincaId = String(req.params.fincaId ?? "");
+    const hasRolEnFinca = req.body?.rolEnFinca !== undefined;
+    const rolesEnFinca = Array.isArray(req.body?.rolesEnFinca)
+      ? req.body.rolesEnFinca.map((role: unknown) => String(role))
+      : undefined;
+
+    const result = await updateUserFincaRole({
+      actorUserId: req.user.userId,
+      targetUserId,
+      fincaId,
+      ...(hasRolEnFinca ? { rolEnFinca: String(req.body?.rolEnFinca ?? "") } : {}),
+      ...(rolesEnFinca ? { rolesEnFinca } : {}),
     });
     return res.json(result);
   } catch (error) {
