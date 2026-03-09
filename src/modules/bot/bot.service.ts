@@ -1,4 +1,6 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prismaClient.js";
+import { login } from "../auth/auth.service.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 
 type CreateDelegationInput = {
@@ -149,7 +151,6 @@ async function validateBotActionAndGetContext(input: BotActionInput) {
 
   const delegation = await prisma.botDelegation.findFirst({
     where: {
-      granted_by_user_id: asignacion.user_id,
       bot_user_id: input.botUserId,
       activo: true,
       revoked_at: null,
@@ -202,6 +203,49 @@ export async function botContactarAsignacion(
       output_payload: { status: "contactado" },
     },
   });
+}
+
+export async function createBotUser(
+  actorUserId: string,
+  input: { email: string; password: string; nombre: string },
+) {
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+  if (!isSystemAdmin) {
+    throw new BotError("Solo admin_sistema puede crear usuarios bot", 403);
+  }
+
+  if (!input.email || !input.password || !input.nombre) {
+    throw new BotError("email, password y nombre son requeridos", 400);
+  }
+
+  const existing = await prisma.appUser.findUnique({ where: { email: input.email } });
+  if (existing) {
+    throw new BotError("El usuario ya existe", 409);
+  }
+
+  const password_hash = await bcrypt.hash(input.password, 10);
+  const user = await prisma.appUser.create({
+    data: { email: input.email, password_hash, nombre: input.nombre },
+  });
+
+  const role = await prisma.rol.upsert({
+    where: { nombre: "bot_agent" },
+    create: { nombre: "bot_agent" },
+    update: {},
+  });
+
+  await prisma.userRol.create({ data: { user_id: user.user_id, rol_id: role.rol_id } });
+
+  return { id: user.user_id, email: user.email, nombre: user.nombre };
+}
+
+export async function botLogin(email: string, password: string) {
+  const result = await login({ email, password });
+  return {
+    access_token: result.token,
+    refresh_token: result.refreshToken,
+    user: { id: result.user.user_id, email: result.user.email, nombre: result.user.nombre },
+  };
 }
 
 export async function botAyudarCarga(

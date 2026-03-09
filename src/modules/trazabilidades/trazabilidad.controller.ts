@@ -12,6 +12,7 @@ function handleError(res: Response, error: unknown) {
   if (error instanceof TrazabilidadError) {
     return res.status(error.status).json({ error: error.message });
   }
+  console.error("[trazabilidad]", error);
   return res.status(500).json({ error: "Error interno" });
 }
 

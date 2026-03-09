@@ -6,6 +6,189 @@ import {
   botContactarAsignacion,
 } from "../bot/bot.service.js";
 
+type FieldSchema = {
+  type: "string" | "number" | "date" | "boolean";
+  required: boolean;
+  enum?: string[];
+  unit?: string;
+  description?: string;
+};
+
+type EventoInputSchema = Record<string, FieldSchema>;
+
+const EVENTO_TIPO_KEYWORDS: Array<{ tipo: string; keywords: string[] }> = [
+  { tipo: "riego", keywords: ["riego"] },
+  { tipo: "cosecha", keywords: ["cosecha", "vendimia"] },
+  { tipo: "fenologia", keywords: ["fenolog", "brotac", "floraci", "envero", "maduraci", "poda", "dormanci"] },
+  { tipo: "fertilizacion", keywords: ["fertiliz", "abono", "nutrici"] },
+  { tipo: "aplicacion_fitosanitaria", keywords: ["fitosanitari", "fumigaci", "aplicaci", "pesticida", "herbicida", "fungicida", "insecticida"] },
+  { tipo: "monitoreo_plaga", keywords: ["plaga", "insecto", "araña"] },
+  { tipo: "monitoreo_enfermedad", keywords: ["enfermedad", "hongo", "mildiu", "oidio", "botrytis"] },
+  { tipo: "analisis_suelo", keywords: ["suelo", "análisis de suelo", "analisis de suelo"] },
+  { tipo: "precipitacion", keywords: ["precipitaci", "lluvia"] },
+  { tipo: "labor_suelo", keywords: ["labor", "arado", "subsolado", "cincelado", "rastreo", "rotovator"] },
+  { tipo: "canopia", keywords: ["canopia", "canopeo", "poda verde", "despunte", "deshoje", "aclareo", "amarre"] },
+  { tipo: "energia", keywords: ["energia", "energía", "consumo energético", "electricidad", "gas"] },
+  { tipo: "accidente", keywords: ["accidente"] },
+  { tipo: "capacitacion", keywords: ["capacitaci", "capacitación", "formaci"] },
+  { tipo: "entrega_epp", keywords: ["epp", "equipo de protecci"] },
+  { tipo: "limpieza_cosecha", keywords: ["limpieza", "sanitizaci"] },
+  { tipo: "mantenimiento", keywords: ["mantenimiento"] },
+  { tipo: "no_conforme", keywords: ["no conforme", "no-conforme", "inconformidad"] },
+  { tipo: "reclamo", keywords: ["reclamo", "queja"] },
+  { tipo: "residuo", keywords: ["residuo", "envase", "desecho"] },
+  { tipo: "sanitizacion_banos", keywords: ["baño", "bano", "sanitizaci"] },
+  { tipo: "sobrante_lavado", keywords: ["sobrante", "lavado", "caldo"] },
+];
+
+function inferEventoTipo(titulo: string, descripcion?: string | null): string | null {
+  const text = `${titulo} ${descripcion ?? ""}`.toLowerCase();
+  for (const { tipo, keywords } of EVENTO_TIPO_KEYWORDS) {
+    if (keywords.some((kw) => text.includes(kw))) {
+      return tipo;
+    }
+  }
+  return null;
+}
+
+const EVENTO_INPUT_SCHEMAS: Record<string, EventoInputSchema> = {
+  riego: {
+    fecha: { type: "date", required: true },
+    volumen: { type: "number", required: true, unit: "m3" },
+    unidad: { type: "string", required: true, enum: ["m3", "litros", "mm"] },
+    sistema_riego: { type: "string", required: false, enum: ["goteo", "aspersion", "manto", "surco", "otro"] },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  cosecha: {
+    fecha_cosecha: { type: "date", required: true },
+    cantidad: { type: "number", required: true },
+    unidad: { type: "string", required: true, enum: ["kg", "ton", "bins"] },
+    destino: { type: "string", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  fenologia: {
+    fecha: { type: "date", required: true },
+    estado_fenologico: { type: "string", required: true, enum: ["brotacion", "floracion", "cuajado", "envero", "maduracion", "poda", "dormancia"] },
+    porcentaje_avance: { type: "number", required: false, unit: "%" },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  fertilizacion: {
+    fecha: { type: "date", required: true },
+    dosis: { type: "number", required: true },
+    unidad: { type: "string", required: true, enum: ["kg/ha", "l/ha", "kg", "litros"] },
+    insumo_id: { type: "string", required: false, description: "UUID del insumo" },
+    cantidad_total: { type: "number", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  labor_suelo: {
+    fecha: { type: "date", required: true },
+    tipo_labor: { type: "string", required: true, enum: ["arado", "subsolado", "cincelado", "rastreado", "rotovatado", "otro"] },
+    horas: { type: "number", required: false },
+    hs_por_ha: { type: "number", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  canopia: {
+    fecha: { type: "date", required: true },
+    tipo_practica: { type: "string", required: true, enum: ["poda_verde", "despunte", "deshoje", "aclareo", "amarre", "otro"] },
+    intensidad: { type: "string", required: false },
+    jornales: { type: "number", required: false },
+    observaciones: { type: "string", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  aplicacion_fitosanitaria: {
+    fecha: { type: "date", required: true },
+    dosis: { type: "number", required: true },
+    unidad: { type: "string", required: true, enum: ["cc/hl", "g/hl", "l/ha", "kg/ha"] },
+    carencia_dias: { type: "number", required: true, description: "Días de carencia del producto" },
+    insumo_lote_id: { type: "string", required: false, description: "UUID del lote de insumo" },
+    motivo: { type: "string", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  monitoreo_enfermedad: {
+    fecha: { type: "date", required: true },
+    enfermedad: { type: "string", required: true },
+    incidencia: { type: "number", required: false, unit: "%", description: "Porcentaje de incidencia" },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  monitoreo_plaga: {
+    fecha: { type: "date", required: true },
+    plaga: { type: "string", required: true },
+    nivel: { type: "string", required: false, enum: ["bajo", "medio", "alto", "critico"] },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  analisis_suelo: {
+    fecha: { type: "date", required: true },
+    unidad_muestreada: { type: "string", required: true },
+    laboratorio: { type: "string", required: false },
+    parametros: { type: "string", required: false, description: "JSON con los parámetros analizados (pH, N, P, K, etc.)" },
+  },
+  precipitacion: {
+    fecha: { type: "date", required: true },
+    milimetros: { type: "number", required: true, unit: "mm" },
+  },
+  energia: {
+    periodo: { type: "string", required: true, description: "Ej: 2025-03" },
+    tipo: { type: "string", required: true, enum: ["electrica", "gas", "gasoil", "otro"] },
+    consumo: { type: "number", required: true },
+    unidad: { type: "string", required: true, enum: ["kWh", "m3", "litros"] },
+  },
+  accidente: {
+    fecha: { type: "date", required: true },
+    persona_id: { type: "string", required: true, description: "UUID de la persona accidentada" },
+    accion_correctiva: { type: "string", required: false },
+  },
+  capacitacion: {
+    fecha: { type: "date", required: true },
+    tema: { type: "string", required: true },
+  },
+  entrega_epp: {
+    fecha: { type: "date", required: true },
+    persona_id: { type: "string", required: true, description: "UUID de la persona receptora" },
+    epp: { type: "string", required: true, description: "Descripción del EPP entregado" },
+  },
+  limpieza_cosecha: {
+    fecha: { type: "date", required: true },
+    elemento: { type: "string", required: true, description: "Elemento o equipo limpiado" },
+    metodo: { type: "string", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  mantenimiento: {
+    fecha: { type: "date", required: true },
+    equipo: { type: "string", required: true },
+    tipo: { type: "string", required: true, enum: ["preventivo", "correctivo", "predictivo"] },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  no_conforme: {
+    fecha: { type: "date", required: true },
+    descripcion: { type: "string", required: true },
+  },
+  reclamo: {
+    fecha: { type: "date", required: true },
+    origen: { type: "string", required: true },
+    descripcion: { type: "string", required: false },
+  },
+  residuo: {
+    fecha: { type: "date", required: true },
+    tipo_residuo: { type: "string", required: true },
+    destino: { type: "string", required: true },
+    cantidad: { type: "number", required: false },
+    unidad: { type: "string", required: false, enum: ["kg", "litros", "unidades", "bolsas"] },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  sanitizacion_banos: {
+    fecha: { type: "date", required: true },
+    tipo_bano: { type: "string", required: true, enum: ["quimico", "convencional"] },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+  sobrante_lavado: {
+    fecha: { type: "date", required: true },
+    tipo: { type: "string", required: true, enum: ["caldo_fitosanitario", "agua_lavado", "otro"] },
+    volumen: { type: "number", required: false, unit: "litros" },
+    disposicion: { type: "string", required: false },
+    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+  },
+};
+
 const IA_VISIBLE_SCOPES = [
   "encargos.ver",
   "encargos.contactar",
@@ -282,7 +465,6 @@ async function getDelegationForAssignment(
 
   const delegation = await prisma.botDelegation.findFirst({
     where: {
-      granted_by_user_id: asignacion.user_id,
       bot_user_id: botUserId,
       activo: true,
       revoked_at: null,
@@ -385,12 +567,13 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
     return [];
   }
 
-  const allowedUserIds = Array.from(
-    new Set(delegations.map((delegation) => delegation.granted_by_user_id)),
-  );
+  const visibleBodegaIds = await getVisibleBodegaIds(filters.botUserId, filters.bodegaId);
+  if (visibleBodegaIds.length === 0) {
+    return [];
+  }
 
   const where: Prisma.EncargoAsignacionWhereInput = {
-    user_id: { in: allowedUserIds },
+    encargo: { bodega_id: { in: visibleBodegaIds } },
   };
   if (filters.estado) {
     where.estado = filters.estado as never;
@@ -421,20 +604,13 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
     orderBy: [{ assigned_at: "desc" }],
   });
 
-  const delegationsByKey = new Map(
-    delegations.map((delegation) => [
-      `${delegation.granted_by_user_id}:${delegation.bodega_id ?? "global"}`,
-      delegation,
-    ]),
-  );
-
   return assignments
     .map((assignment) => {
-      const key =
-        `${assignment.user_id}:${assignment.encargo.bodega_id}` as const;
-      const globalKey = `${assignment.user_id}:global` as const;
+      const bodegaId = assignment.encargo.bodega_id;
       const delegation =
-        delegationsByKey.get(key) ?? delegationsByKey.get(globalKey) ?? null;
+        delegations.find((d) => d.bodega_id === bodegaId) ??
+        delegations.find((d) => d.bodega_id === null) ??
+        null;
       if (!delegation) return null;
 
       const hasVisibleScope = delegation.scopes.some((scope) =>
@@ -489,8 +665,18 @@ export async function getIaJobContext(encargoAsignacionId: string, botUserId: st
   const { asignacion, delegation } = context;
   const milestone = asignacion.encargo.milestone;
 
+  const eventoTipo =
+    milestone?.protocolo_proceso.evento_tipo ??
+    inferEventoTipo(asignacion.encargo.titulo, asignacion.encargo.descripcion);
+
+  const inputSchema = eventoTipo ? (EVENTO_INPUT_SCHEMAS[eventoTipo] ?? null) : null;
+
   return {
     trabajo: summarizeJob(asignacion, delegation),
+    eventoTipo,
+    inputSchema,
+    // cuando no se puede inferir el tipo, se devuelven todos los schemas para que el bot pueda preguntar al operario
+    eventosDisponibles: inputSchema ? null : EVENTO_INPUT_SCHEMAS,
     milestone: milestone
       ? {
           milestoneId: milestone.milestone_id,
@@ -499,7 +685,7 @@ export async function getIaJobContext(encargoAsignacionId: string, botUserId: st
           proceso: {
             procesoId: milestone.protocolo_proceso.proceso_id,
             nombre: milestone.protocolo_proceso.nombre,
-            eventoTipo: milestone.protocolo_proceso.evento_tipo,
+            eventoTipo,
             obligatorio: milestone.protocolo_proceso.obligatorio,
             orden: milestone.protocolo_proceso.orden,
             etapa: {
@@ -1135,4 +1321,47 @@ export async function helpIaJobLoad(
 ) {
   await ensureBotUser(botUserId);
   return botAyudarCarga(encargoAsignacionId, botUserId, payload);
+}
+
+export async function getIaUsuario(botUserId: string, targetUserId: string) {
+  await ensureBotUser(botUserId);
+
+  const visibleBodegaIds = await getVisibleBodegaIds(botUserId);
+  if (visibleBodegaIds.length === 0) {
+    throw new IaError("Sin delegaciones activas", 403);
+  }
+
+  const user = await prisma.appUser.findFirst({
+    where: {
+      user_id: targetUserId,
+      user_bodega: {
+        some: { bodega_id: { in: visibleBodegaIds } },
+      },
+    },
+    select: {
+      user_id: true,
+      nombre: true,
+      email: true,
+      whatsapp_e164: true,
+      is_active: true,
+    },
+  });
+
+  if (!user) {
+    throw new IaError("Usuario no encontrado o sin acceso", 404);
+  }
+
+  return user;
+}
+
+export function getIaEventoSchema(tipo: string) {
+  const schema = EVENTO_INPUT_SCHEMAS[tipo];
+  if (!schema) {
+    throw new IaError(`Tipo de evento desconocido: ${tipo}`, 404);
+  }
+  return { tipo, schema };
+}
+
+export function listIaEventoTipos() {
+  return Object.keys(EVENTO_INPUT_SCHEMAS);
 }

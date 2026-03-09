@@ -50,4 +50,9 @@ app.get("/bodegas", async (_req, res) => {
   res.json(bodegas);
 });
 
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[global error handler]", err);
+  res.status(500).json({ error: "Error interno" });
+});
+
 export default app;

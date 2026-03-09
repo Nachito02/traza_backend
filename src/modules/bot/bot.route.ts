@@ -4,12 +4,17 @@ import { requireRoles } from "../../middlewares/roles.middleware.js";
 import {
   botAyudarCargaHandler,
   botContactarAsignacionHandler,
+  botLoginHandler,
+  botRegisterHandler,
   createDelegationHandler,
   myDelegationsHandler,
   revokeDelegationHandler,
 } from "./bot.controller.js";
 
 export const botRoutes = Router();
+
+botRoutes.post("/auth/register", authMiddleware, requireRoles(["admin_sistema"]), botRegisterHandler);
+botRoutes.post("/auth/login", botLoginHandler);
 
 botRoutes.post("/delegaciones", authMiddleware, createDelegationHandler);
 botRoutes.get("/delegaciones/me", authMiddleware, myDelegationsHandler);

@@ -21,6 +21,7 @@ function handleError(res: Response, error: unknown) {
   if (error instanceof AuthError) {
     return res.status(error.status).json({ error: error.message });
   }
+  console.error('[auth] Unhandled error:', error);
   return res.status(500).json({ error: 'Error interno' });
 }
 
@@ -92,7 +93,7 @@ export async function meHandler(req: Request, res: Response) {
 
 export async function createUserHandler(req: Request, res: Response) {
   try {
-    const { email, password, nombre, bodegaId, bodegaNombre, rolEnBodega, rolesEnBodega } = req.body ?? {};
+    const { email, password, nombre, bodegaId, bodegaNombre, rolEnBodega, rolesEnBodega, whatsapp } = req.body ?? {};
     const user = await createUser({
       ...(req.user?.userId ? { actorUserId: req.user.userId } : {}),
       email,
@@ -102,6 +103,7 @@ export async function createUserHandler(req: Request, res: Response) {
       bodegaNombre,
       rolEnBodega,
       rolesEnBodega,
+      ...(whatsapp !== undefined ? { whatsapp: String(whatsapp) } : {}),
     });
     return res.status(201).json({
       id: user.user_id,
@@ -170,7 +172,7 @@ export async function updateUserHandler(req: Request, res: Response) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const userId = String(req.params.userId ?? "");
-    const { nombre, email, password, is_active } = req.body ?? {};
+    const { nombre, email, password, is_active, whatsapp } = req.body ?? {};
     const updated = await updateUser({
       actorUserId: req.user.userId,
       targetUserId: userId,
@@ -178,6 +180,7 @@ export async function updateUserHandler(req: Request, res: Response) {
       ...(email !== undefined ? { email: String(email) } : {}),
       ...(password !== undefined ? { password: String(password) } : {}),
       ...(is_active !== undefined ? { is_active: Boolean(is_active) } : {}),
+      ...(whatsapp !== undefined ? { whatsapp: whatsapp === null ? null : String(whatsapp) } : {}),
     });
     return res.json(updated);
   } catch (error) {

@@ -16,6 +16,7 @@ function handleError(res: Response, error: unknown) {
   if (error instanceof EncargoError) {
     return res.status(error.status).json({ error: error.message });
   }
+  console.error("[encargo]", error);
   return res.status(500).json({ error: "Error interno" });
 }
 

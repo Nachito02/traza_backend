@@ -11,7 +11,7 @@ const openapiIaSpec = {
     title: "Traza IA API",
     version: "1.1.0",
     description:
-      "Superficie de integración para bots y agentes sobre Traza. Separa trabajo operativo, catálogos y consulta transversal.",
+      "Superficie de integración para bots y agentes sobre Traza.",
   },
   servers: [
     {
@@ -30,6 +30,74 @@ const openapiIaSpec = {
   },
   security: [{ bearerAuth: [] }],
   paths: {
+    "/auth/register": {
+      post: {
+        summary: "Crear usuario bot (requiere admin_sistema)",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password", "nombre"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                  nombre: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: "Bot creado" } },
+      },
+    },
+    "/auth/login": {
+      post: {
+        summary: "Login del bot — devuelve token en body",
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    access_token: { type: "string" },
+                    refresh_token: { type: "string" },
+                    user: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        email: { type: "string" },
+                        nombre: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/me": {
       get: {
         summary: "Identidad y delegaciones activas del bot",
@@ -131,6 +199,55 @@ const openapiIaSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/catalogos/eventos": {
+      get: {
+        summary: "Lista de tipos de evento disponibles para registrar",
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                example: ["riego", "cosecha", "fenologia", "fertilizacion", "aplicacion_fitosanitaria"],
+              },
+            },
+          },
+        },
+      },
+    },
+    "/catalogos/eventos/{tipo}/schema": {
+      get: {
+        summary: "Schema de campos requeridos/opcionales para un tipo de evento",
+        parameters: [
+          {
+            name: "tipo",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            example: "riego",
+          },
+        ],
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                example: {
+                  tipo: "riego",
+                  schema: {
+                    fecha: { type: "date", required: true },
+                    volumen: { type: "number", required: true, unit: "m3" },
+                    unidad: { type: "string", required: true, enum: ["m3", "litros", "mm"] },
+                    sistema_riego: { type: "string", required: false, enum: ["goteo", "aspersion", "manto", "surco", "otro"] },
+                    responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
+                  },
+                },
+              },
+            },
+          },
+          404: { description: "Tipo de evento desconocido" },
+        },
+      },
+    },
     "/trabajos": {
       get: {
         summary: "Lista de trabajos visibles para el bot",
@@ -162,7 +279,27 @@ const openapiIaSpec = {
       get: {
         summary: "Contexto expandido para resolución del trabajo",
         parameters: [uuidParam("encargoAsignacionId")],
-        responses: { 200: { description: "OK" } },
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    trabajo: { type: "object", description: "Resumen del trabajo" },
+                    eventoTipo: { type: "string", nullable: true, description: "Tipo de evento inferido del título/descripción del encargo (o del milestone si existe)" },
+                    inputSchema: { type: "object", nullable: true, description: "Schema de campos requeridos/opcionales para registrar el evento inferido. Null si no se pudo inferir el tipo." },
+                    milestone: { type: "object", nullable: true },
+                    trazabilidad: { type: "object", nullable: true },
+                    hallazgosAbiertos: { type: "array" },
+                    historialBot: { type: "array" },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
     "/trabajos/{encargoAsignacionId}/contactar": {
@@ -188,9 +325,9 @@ const openapiIaSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
-    "/trabajos/{encargoAsignacionId}/ayudar-carga": {
+    "/trabajos/{encargoAsignacionId}/save-progress": {
       post: {
-        summary: "Registrar ayuda de carga o avance del bot",
+        summary: "Save intermediate progress during a bot conversation",
         parameters: [uuidParam("encargoAsignacionId")],
         requestBody: {
           required: false,
@@ -309,6 +446,29 @@ const openapiIaSpec = {
           { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200 } },
         ],
         responses: { 200: { description: "OK" } },
+      },
+    },
+    "/usuarios/{userId}": {
+      get: {
+        summary: "Datos de un usuario por ID (incluye whatsapp)",
+        parameters: [uuidParam("userId")],
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                example: {
+                  user_id: "25f158ae-...",
+                  nombre: "Juan Pérez",
+                  email: "juan@bodega.com",
+                  whatsapp_e164: "+5491112345678",
+                  is_active: true,
+                },
+              },
+            },
+          },
+          404: { description: "Usuario no encontrado o sin acceso" },
+        },
       },
     },
     "/consultas": {

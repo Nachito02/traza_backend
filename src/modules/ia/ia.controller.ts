@@ -23,12 +23,20 @@ import {
   listIaProtocolos,
   listIaTrazabilidades,
   submitIaJobResult,
+  getIaUsuario,
+  getIaEventoSchema,
+  listIaEventoTipos,
 } from "./ia.service.js";
+import { BotError } from "../bot/bot.service.js";
 
 function handleError(res: Response, error: unknown) {
   if (error instanceof IaError) {
     return res.status(error.status).json({ error: error.message });
   }
+  if (error instanceof BotError) {
+    return res.status(error.status).json({ error: error.message });
+  }
+  console.error("[ia]", error);
   return res.status(500).json({ error: "Error interno" });
 }
 
@@ -351,6 +359,34 @@ export async function iaConsultarHandler(req: Request, res: Response) {
         limit,
       }),
     );
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getIaUsuarioHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const targetUserId = String(req.params.userId ?? "");
+    return res.json(await getIaUsuario(req.user.userId, targetUserId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function listIaEventoTiposHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    return res.json(listIaEventoTipos());
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getIaEventoSchemaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    return res.json(getIaEventoSchema(String(req.params.tipo ?? "")));
   } catch (error) {
     return handleError(res, error);
   }

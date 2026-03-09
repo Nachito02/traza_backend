@@ -19,6 +19,7 @@ type CreateUserInput = {
   bodegaNombre?: string;
   rolEnBodega?: string;
   rolesEnBodega?: string[];
+  whatsapp?: string;
 };
 
 type UpdateUserBodegaRoleInput = {
@@ -52,6 +53,7 @@ type UpdateUserInput = {
   email?: string;
   password?: string;
   is_active?: boolean;
+  whatsapp?: string | null;
 };
 
 type JwtPayload = {
@@ -539,6 +541,7 @@ export async function updateUser({
   email,
   password,
   is_active,
+  whatsapp,
 }: UpdateUserInput) {
   if (!targetUserId) {
     throw new AuthError("userId requerido", 400);
@@ -551,6 +554,7 @@ export async function updateUser({
     email?: string;
     password_hash?: string;
     is_active?: boolean;
+    whatsapp_e164?: string | null;
   } = {};
 
   if (nombre !== undefined) {
@@ -579,6 +583,18 @@ export async function updateUser({
 
   if (is_active !== undefined) {
     data.is_active = is_active;
+  }
+
+  if (whatsapp !== undefined) {
+    if (whatsapp === null || whatsapp === "") {
+      data.whatsapp_e164 = null;
+    } else {
+      const normalized = whatsapp.trim();
+      if (!/^\+\d{7,15}$/.test(normalized)) {
+        throw new AuthError("whatsapp debe estar en formato E.164 (ej: +5491112345678)", 400);
+      }
+      data.whatsapp_e164 = normalized;
+    }
   }
 
   if (Object.keys(data).length === 0) {
@@ -645,6 +661,7 @@ export async function createUser({
   bodegaNombre,
   rolEnBodega,
   rolesEnBodega,
+  whatsapp,
 }: CreateUserInput) {
   if (!email || !password || !nombre || (!bodegaId && !bodegaNombre)) {
     throw new AuthError("Datos incompletos", 400);
@@ -712,11 +729,22 @@ export async function createUser({
   }
 
   const password_hash = await bcrypt.hash(password, 10);
+
+  let whatsapp_e164: string | undefined = undefined;
+  if (whatsapp) {
+    const normalized = whatsapp.trim();
+    if (!/^\+\d{7,15}$/.test(normalized)) {
+      throw new AuthError("whatsapp debe estar en formato E.164 (ej: +5491112345678)", 400);
+    }
+    whatsapp_e164 = normalized;
+  }
+
   const user = await prisma.appUser.create({
     data: {
       email,
       password_hash,
       nombre,
+      ...(whatsapp_e164 ? { whatsapp_e164 } : {}),
     },
   });
 
