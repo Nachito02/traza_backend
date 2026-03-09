@@ -8,8 +8,9 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     const bearerValue = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
     if (bearerValue?.startsWith("devkey:")) {
       const parts = bearerValue.slice(7).split(":");
-      if (parts.length === 2 && parts[0] === devApiKey) {
-        req.user = { userId: parts[1] };
+      const userId = parts[1];
+      if (parts.length === 2 && parts[0] === devApiKey && userId) {
+        req.user = { userId };
         return next();
       }
       return res.status(401).json({ error: "dev api key inválida" });
