@@ -12,6 +12,7 @@ import { cumplimientoRoutes } from "../modules/cumplimiento/cumplimiento.route.j
 import { productorRoutes } from "../modules/productores/productor.route.js";
 import { encargoRoutes } from "../modules/encargos/encargo.route.js";
 import { botRoutes } from "../modules/bot/bot.route.js";
+import { iaRoutes } from "../modules/ia/ia.route.js";
 import { elaboracionRoutes } from "../modules/elaboracion/elaboracion.route.js";
 
 export const routes = Router();
@@ -29,4 +30,5 @@ routes.use("/cumplimiento", cumplimientoRoutes);
 routes.use("/productores", productorRoutes);
 routes.use("/encargos", encargoRoutes);
 routes.use("/bot", botRoutes);
+routes.use("/ia", iaRoutes);
 routes.use("/elaboracion", elaboracionRoutes);

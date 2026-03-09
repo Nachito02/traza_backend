@@ -7,6 +7,7 @@ import { prisma } from './config/prismaClient.js';
 import { routes } from './routes/index.js';
 import swaggerUi from "swagger-ui-express";
 import openapiSpec from "./config/openapi.js";
+import openapiIaSpec from "./config/openapi-ia.js";
 
 const app = express();
 app.set('trust proxy', 1);
@@ -39,6 +40,7 @@ app.use(
 );
 app.use('/uploads', express.static('uploads'));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));
+app.use("/docs/ia", swaggerUi.serveFiles(openapiIaSpec), swaggerUi.setup(openapiIaSpec));
 
 //Routes
 app.use('/api', routes);
