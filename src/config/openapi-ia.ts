@@ -327,7 +327,7 @@ const openapiIaSpec = {
     },
     "/trabajos/{encargoAsignacionId}/save-progress": {
       post: {
-        summary: "Save intermediate progress during a bot conversation",
+        summary: "Guardar progreso intermedio y validar contra el schema del evento",
         parameters: [uuidParam("encargoAsignacionId")],
         requestBody: {
           required: false,
@@ -339,7 +339,7 @@ const openapiIaSpec = {
               },
               example: {
                 draft: {
-                  tipo: "evento_riego",
+                  tipo: "riego",
                   fecha: "2026-03-09",
                   volumen: 12.5,
                   unidad: "m3",
@@ -348,7 +348,53 @@ const openapiIaSpec = {
             },
           },
         },
-        responses: { 200: { description: "OK" } },
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    botActionLog: { type: "object", description: "Registro de acción persistido" },
+                    eventoTipo: { type: "string", nullable: true },
+                    inputSchema: { type: "object", nullable: true },
+                    validation: {
+                      type: "object",
+                      nullable: true,
+                      properties: {
+                        missingRequired: { type: "array", items: { type: "string" } },
+                        invalidFields: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              field: { type: "string" },
+                              reason: { type: "string" },
+                              expectedType: { type: "string" },
+                              enum: { type: "array", items: { type: "string" } },
+                            },
+                          },
+                        },
+                        requiredPresent: { type: "integer" },
+                        requiredTotal: { type: "integer" },
+                        canClose: { type: "boolean" },
+                      },
+                    },
+                    nextAction: {
+                      type: "string",
+                      enum: [
+                        "ask_missing_or_fix_invalid",
+                        "ready_to_submit_result",
+                        "schema_not_available",
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
     "/trabajos/{encargoAsignacionId}/resultado": {

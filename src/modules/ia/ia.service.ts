@@ -15,6 +15,7 @@ type FieldSchema = {
 };
 
 type EventoInputSchema = Record<string, FieldSchema>;
+type ProgressDraft = Record<string, unknown>;
 
 const EVENTO_TIPO_KEYWORDS: Array<{ tipo: string; keywords: string[] }> = [
   { tipo: "riego", keywords: ["riego"] },
@@ -188,6 +189,90 @@ const EVENTO_INPUT_SCHEMAS: Record<string, EventoInputSchema> = {
     responsable_persona_id: { type: "string", required: false, description: "UUID de la persona responsable" },
   },
 };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isDateString(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function matchesFieldType(value: unknown, type: FieldSchema["type"]) {
+  switch (type) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "date":
+      return typeof value === "string" && isDateString(value);
+    default:
+      return false;
+  }
+}
+
+function isMissingRequired(value: unknown) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim().length === 0;
+  return false;
+}
+
+function validateDraftAgainstSchema(draft: ProgressDraft, schema: EventoInputSchema) {
+  const missingRequired: string[] = [];
+  const invalidFields: Array<{
+    field: string;
+    reason: string;
+    expectedType: FieldSchema["type"];
+    enum?: string[];
+  }> = [];
+  let requiredTotal = 0;
+  let requiredPresent = 0;
+
+  for (const [field, rules] of Object.entries(schema)) {
+    const value = draft[field];
+    if (rules.required) {
+      requiredTotal += 1;
+      if (isMissingRequired(value)) {
+        missingRequired.push(field);
+        continue;
+      }
+      requiredPresent += 1;
+    } else if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (!matchesFieldType(value, rules.type)) {
+      invalidFields.push({
+        field,
+        reason:
+          rules.type === "date"
+            ? "Debe ser fecha YYYY-MM-DD"
+            : `Debe ser tipo ${rules.type}`,
+        expectedType: rules.type,
+        ...(rules.enum ? { enum: rules.enum } : {}),
+      });
+      continue;
+    }
+
+    if (rules.enum && typeof value === "string" && !rules.enum.includes(value)) {
+      invalidFields.push({
+        field,
+        reason: "Valor fuera de catálogo permitido",
+        expectedType: rules.type,
+        enum: rules.enum,
+      });
+    }
+  }
+
+  return {
+    missingRequired,
+    invalidFields,
+    requiredTotal,
+    requiredPresent,
+  };
+}
 
 const IA_VISIBLE_SCOPES = [
   "encargos.ver",
@@ -1320,7 +1405,56 @@ export async function helpIaJobLoad(
   payload?: unknown,
 ) {
   await ensureBotUser(botUserId);
-  return botAyudarCarga(encargoAsignacionId, botUserId, payload);
+  const context = await getDelegationForAssignment(botUserId, encargoAsignacionId, [
+    "encargos.cargar_datos",
+  ]);
+
+  const milestone = context.asignacion.encargo.milestone;
+  const eventoTipo =
+    milestone?.protocolo_proceso.evento_tipo ??
+    inferEventoTipo(context.asignacion.encargo.titulo, context.asignacion.encargo.descripcion);
+  const inputSchema = eventoTipo ? (EVENTO_INPUT_SCHEMAS[eventoTipo] ?? null) : null;
+
+  const body = isPlainObject(payload) ? payload : {};
+  const draftCandidate = isPlainObject(body.draft) ? body.draft : body;
+  const draft = isPlainObject(draftCandidate) ? draftCandidate : {};
+
+  const validation = inputSchema ? validateDraftAgainstSchema(draft, inputSchema) : null;
+
+  const enrichedPayload: Prisma.InputJsonObject = {
+    ...(body as Prisma.InputJsonObject),
+    draft: draft as Prisma.InputJsonObject,
+    _meta: {
+      eventoTipo,
+      hasInputSchema: Boolean(inputSchema),
+      validation,
+    } as Prisma.InputJsonObject,
+  };
+
+  const botActionLog = await botAyudarCarga(encargoAsignacionId, botUserId, enrichedPayload);
+
+  return {
+    botActionLog,
+    eventoTipo,
+    inputSchema,
+    validation: validation
+      ? {
+          missingRequired: validation.missingRequired,
+          invalidFields: validation.invalidFields,
+          requiredPresent: validation.requiredPresent,
+          requiredTotal: validation.requiredTotal,
+          canClose:
+            validation.missingRequired.length === 0 &&
+            validation.invalidFields.length === 0 &&
+            validation.requiredTotal > 0,
+        }
+      : null,
+    nextAction: validation
+      ? validation.missingRequired.length > 0 || validation.invalidFields.length > 0
+        ? "ask_missing_or_fix_invalid"
+        : "ready_to_submit_result"
+      : "schema_not_available",
+  };
 }
 
 export async function getIaUsuario(botUserId: string, targetUserId: string) {
