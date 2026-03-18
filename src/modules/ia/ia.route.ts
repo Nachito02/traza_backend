@@ -34,6 +34,7 @@ import {
   listIaTrabajadoresHandler,
   createIaTrabajadorHandler,
   createIaCuartelHandler,
+  addIaEntradaHandler,
   listIaProcesosHandler,
   listIaProtocolosHandler,
   listIaTrazabilidadesHandler,
@@ -68,6 +69,7 @@ iaRoutes.get("/tareas/:tareaAsignacionId", getIaJobHandler);
 iaRoutes.get("/tareas/:tareaAsignacionId/contexto", getIaJobContextHandler);
 iaRoutes.post("/tareas/:tareaAsignacionId/contactar", contactIaJobHandler);
 iaRoutes.post("/tareas/:tareaAsignacionId/guardar-progreso", helpIaJobLoadHandler);
+iaRoutes.post("/tareas/:tareaAsignacionId/entradas", addIaEntradaHandler);
 iaRoutes.post("/tareas/:tareaAsignacionId/finalizar", submitIaJobResultHandler);
 iaRoutes.get("/trazabilidades", listIaTrazabilidadesHandler);
 iaRoutes.get("/trazabilidades/:trazabilidadId", getIaTrazabilidadHandler);

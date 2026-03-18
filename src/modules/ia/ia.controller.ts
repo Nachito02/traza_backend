@@ -21,6 +21,7 @@ import {
   listIaTrabajadores,
   createIaTrabajador,
   createIaCuartel,
+  addIaEntrada,
   listIaProcesos,
   listIaProtocolos,
   listIaTrazabilidades,
@@ -63,11 +64,14 @@ export async function listIaJobsHandler(req: Request, res: Response) {
       typeof req.query.estado === "string" ? req.query.estado : undefined;
     const bodegaId =
       typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
-    const filters: { botUserId: string; estado?: string; bodegaId?: string } = {
+    const whatsapp =
+      typeof req.query.whatsapp === "string" ? req.query.whatsapp : undefined;
+    const filters: { botUserId: string; estado?: string; bodegaId?: string; whatsapp?: string } = {
       botUserId: req.user.userId,
     };
     if (estado) filters.estado = estado;
     if (bodegaId) filters.bodegaId = bodegaId;
+    if (whatsapp) filters.whatsapp = whatsapp;
     return res.json(await listIaJobs(filters));
   } catch (error) {
     return handleError(res, error);
@@ -404,6 +408,20 @@ export async function listIaEventoTiposHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
     return res.json(listIaEventoTipos());
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function addIaEntradaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    const { descripcion, adjuntos } = req.body ?? {};
+    const params: Parameters<typeof addIaEntrada>[0] = { botUserId: req.user.userId, tareaAsignacionId };
+    if (typeof descripcion === "string") params.descripcion = descripcion;
+    if (Array.isArray(adjuntos)) params.adjuntos = adjuntos;
+    return res.status(201).json(await addIaEntrada(params));
   } catch (error) {
     return handleError(res, error);
   }

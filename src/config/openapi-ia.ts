@@ -5,13 +5,13 @@ const uuidParam = (name: string) => ({
   schema: { type: "string", format: "uuid" },
 });
 
+
 const openapiIaSpec = {
   openapi: "3.0.3",
   info: {
     title: "Traza IA API",
     version: "1.1.0",
-    description:
-      "Superficie de integración para bots y agentes sobre Traza.",
+    description: "API de integración para bots y agentes sobre Traza.",
   },
   servers: [
     {
@@ -29,9 +29,19 @@ const openapiIaSpec = {
     },
   },
   security: [{ bearerAuth: [] }],
+  tags: [
+    { name: "Autenticación", description: "Login y registro del bot. Todos los endpoints requieren `Authorization: Bearer <token>` excepto `/auth/login`." },
+    { name: "Usuarios", description: "Buscar usuarios por WhatsApp o ID. `tiene_delegacion: true` indica que el bot ya tiene delegación activa para ese usuario." },
+    { name: "Delegaciones", description: "Permiso que el encargado le da al bot para actuar en su nombre. Requerida para crear tareas y cuarteles. Los catálogos no la requieren." },
+    { name: "Catálogos", description: "Datos de referencia: bodegas, fincas, cuarteles, trabajadores, protocolos, insumos. Accesibles sin delegación, solo con el token del bot." },
+    { name: "Tareas", description: "Crear, consultar y resolver tareas desde WhatsApp. Soporta notas iterativas (/entradas) y guardado de progreso (/guardar-progreso) antes de finalizar." },
+    { name: "Trazabilidad", description: "⚠️ Esta sección no está activa por el momento. Incluye trazabilidades, hallazgos y eventos agronómicos." },
+    { name: "Consultas", description: "Búsqueda transversal para responder preguntas libres del bot sobre datos de la bodega." },
+  ],
   paths: {
     "/auth/register": {
       post: {
+        tags: ["Autenticación"],
         summary: "Crear usuario bot (requiere admin_sistema)",
         security: [{ bearerAuth: [] }],
         requestBody: {
@@ -55,6 +65,7 @@ const openapiIaSpec = {
     },
     "/auth/login": {
       post: {
+        tags: ["Autenticación"],
         summary: "Login del bot — devuelve token en body",
         security: [],
         requestBody: {
@@ -100,18 +111,21 @@ const openapiIaSpec = {
     },
     "/me": {
       get: {
+        tags: ["Autenticación"],
         summary: "Identidad del bot autenticado y delegaciones activas",
         responses: { 200: { description: "OK" } },
       },
     },
     "/catalogos/bodegas": {
       get: {
+        tags: ["Catálogos"],
         summary: "Bodegas visibles para el bot por delegación",
         responses: { 200: { description: "OK" } },
       },
     },
     "/catalogos/fincas": {
       get: {
+        tags: ["Catálogos"],
         summary: "Fincas visibles por delegación",
         parameters: [
           {
@@ -126,6 +140,7 @@ const openapiIaSpec = {
     },
     "/catalogos/cuarteles": {
       get: {
+        tags: ["Catálogos"],
         summary: "Cuarteles de una finca",
         parameters: [
           {
@@ -138,6 +153,7 @@ const openapiIaSpec = {
         responses: { 200: { description: "OK" } },
       },
       post: {
+        tags: ["Catálogos"],
         summary: "Crear cuartel en una finca (requiere delegación)",
         requestBody: {
           required: true,
@@ -164,6 +180,7 @@ const openapiIaSpec = {
     },
     "/catalogos/campanias": {
       get: {
+        tags: ["Catálogos"],
         summary: "Campañas visibles por delegación",
         parameters: [
           {
@@ -178,6 +195,7 @@ const openapiIaSpec = {
     },
     "/catalogos/trabajadores": {
       get: {
+        tags: ["Catálogos"],
         summary: "Lista trabajadores de una bodega (usuarios registrados y sin acceso)",
         parameters: [
           {
@@ -213,10 +231,12 @@ const openapiIaSpec = {
         },
       },
       post: {
-        summary: "Crear trabajador con password temporal",
+        tags: ["Catálogos"],
+        summary: "Crear trabajador",
         description:
-          "Crea un usuario con password aleatorio y `must_change_password: true`. " +
-          "El bot debe enviarle el `passwordTemporal` al trabajador por WhatsApp para que pueda hacer su primer login y cambiarlo.",
+          "Crea un usuario trabajador en la bodega. " +
+          "Si se provee `whatsapp`, se genera un `passwordTemporal` que el bot debe enviarle al trabajador para que pueda hacer login y cambiarlo (recibe `must_change_password: true`). " +
+          "Si no se provee `whatsapp`, el usuario queda registrado sin acceso a la plataforma (`tieneAcceso: false`) y puede ser asignado a tareas que el encargado registrará en su nombre.",
         requestBody: {
           required: true,
           content: {
@@ -260,12 +280,14 @@ const openapiIaSpec = {
     },
     "/catalogos/protocolos": {
       get: {
+        tags: ["Catálogos"],
         summary: "Protocolos activos",
         responses: { 200: { description: "OK" } },
       },
     },
     "/catalogos/protocolos/{protocoloId}/procesos": {
       get: {
+        tags: ["Catálogos"],
         summary: "Etapas y procesos de un protocolo",
         parameters: [uuidParam("protocoloId")],
         responses: { 200: { description: "OK" } },
@@ -273,6 +295,7 @@ const openapiIaSpec = {
     },
     "/catalogos/insumos": {
       get: {
+        tags: ["Catálogos"],
         summary: "Catálogo de insumos con lotes habilitados",
         parameters: [
           {
@@ -287,6 +310,7 @@ const openapiIaSpec = {
     },
     "/catalogos/eventos": {
       get: {
+        tags: ["Catálogos"],
         summary: "Lista de tipos de evento disponibles para registrar",
         responses: {
           200: {
@@ -302,6 +326,7 @@ const openapiIaSpec = {
     },
     "/catalogos/eventos/{tipo}/schema": {
       get: {
+        tags: ["Catálogos"],
         summary: "Schema de campos requeridos/opcionales para un tipo de evento",
         parameters: [
           {
@@ -336,26 +361,19 @@ const openapiIaSpec = {
     },
     "/tareas": {
       get: {
+        tags: ["Tareas"],
         summary: "Lista de tareas visibles para el bot",
         parameters: [
-          {
-            name: "estado",
-            in: "query",
-            required: false,
-            schema: { type: "string" },
-          },
-          {
-            name: "bodegaId",
-            in: "query",
-            required: false,
-            schema: { type: "string", format: "uuid" },
-          },
+          { name: "estado", in: "query", required: false, schema: { type: "string", enum: ["pendiente", "en_progreso", "completado", "cancelado"] } },
+          { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+          { name: "whatsapp", in: "query", required: false, schema: { type: "string" }, description: "Filtra por WhatsApp del asignado (E.164)" },
         ],
         responses: { 200: { description: "OK" } },
       },
     },
     "/tareas/iniciar": {
       post: {
+        tags: ["Tareas"],
         summary: "Iniciar creación de tarea desde WhatsApp (con auto-delegación)",
         description:
           "Verifica si el bot tiene delegación activa con scope `tareas.crear` para el usuario identificado por su WhatsApp.\n\n" +
@@ -432,6 +450,7 @@ const openapiIaSpec = {
     },
     "/tareas/{tareaAsignacionId}": {
       get: {
+        tags: ["Tareas"],
         summary: "Detalle resumido de una tarea",
         parameters: [uuidParam("tareaAsignacionId")],
         responses: { 200: { description: "OK" } },
@@ -439,6 +458,7 @@ const openapiIaSpec = {
     },
     "/tareas/{tareaAsignacionId}/contexto": {
       get: {
+        tags: ["Tareas"],
         summary: "Contexto expandido para resolución de la tarea",
         parameters: [uuidParam("tareaAsignacionId")],
         responses: {
@@ -466,6 +486,7 @@ const openapiIaSpec = {
     },
     "/tareas/{tareaAsignacionId}/contactar": {
       post: {
+        tags: ["Tareas"],
         summary: "Registrar contacto del bot con el operario",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
@@ -487,8 +508,51 @@ const openapiIaSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/tareas/{tareaAsignacionId}/entradas": {
+      post: {
+        tags: ["Tareas"],
+        summary: "Agregar nota/entrada a la tarea",
+        description: "Registra una iteración o nota libre sobre la tarea. Las entradas se acumulan y son visibles en GET /tareas/:id.",
+        parameters: [uuidParam("tareaAsignacionId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  descripcion: { type: "string", description: "Texto de la nota o iteración" },
+                  adjuntos: { type: "array", items: { type: "object" }, description: "Archivos adjuntos opcionales" },
+                },
+              },
+              example: { descripcion: "Riego realizado en sector norte, 12m³ aplicados." },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Entrada registrada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    entradaId: { type: "string", format: "uuid" },
+                    descripcion: { type: "string", nullable: true },
+                    adjuntos: { type: "array" },
+                    fecha: { type: "string", format: "date-time" },
+                    creadoPor: { type: "object", properties: { user_id: { type: "string" }, nombre: { type: "string" } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/tareas/{tareaAsignacionId}/guardar-progreso": {
       post: {
+        tags: ["Tareas"],
         summary: "Guardar progreso intermedio y validar contra el schema del evento",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
@@ -561,6 +625,7 @@ const openapiIaSpec = {
     },
     "/tareas/{tareaAsignacionId}/finalizar": {
       post: {
+        tags: ["Tareas"],
         summary: "Finalizar tarea — cierra o actualiza el estado",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
@@ -598,6 +663,7 @@ const openapiIaSpec = {
     },
     "/trazabilidades": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Trazabilidades visibles por delegación",
         parameters: [
           { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
@@ -611,6 +677,7 @@ const openapiIaSpec = {
     },
     "/trazabilidades/{trazabilidadId}": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Detalle de una trazabilidad visible",
         parameters: [uuidParam("trazabilidadId")],
         responses: { 200: { description: "OK" } },
@@ -618,6 +685,7 @@ const openapiIaSpec = {
     },
     "/trazabilidades/{trazabilidadId}/contexto": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Contexto expandido de una trazabilidad",
         parameters: [uuidParam("trazabilidadId")],
         responses: { 200: { description: "OK" } },
@@ -625,6 +693,7 @@ const openapiIaSpec = {
     },
     "/hallazgos": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Hallazgos visibles por delegación",
         parameters: [
           { name: "trazabilidadId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
@@ -636,6 +705,7 @@ const openapiIaSpec = {
     },
     "/hallazgos/{hallazgoId}": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Detalle de un hallazgo",
         parameters: [uuidParam("hallazgoId")],
         responses: { 200: { description: "OK" } },
@@ -643,6 +713,7 @@ const openapiIaSpec = {
     },
     "/eventos": {
       get: {
+        tags: ["Trazabilidad"],
         summary: "Lectura de eventos para responder preguntas del bot",
         parameters: [
           { name: "tipo", in: "query", required: false, schema: { type: "string" } },
@@ -658,6 +729,7 @@ const openapiIaSpec = {
     },
     "/usuarios/whatsapp/{whatsapp}": {
       get: {
+        tags: ["Usuarios"],
         summary: "Datos del usuario por WhatsApp + delegaciones activas del bot hacia ese usuario",
         parameters: [
           {
@@ -701,6 +773,7 @@ const openapiIaSpec = {
     },
     "/usuarios/{userId}": {
       get: {
+        tags: ["Usuarios"],
         summary: "Datos de un usuario por ID (incluye whatsapp)",
         parameters: [uuidParam("userId")],
         responses: {
@@ -724,6 +797,7 @@ const openapiIaSpec = {
     },
     "/consultas": {
       post: {
+        tags: ["Consultas"],
         summary: "Búsqueda transversal para responder preguntas del bot",
         requestBody: {
           required: true,

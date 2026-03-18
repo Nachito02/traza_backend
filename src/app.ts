@@ -46,7 +46,10 @@ app.get("/docs/ia/spec.json", (_req, res) => res.json(openapiIaSpec));
 app.use(
   "/docs/ia",
   swaggerUi.serveFiles(openapiIaSpec),
-  swaggerUi.setup(openapiIaSpec, { explorer: true })
+  swaggerUi.setup(openapiIaSpec, {
+    explorer: true,
+    customCss: `.opblock-tag { align-items: flex-start !important; } .opblock-tag small { margin-top: 4px; line-height: 1.5; white-space: normal; max-width: 70%; }`,
+  })
 );
 app.use(
   "/docs",

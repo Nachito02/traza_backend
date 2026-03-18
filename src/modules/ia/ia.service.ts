@@ -285,6 +285,7 @@ type ListIaJobsFilters = {
   botUserId: string;
   estado?: string;
   bodegaId?: string;
+  whatsapp?: string;
 };
 
 type SubmitIaResultInput = {
@@ -347,10 +348,16 @@ const iaAssignmentInclude = {
       bodega: { select: { bodega_id: true, nombre: true } },
       finca: { select: { finca_id: true, nombre_finca: true } },
       cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
+      entradas: {
+        orderBy: [{ fecha: "asc" as const }],
+        include: {
+          app_user: { select: { user_id: true, nombre: true } },
+        },
+      },
     },
   },
   bot_action_log: {
-    orderBy: [{ created_at: "desc" }],
+    orderBy: [{ created_at: "desc" as const }],
     take: 20,
   },
 } satisfies Prisma.TareaAsignacionInclude;
@@ -568,7 +575,17 @@ function summarizeJob(
       bodega: assignment.tarea.bodega,
       finca: assignment.tarea.finca,
       cuartel: assignment.tarea.cuartel,
+      entradas: assignment.tarea.entradas.map((e) => ({
+        entradaId: e.entrada_id,
+        descripcion: e.descripcion,
+        adjuntos: e.adjuntos,
+        fecha: e.fecha,
+        creadoPor: e.app_user,
+      })),
     },
+    ultimoDraft: assignment.bot_action_log
+      .filter((l) => l.action === "tareas.guardar_progreso" && l.output_payload)
+      .at(0)?.output_payload ?? null,
     delegation: {
       botDelegationId: delegation.bot_delegation_id,
       grantedBy: delegation.granted_by_user,
@@ -628,6 +645,9 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
   }
   if (filters.bodegaId) {
     where.tarea = { bodega_id: filters.bodegaId };
+  }
+  if (filters.whatsapp) {
+    where.app_user = { whatsapp_e164: filters.whatsapp };
   }
 
   const assignments = await prisma.tareaAsignacion.findMany({
@@ -828,6 +848,44 @@ export async function listIaCampanias({ botUserId, bodegaId }: IaCatalogFilter) 
     where: { ...(bodegaId ? { bodega_id: bodegaId } : {}) },
     orderBy: [{ fecha_inicio: "desc" }],
   });
+}
+
+export async function addIaEntrada({
+  botUserId,
+  tareaAsignacionId,
+  descripcion,
+  adjuntos,
+}: {
+  botUserId: string;
+  tareaAsignacionId: string;
+  descripcion?: string;
+  adjuntos?: unknown[];
+}) {
+  await ensureBotUser(botUserId);
+  const context = await getDelegationForAssignment(botUserId, tareaAsignacionId, [
+    "tareas.cargar_datos",
+    "tareas.resolver",
+  ]);
+
+  const entrada = await prisma.tareaEntrada.create({
+    data: {
+      tarea_id: context.asignacion.tarea_id,
+      created_by: context.delegation.granted_by_user.user_id,
+      descripcion: descripcion ?? null,
+      adjuntos: (adjuntos ?? []) as Prisma.InputJsonValue,
+    },
+    include: {
+      app_user: { select: { user_id: true, nombre: true } },
+    },
+  });
+
+  return {
+    entradaId: entrada.entrada_id,
+    descripcion: entrada.descripcion,
+    adjuntos: entrada.adjuntos,
+    fecha: entrada.fecha,
+    creadoPor: entrada.app_user,
+  };
 }
 
 export async function createIaCuartel({
