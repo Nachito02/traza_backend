@@ -1,63 +1,65 @@
 import type { Request, Response } from "express";
 import {
-  addEncargoAsignaciones,
-  canUserManageEncargos,
-  cancelEncargo,
-  createEncargo,
-  EncargoError,
-  listEncargos,
-  listMyEncargoAsignaciones,
+  addTareaAsignaciones,
+  canUserManageTareas,
+  cancelTarea,
+  createTarea,
+  TareaError,
+  listTareas,
+  listMyTareaAsignaciones,
   listMyPendientes,
   listPendientesByBodega,
-  updateMyEncargoAsignacionEstado,
-} from "./encargo.service.js";
+  updateMyTareaAsignacionEstado,
+} from "./tarea.service.js";
 
 function handleError(res: Response, error: unknown) {
-  if (error instanceof EncargoError) {
+  if (error instanceof TareaError) {
     return res.status(error.status).json({ error: error.message });
   }
-  console.error("[encargo]", error);
+  console.error("[tarea]", error);
   return res.status(500).json({ error: "Error interno" });
 }
 
-export async function createEncargoHandler(req: Request, res: Response) {
+export async function createTareaHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const {
       bodegaId,
+      procesoId,
       fincaId,
       cuartelId,
-      milestoneId,
-      titulo,
       descripcion,
-      fechaObjetivo,
+      fechaFin,
       prioridad,
+      imagenCid,
+      imagenUrl,
       assigneeUserIds,
     } =
       req.body ?? {};
-    const encargo = await createEncargo(
+    const tarea = await createTarea(
       {
         bodegaId,
+        procesoId,
         fincaId,
         cuartelId,
-        milestoneId,
-        titulo,
         descripcion,
-        fechaObjetivo,
+        fechaFin,
         prioridad,
+        imagenCid,
+        imagenUrl,
         assigneeUserIds,
       },
       req.user.userId,
     );
-    return res.status(201).json(encargo);
+    return res.status(201).json(tarea);
   } catch (error) {
     return handleError(res, error);
   }
 }
 
-export async function listEncargosHandler(req: Request, res: Response) {
+export async function listTareasHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
@@ -67,46 +69,46 @@ export async function listEncargosHandler(req: Request, res: Response) {
     const soloPendientes =
       req.query.pendientes === "1" ||
       req.query.pendientes === "true";
-    const items = await listEncargos(req.user.userId, bodegaId, fincaId, Boolean(soloPendientes));
+    const items = await listTareas(req.user.userId, bodegaId, fincaId, Boolean(soloPendientes));
     return res.json(items);
   } catch (error) {
     return handleError(res, error);
   }
 }
 
-export async function addEncargoAsignacionesHandler(req: Request, res: Response) {
+export async function addTareaAsignacionesHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoId = String(req.params.encargoId ?? "");
+    const tareaId = String(req.params.tareaId ?? "");
     const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
-    const rows = await addEncargoAsignaciones(encargoId, userIds, req.user.userId);
+    const rows = await addTareaAsignaciones(tareaId, userIds, req.user.userId);
     return res.json(rows);
   } catch (error) {
     return handleError(res, error);
   }
 }
 
-export async function cancelEncargoHandler(req: Request, res: Response) {
+export async function cancelTareaHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoId = String(req.params.encargoId ?? "");
-    const row = await cancelEncargo(encargoId, req.user.userId);
+    const tareaId = String(req.params.tareaId ?? "");
+    const row = await cancelTarea(tareaId, req.user.userId);
     return res.json(row);
   } catch (error) {
     return handleError(res, error);
   }
 }
 
-export async function assignEncargoCompatHandler(req: Request, res: Response) {
+export async function assignTareaCompatHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoId = String(req.params.encargoId ?? "");
+    const tareaId = String(req.params.tareaId ?? "");
 
     const userIdsFromArray = Array.isArray(req.body?.userIds)
       ? req.body.userIds.filter((id: unknown) => typeof id === "string")
@@ -125,19 +127,19 @@ export async function assignEncargoCompatHandler(req: Request, res: Response) {
           ? [userId]
           : [];
 
-    const rows = await addEncargoAsignaciones(encargoId, userIds, req.user.userId);
+    const rows = await addTareaAsignaciones(tareaId, userIds, req.user.userId);
     return res.json(rows);
   } catch (error) {
     return handleError(res, error);
   }
 }
 
-export async function listMyEncargosHandler(req: Request, res: Response) {
+export async function listMyTareasHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const rows = await listMyEncargoAsignaciones(req.user.userId);
+    const rows = await listMyTareaAsignaciones(req.user.userId);
     return res.json(rows);
   } catch (error) {
     return handleError(res, error);
@@ -149,11 +151,11 @@ export async function updateMyAsignacionEstadoHandler(req: Request, res: Respons
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
     const estado = req.body?.estado;
     const observaciones = req.body?.observaciones;
-    const row = await updateMyEncargoAsignacionEstado({
-      encargoAsignacionId,
+    const row = await updateMyTareaAsignacionEstado({
+      tareaAsignacionId,
       userId: req.user.userId,
       estado,
       observaciones,
@@ -164,12 +166,12 @@ export async function updateMyAsignacionEstadoHandler(req: Request, res: Respons
   }
 }
 
-export async function canManageEncargosHandler(req: Request, res: Response) {
+export async function canManageTareasHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const canManage = await canUserManageEncargos(req.user.userId);
+    const canManage = await canUserManageTareas(req.user.userId);
     return res.json({ canManage });
   } catch (error) {
     return handleError(res, error);

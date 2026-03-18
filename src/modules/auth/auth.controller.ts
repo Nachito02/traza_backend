@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import {
   AuthError,
+  changePassword,
   createUser,
   deleteUser,
   getUserDetail,
@@ -54,6 +55,11 @@ export async function loginHandler(req: Request, res: Response) {
   try {
     const { email, password } = req.body ?? {};
     const result = await login({ email, password });
+
+    if ('must_change_password' in result) {
+      return res.status(200).json({ must_change_password: true, userId: result.userId });
+    }
+
     const options = cookieOptions(req);
     res.cookie('access_token', result.token, {
       ...options,
@@ -64,6 +70,8 @@ export async function loginHandler(req: Request, res: Response) {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
     return res.json({
+      access_token: result.token,
+      refresh_token: result.refreshToken,
       user: {
         id: result.user.user_id,
         email: result.user.email,
@@ -75,16 +83,40 @@ export async function loginHandler(req: Request, res: Response) {
   }
 }
 
+export async function changePasswordHandler(req: Request, res: Response) {
+  try {
+    const { userId, currentPassword, newPassword } = req.body ?? {};
+    if (!userId || !currentPassword || !newPassword) {
+      return res.status(400).json({ error: "userId, currentPassword y newPassword son requeridos" });
+    }
+    const result = await changePassword({ userId, currentPassword, newPassword });
+    return res.json({ access_token: result.token, refresh_token: result.refreshToken });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function meHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
       return res.status(401).json({ error: 'unauthorized' });
     }
-    const user = await getUserById(req.user.userId);
+    const [user, roles] = await Promise.all([
+      getUserById(req.user.userId),
+      getUserRoles(req.user.userId),
+    ]);
     return res.json({
       id: user.user_id,
       email: user.email,
       nombre: user.nombre,
+      whatsapp: user.whatsapp_e164 ?? null,
+      is_active: user.is_active,
+      roles_globales: roles,
+      bodegas: user.user_bodega.map((ub) => ({
+        bodega_id: ub.bodega?.bodega_id,
+        nombre: ub.bodega?.nombre,
+        roles: ub.user_bodega_rol.map((r) => r.rol).sort(),
+      })),
     });
   } catch (error) {
     return handleError(res, error);

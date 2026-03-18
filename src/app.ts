@@ -39,8 +39,20 @@ app.use(
   })
 );
 app.use('/uploads', express.static('uploads'));
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));
-app.use("/docs/ia", swaggerUi.serveFiles(openapiIaSpec), swaggerUi.setup(openapiIaSpec));
+app.get("/docs/spec.json", (_req, res) => res.json(openapiSpec));
+app.get("/docs/ia/spec.json", (_req, res) => res.json(openapiIaSpec));
+
+// /docs/ia debe ir ANTES que /docs para evitar captura por prefijo.
+app.use(
+  "/docs/ia",
+  swaggerUi.serveFiles(openapiIaSpec),
+  swaggerUi.setup(openapiIaSpec, { explorer: true })
+);
+app.use(
+  "/docs",
+  swaggerUi.serveFiles(openapiSpec),
+  swaggerUi.setup(openapiSpec, { explorer: true })
+);
 
 //Routes
 app.use('/api', routes);

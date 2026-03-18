@@ -10,7 +10,7 @@ import { trazabilidadRoutes } from "../modules/trazabilidades/trazabilidad.route
 import { eventoRoutes } from "../modules/eventos/evento.route.js";
 import { cumplimientoRoutes } from "../modules/cumplimiento/cumplimiento.route.js";
 import { productorRoutes } from "../modules/productores/productor.route.js";
-import { encargoRoutes } from "../modules/encargos/encargo.route.js";
+import { tareaRoutes } from "../modules/tareas/tarea.route.js";
 import { botRoutes } from "../modules/bot/bot.route.js";
 import { iaRoutes } from "../modules/ia/ia.route.js";
 import { elaboracionRoutes } from "../modules/elaboracion/elaboracion.route.js";
@@ -28,7 +28,7 @@ routes.use("/trazabilidades", trazabilidadRoutes);
 routes.use("/eventos", eventoRoutes);
 routes.use("/cumplimiento", cumplimientoRoutes);
 routes.use("/productores", productorRoutes);
-routes.use("/encargos", encargoRoutes);
+routes.use("/tareas", tareaRoutes);
 routes.use("/bot", botRoutes);
 routes.use("/ia", iaRoutes);
 routes.use("/elaboracion", elaboracionRoutes);

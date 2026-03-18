@@ -123,9 +123,7 @@ export async function assignMilestoneHandler(req: Request, res: Response) {
       fincaId,
       cuartelId,
       operarioUserId,
-      titulo,
       descripcion,
-      fechaObjetivo,
       prioridad,
     } = req.body ?? {};
 
@@ -135,9 +133,7 @@ export async function assignMilestoneHandler(req: Request, res: Response) {
       cuartelId,
       operarioUserId,
       actorUserId: req.user.userId,
-      titulo,
       descripcion,
-      fechaObjetivo,
       prioridad,
     });
     return res.json(assignment);

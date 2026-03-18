@@ -16,12 +16,14 @@ model AppUser {
   whatsapp_opt_in_at                  DateTime?             @db.Timestamptz(6)
   created_at                          DateTime              @default(now()) @db.Timestamptz(6)
   password_hash                       String?
+  must_change_password                Boolean               @default(false)
   is_active                           Boolean               @default(true)
   refresh_token                       RefreshToken[]
   user_bodega                         UserBodega[]
   user_rol                            UserRol[]
-  encargos_creados                    Encargo[]             @relation("EncargoCreatedBy")
-  encargos_asignados                  EncargoAsignacion[]
+  tareas_creadas                      Tarea[]               @relation("TareaCreatedBy")
+  tareas_asignadas                    TareaAsignacion[]
+  tarea_entradas                      TareaEntrada[]        @relation("TareaEntradaCreatedBy")
   bot_delegaciones_otorgadas          BotDelegation[]       @relation("BotDelegationGrantor")
   bot_delegaciones_recibidas          BotDelegation[]       @relation("BotDelegationBot")
   bot_action_logs_as_actor            BotActionLog[]        @relation("BotActionActor")
@@ -60,7 +62,7 @@ model Bodega {
   persona                   Persona[]
   trazabilidad              Trazabilidad[]
   user_bodega               UserBodega[]
-  encargo                   Encargo[]
+  tarea                     Tarea[]
   bot_delegation            BotDelegation[]
   remito_uva                RemitoUva[]
   ciu                       Ciu[]
@@ -144,7 +146,7 @@ model Cuartel {
   evento_riego                    EventoRiego[]
   trazabilidad                    Trazabilidad[]
   trazabilidad_origen             TrazabilidadOrigen[]
-  encargo                         Encargo[]
+  tarea                           Tarea[]
   milestone_asignacion            MilestoneAsignacion[]
 
   @@unique([finca_id, codigo_cuartel])
@@ -879,7 +881,7 @@ model Finca {
   bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   trazabilidad         Trazabilidad[]
   trazabilidad_origen  TrazabilidadOrigen[]
-  encargo              Encargo[]
+  tarea                Tarea[]
   milestone_asignacion MilestoneAsignacion[]
 
   @@index([bodega_id], map: "idx_finca_bodega")
@@ -930,7 +932,6 @@ model Milestone {
   milestone_evento      MilestoneEvento[]
   validacion_milestone  ValidacionMilestone[]
   milestone_asignacion  MilestoneAsignacion[]
-  encargo               Encargo[]
 
   @@unique([trazabilidad_id, proceso_id])
   @@index([trazabilidad_id], map: "idx_milestone_trazabilidad")
@@ -1029,6 +1030,7 @@ model ProtocoloProceso {
   obligatorio     Boolean        @default(false)
   orden           Int
   milestone       Milestone[]
+  tareas          Tarea[]
   protocolo_etapa ProtocoloEtapa @relation(fields: [etapa_id], references: [etapa_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([etapa_id, nombre])
@@ -1174,53 +1176,71 @@ model UserRol {
   @@map("user_rol")
 }
 
-model Encargo {
-  encargo_id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id            String                @db.Uuid
-  finca_id             String?               @db.Uuid
-  cuartel_id           String?               @db.Uuid
-  milestone_id         String?               @db.Uuid
-  created_by           String                @db.Uuid
-  titulo               String
-  descripcion          String?
-  fecha_objetivo       DateTime?             @db.Date
-  prioridad            String                @default("media")
-  estado               EncargoEstado         @default(pendiente)
-  created_at           DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
-  bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  finca                Finca?                @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
-  cuartel              Cuartel?              @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  milestone            Milestone?            @relation(fields: [milestone_id], references: [milestone_id], onUpdate: NoAction)
-  app_user             AppUser               @relation("EncargoCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
-  encargo_asignacion   EncargoAsignacion[]
-  milestone_asignacion MilestoneAsignacion[]
+model Tarea {
+  tarea_id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id        String      @db.Uuid
+  finca_id         String?     @db.Uuid
+  cuartel_id       String?     @db.Uuid
+  proceso_id       String      @db.Uuid
+  created_by       String      @db.Uuid
+  titulo           String
+  descripcion      String?
+  imagen_cid       String?
+  imagen_url       String?
+  prioridad        String      @default("media")
+  estado           TareaEstado @default(pendiente)
+  fecha_fin        DateTime?   @db.Timestamptz(6)
+  created_at       DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime    @default(now()) @db.Timestamptz(6)
 
-  @@index([bodega_id, estado], map: "idx_encargo_bodega_estado")
-  @@index([finca_id, estado], map: "idx_encargo_finca_estado")
-  @@index([milestone_id], map: "idx_encargo_milestone")
-  @@index([created_by], map: "idx_encargo_created_by")
-  @@map("encargo")
+  bodega             Bodega             @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  finca              Finca?             @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel            Cuartel?           @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  protocolo_proceso  ProtocoloProceso   @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
+  app_user           AppUser            @relation("TareaCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
+  tarea_asignacion   TareaAsignacion[]
+  entradas           TareaEntrada[]
+
+  @@index([bodega_id, estado], map: "idx_tarea_bodega_estado")
+  @@index([finca_id, estado], map: "idx_tarea_finca_estado")
+  @@index([proceso_id], map: "idx_tarea_proceso")
+  @@index([created_by], map: "idx_tarea_created_by")
+  @@map("tarea")
 }
 
-model EncargoAsignacion {
-  encargo_asignacion_id     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  encargo_id                String                  @db.Uuid
+model TareaEntrada {
+  entrada_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tarea_id    String   @db.Uuid
+  created_by  String   @db.Uuid
+  fecha       DateTime @default(now()) @db.Timestamptz(6)
+  descripcion String?
+  adjuntos    Json     @default("[]")
+
+  tarea    Tarea   @relation(fields: [tarea_id], references: [tarea_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user AppUser @relation("TareaEntradaCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
+
+  @@index([tarea_id], map: "idx_tarea_entrada_tarea")
+  @@map("tarea_entrada")
+}
+
+model TareaAsignacion {
+  tarea_asignacion_id       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tarea_id                  String                  @db.Uuid
   user_id                   String                  @db.Uuid
-  estado                    EncargoAsignacionEstado @default(pendiente)
+  estado                    TareaAsignacionEstado   @default(pendiente)
   assigned_at               DateTime                @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                @default(now()) @db.Timestamptz(6)
   completed_at              DateTime?               @db.Timestamptz(6)
   whatsapp_contactado_at    DateTime?               @db.Timestamptz(6)
   ultima_interaccion_bot_at DateTime?               @db.Timestamptz(6)
   observaciones             String?
-  encargo                   Encargo                 @relation(fields: [encargo_id], references: [encargo_id], onDelete: Cascade, onUpdate: NoAction)
+  tarea                     Tarea                   @relation(fields: [tarea_id], references: [tarea_id], onDelete: Cascade, onUpdate: NoAction)
   app_user                  AppUser                 @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
   bot_action_log            BotActionLog[]
 
-  @@unique([encargo_id, user_id], map: "uq_encargo_asignacion_unica")
-  @@index([user_id, estado], map: "idx_encargo_asignacion_user_estado")
-  @@map("encargo_asignacion")
+  @@unique([tarea_id, user_id], map: "uq_tarea_asignacion_unica")
+  @@index([user_id, estado], map: "idx_tarea_asignacion_user_estado")
+  @@map("tarea_asignacion")
 }
 
 model TrazabilidadOrigen {
@@ -1245,7 +1265,6 @@ model MilestoneAsignacion {
   operario_user_id     String    @db.Uuid
   asignado_por_user_id String    @db.Uuid
   estado               String    @default("pendiente")
-  encargo_id           String?   @db.Uuid
   created_at           DateTime  @default(now()) @db.Timestamptz(6)
   updated_at           DateTime  @default(now()) @db.Timestamptz(6)
   milestone            Milestone @relation(fields: [milestone_id], references: [milestone_id], onDelete: Cascade, onUpdate: NoAction)
@@ -1253,7 +1272,6 @@ model MilestoneAsignacion {
   cuartel              Cuartel   @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
   operario             AppUser   @relation("MilestoneAsignacionOperario", fields: [operario_user_id], references: [user_id], onUpdate: NoAction)
   asignado_por         AppUser   @relation("MilestoneAsignacionAsignador", fields: [asignado_por_user_id], references: [user_id], onUpdate: NoAction)
-  encargo              Encargo?  @relation(fields: [encargo_id], references: [encargo_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@id([milestone_id, operario_user_id])
   @@index([finca_id, estado], map: "idx_milestone_asignacion_finca_estado")
@@ -1286,7 +1304,7 @@ model BotActionLog {
   bot_user_id           String             @db.Uuid
   on_behalf_user_id     String             @db.Uuid
   bot_delegation_id     String?            @db.Uuid
-  encargo_asignacion_id String?            @db.Uuid
+  tarea_asignacion_id   String?            @db.Uuid
   action                String
   input_payload         Json               @default("{}")
   output_payload        Json               @default("{}")
@@ -1294,11 +1312,11 @@ model BotActionLog {
   bot_user              AppUser            @relation("BotActionActor", fields: [bot_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
   on_behalf_user        AppUser            @relation("BotActionOnBehalf", fields: [on_behalf_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
   bot_delegation        BotDelegation?     @relation(fields: [bot_delegation_id], references: [bot_delegation_id], onDelete: SetNull, onUpdate: NoAction)
-  encargo_asignacion    EncargoAsignacion? @relation(fields: [encargo_asignacion_id], references: [encargo_asignacion_id], onDelete: SetNull, onUpdate: NoAction)
+  tarea_asignacion      TareaAsignacion?   @relation(fields: [tarea_asignacion_id], references: [tarea_asignacion_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([bot_user_id, created_at], map: "idx_bot_action_actor_date")
   @@index([on_behalf_user_id, created_at], map: "idx_bot_action_on_behalf_date")
-  @@index([encargo_asignacion_id], map: "idx_bot_action_encargo_asignacion")
+  @@index([tarea_asignacion_id], map: "idx_bot_action_tarea_asignacion")
   @@map("bot_action_log")
 }
 
@@ -1356,14 +1374,14 @@ enum EstadoHallazgo {
   anulado
 }
 
-enum EncargoEstado {
+enum TareaEstado {
   pendiente
   en_progreso
   completado
   cancelado
 }
 
-enum EncargoAsignacionEstado {
+enum TareaAsignacionEstado {
   pendiente
   en_progreso
   completado

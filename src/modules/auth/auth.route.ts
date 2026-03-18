@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  changePasswordHandler,
   createUserHandler,
   deleteUserHandler,
   getUserDetailHandler,
@@ -21,6 +22,7 @@ import { authMiddleware } from "../../middlewares/auth.middleware.js";
 export const authRoutes = Router();
 
 authRoutes.post("/login", loginHandler);
+authRoutes.post("/change-password", changePasswordHandler);
 authRoutes.post("/register", createUserHandler);
 authRoutes.get("/me", authMiddleware, meHandler);
 authRoutes.get("/me/bodegas", authMiddleware, meBodegasHandler);

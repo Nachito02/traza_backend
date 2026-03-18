@@ -195,7 +195,7 @@ function getJwtSecret() {
 }
 
 function signToken(payload: JwtPayload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "15m" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "4h" });
 }
 
 function getRefreshTtlDays() {
@@ -252,9 +252,44 @@ export async function login({ email, password }: LoginInput) {
     throw new AuthError("Credenciales inválidas", 401);
   }
 
+  if (user.must_change_password) {
+    return { must_change_password: true, userId: user.user_id };
+  }
+
   const token = signToken({ userId: user.user_id, email: user.email });
   const refreshToken = await issueRefreshToken(user.user_id);
   return { token, refreshToken, user };
+}
+
+export async function changePassword({
+  userId,
+  currentPassword,
+  newPassword,
+}: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const user = await prisma.appUser.findUnique({
+    where: { user_id: userId },
+    select: { user_id: true, email: true, password_hash: true },
+  });
+  if (!user || !user.password_hash) throw new AuthError("Usuario no encontrado", 404);
+
+  const ok = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!ok) throw new AuthError("Password actual incorrecto", 401);
+
+  if (newPassword.length < 6) throw new AuthError("El nuevo password debe tener al menos 6 caracteres", 400);
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await prisma.appUser.update({
+    where: { user_id: userId },
+    data: { password_hash: newHash, must_change_password: false },
+  });
+
+  const token = signToken({ userId: user.user_id, email: user.email });
+  const refreshToken = await issueRefreshToken(user.user_id);
+  return { token, refreshToken };
 }
 
 export async function getUserById(userId: string) {

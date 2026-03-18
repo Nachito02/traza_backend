@@ -11,12 +11,14 @@ Table app_user {
   whatsapp_opt_in_at DateTime
   created_at DateTime [default: `now()`, not null]
   password_hash String
+  must_change_password Boolean [not null, default: false]
   is_active Boolean [not null, default: true]
   refresh_token refresh_token [not null]
   user_bodega user_bodega [not null]
   user_rol user_rol [not null]
-  encargos_creados encargo [not null]
-  encargos_asignados encargo_asignacion [not null]
+  tareas_creadas tarea [not null]
+  tareas_asignadas tarea_asignacion [not null]
+  tarea_entradas tarea_entrada [not null]
   bot_delegaciones_otorgadas bot_delegation [not null]
   bot_delegaciones_recibidas bot_delegation [not null]
   bot_action_logs_as_actor bot_action_log [not null]
@@ -53,7 +55,7 @@ Table bodega {
   persona persona [not null]
   trazabilidad trazabilidad [not null]
   user_bodega user_bodega [not null]
-  encargo encargo [not null]
+  tarea tarea [not null]
   bot_delegation bot_delegation [not null]
   remito_uva remito_uva [not null]
   ciu ciu [not null]
@@ -136,7 +138,7 @@ Table cuartel {
   evento_riego evento_riego [not null]
   trazabilidad trazabilidad [not null]
   trazabilidad_origen trazabilidad_origen [not null]
-  encargo encargo [not null]
+  tarea tarea [not null]
   milestone_asignacion milestone_asignacion [not null]
 
   indexes {
@@ -759,7 +761,7 @@ Table finca {
   bodega bodega [not null]
   trazabilidad trazabilidad [not null]
   trazabilidad_origen trazabilidad_origen [not null]
-  encargo encargo [not null]
+  tarea tarea [not null]
   milestone_asignacion milestone_asignacion [not null]
 }
 
@@ -809,7 +811,6 @@ Table milestone {
   milestone_evento milestone_evento [not null]
   validacion_milestone validacion_milestone [not null]
   milestone_asignacion milestone_asignacion [not null]
-  encargo encargo [not null]
 
   indexes {
     (trazabilidad_id, proceso_id) [unique]
@@ -904,6 +905,7 @@ Table protocolo_proceso {
   obligatorio Boolean [not null, default: false]
   orden Int [not null]
   milestone milestone [not null]
+  tareas tarea [not null]
   protocolo_etapa protocolo_etapa [not null]
 
   indexes {
@@ -1034,46 +1036,59 @@ Table user_rol {
   }
 }
 
-Table encargo {
-  encargo_id String [pk]
+Table tarea {
+  tarea_id String [pk]
   bodega_id String [not null]
   finca_id String
   cuartel_id String
-  milestone_id String
+  proceso_id String [not null]
   created_by String [not null]
   titulo String [not null]
   descripcion String
-  fecha_objetivo DateTime
+  imagen_cid String
+  imagen_url String
   prioridad String [not null, default: 'media']
-  estado EncargoEstado [not null, default: 'pendiente']
+  estado TareaEstado [not null, default: 'pendiente']
+  fecha_fin DateTime
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
   bodega bodega [not null]
   finca finca
   cuartel cuartel
-  milestone milestone
+  protocolo_proceso protocolo_proceso [not null]
   app_user app_user [not null]
-  encargo_asignacion encargo_asignacion [not null]
-  milestone_asignacion milestone_asignacion [not null]
+  tarea_asignacion tarea_asignacion [not null]
+  entradas tarea_entrada [not null]
 }
 
-Table encargo_asignacion {
-  encargo_asignacion_id String [pk]
-  encargo_id String [not null]
+Table tarea_entrada {
+  entrada_id String [pk]
+  tarea_id String [not null]
+  created_by String [not null]
+  fecha DateTime [default: `now()`, not null]
+  descripcion String
+  adjuntos Json [not null, default: '[]']
+  tarea tarea [not null]
+  app_user app_user [not null]
+}
+
+Table tarea_asignacion {
+  tarea_asignacion_id String [pk]
+  tarea_id String [not null]
   user_id String [not null]
-  estado EncargoAsignacionEstado [not null, default: 'pendiente']
+  estado TareaAsignacionEstado [not null, default: 'pendiente']
   assigned_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
   completed_at DateTime
   whatsapp_contactado_at DateTime
   ultima_interaccion_bot_at DateTime
   observaciones String
-  encargo encargo [not null]
+  tarea tarea [not null]
   app_user app_user [not null]
   bot_action_log bot_action_log [not null]
 
   indexes {
-    (encargo_id, user_id) [unique]
+    (tarea_id, user_id) [unique]
   }
 }
 
@@ -1099,7 +1114,6 @@ Table milestone_asignacion {
   operario_user_id String [not null]
   asignado_por_user_id String [not null]
   estado String [not null, default: 'pendiente']
-  encargo_id String
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
   milestone milestone [not null]
@@ -1107,7 +1121,6 @@ Table milestone_asignacion {
   cuartel cuartel [not null]
   operario app_user [not null]
   asignado_por app_user [not null]
-  encargo encargo
 
   indexes {
     (milestone_id, operario_user_id) [pk]
@@ -1135,7 +1148,7 @@ Table bot_action_log {
   bot_user_id String [not null]
   on_behalf_user_id String [not null]
   bot_delegation_id String
-  encargo_asignacion_id String
+  tarea_asignacion_id String
   action String [not null]
   input_payload Json [not null, default: '{}']
   output_payload Json [not null, default: '{}']
@@ -1143,7 +1156,7 @@ Table bot_action_log {
   bot_user app_user [not null]
   on_behalf_user app_user [not null]
   bot_delegation bot_delegation
-  encargo_asignacion encargo_asignacion
+  tarea_asignacion tarea_asignacion
 }
 
 Table validacion_milestone {
@@ -1197,14 +1210,14 @@ Enum EstadoHallazgo {
   anulado
 }
 
-Enum EncargoEstado {
+Enum TareaEstado {
   pendiente
   en_progreso
   completado
   cancelado
 }
 
-Enum EncargoAsignacionEstado {
+Enum TareaAsignacionEstado {
   pendiente
   en_progreso
   completado
@@ -1450,19 +1463,23 @@ Ref: user_rol.rol_id > rol.rol_id
 
 Ref: user_rol.user_id > app_user.user_id [delete: Cascade]
 
-Ref: encargo.bodega_id > bodega.bodega_id
+Ref: tarea.bodega_id > bodega.bodega_id
 
-Ref: encargo.finca_id > finca.finca_id
+Ref: tarea.finca_id > finca.finca_id
 
-Ref: encargo.cuartel_id > cuartel.cuartel_id
+Ref: tarea.cuartel_id > cuartel.cuartel_id
 
-Ref: encargo.milestone_id > milestone.milestone_id
+Ref: tarea.proceso_id > protocolo_proceso.proceso_id
 
-Ref: encargo.created_by > app_user.user_id
+Ref: tarea.created_by > app_user.user_id
 
-Ref: encargo_asignacion.encargo_id > encargo.encargo_id [delete: Cascade]
+Ref: tarea_entrada.tarea_id > tarea.tarea_id [delete: Cascade]
 
-Ref: encargo_asignacion.user_id > app_user.user_id [delete: Cascade]
+Ref: tarea_entrada.created_by > app_user.user_id
+
+Ref: tarea_asignacion.tarea_id > tarea.tarea_id [delete: Cascade]
+
+Ref: tarea_asignacion.user_id > app_user.user_id [delete: Cascade]
 
 Ref: trazabilidad_origen.trazabilidad_id > trazabilidad.trazabilidad_id [delete: Cascade]
 
@@ -1480,8 +1497,6 @@ Ref: milestone_asignacion.operario_user_id > app_user.user_id
 
 Ref: milestone_asignacion.asignado_por_user_id > app_user.user_id
 
-Ref: milestone_asignacion.encargo_id > encargo.encargo_id [delete: Set Null]
-
 Ref: bot_delegation.granted_by_user_id > app_user.user_id [delete: Cascade]
 
 Ref: bot_delegation.bot_user_id > app_user.user_id [delete: Cascade]
@@ -1494,6 +1509,6 @@ Ref: bot_action_log.on_behalf_user_id > app_user.user_id [delete: Cascade]
 
 Ref: bot_action_log.bot_delegation_id > bot_delegation.bot_delegation_id [delete: Set Null]
 
-Ref: bot_action_log.encargo_asignacion_id > encargo_asignacion.encargo_asignacion_id [delete: Set Null]
+Ref: bot_action_log.tarea_asignacion_id > tarea_asignacion.tarea_asignacion_id [delete: Set Null]
 
 Ref: validacion_milestone.milestone_id > milestone.milestone_id [delete: Cascade]

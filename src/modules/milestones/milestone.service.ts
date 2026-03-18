@@ -73,9 +73,7 @@ export async function assignMilestoneToOrigen({
   cuartelId,
   operarioUserId,
   actorUserId,
-  titulo,
   descripcion,
-  fechaObjetivo,
   prioridad,
 }: {
   milestoneId: string;
@@ -83,9 +81,7 @@ export async function assignMilestoneToOrigen({
   cuartelId: string;
   operarioUserId: string;
   actorUserId: string;
-  titulo?: string;
   descripcion?: string;
-  fechaObjetivo?: string;
   prioridad?: string;
 }) {
   if (!milestoneId || !fincaId || !cuartelId || !operarioUserId) {
@@ -139,43 +135,23 @@ export async function assignMilestoneToOrigen({
     throw new Error("El usuario asignado no tiene rol de campo en la finca");
   }
 
-  const existingAssignment = await prisma.milestoneAsignacion.findUnique({
-    where: {
-      milestone_id_operario_user_id: {
-        milestone_id: milestoneId,
-        operario_user_id: operarioUserId,
-      },
-    },
-    select: { encargo_id: true },
-  });
-
-  let encargoId = existingAssignment?.encargo_id ?? null;
-  const encargoTitulo = titulo || `Milestone: ${milestone.protocolo_proceso?.nombre ?? milestone.proceso_id}`;
-  const encargoData = {
+  const tareaData = {
     bodega_id: trazabilidad.bodega_id,
+    proceso_id: milestone.proceso_id,
     finca_id: fincaId,
     cuartel_id: cuartelId,
-    milestone_id: milestoneId,
     created_by: actorUserId,
-    titulo: encargoTitulo,
+    titulo: milestone.protocolo_proceso?.nombre ?? milestone.proceso_id,
     descripcion: descripcion ?? null,
     prioridad: prioridad ?? "media",
-    fecha_objetivo: fechaObjetivo ? new Date(fechaObjetivo) : null,
     estado: "pendiente" as const,
   };
 
-  if (!encargoId) {
-    const createdEncargo = await prisma.encargo.create({
-      data: encargoData,
-      select: { encargo_id: true },
-    });
-    encargoId = createdEncargo.encargo_id;
-  } else {
-    await prisma.encargo.update({
-      where: { encargo_id: encargoId },
-      data: encargoData,
-    });
-  }
+  const createdTarea = await prisma.tarea.create({
+    data: tareaData,
+    select: { tarea_id: true },
+  });
+  const tareaId = createdTarea.tarea_id;
 
   await prisma.milestoneAsignacion.upsert({
     where: {
@@ -191,27 +167,25 @@ export async function assignMilestoneToOrigen({
       operario_user_id: operarioUserId,
       asignado_por_user_id: actorUserId,
       estado: "pendiente",
-      encargo_id: encargoId,
     },
     update: {
       finca_id: fincaId,
       cuartel_id: cuartelId,
       asignado_por_user_id: actorUserId,
       estado: "pendiente",
-      encargo_id: encargoId,
       updated_at: new Date(),
     },
   });
 
-  await prisma.encargoAsignacion.upsert({
+  await prisma.tareaAsignacion.upsert({
     where: {
-      encargo_id_user_id: {
-        encargo_id: encargoId,
+      tarea_id_user_id: {
+        tarea_id: tareaId,
         user_id: operarioUserId,
       },
     },
     create: {
-      encargo_id: encargoId,
+      tarea_id: tareaId,
       user_id: operarioUserId,
       estado: "pendiente",
     },
@@ -233,7 +207,6 @@ export async function assignMilestoneToOrigen({
       operario: { select: { user_id: true, nombre: true, email: true } },
       finca: { select: { finca_id: true, nombre_finca: true } },
       cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
-      encargo: true,
     },
   });
 }

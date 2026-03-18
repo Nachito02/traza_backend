@@ -275,10 +275,10 @@ function validateDraftAgainstSchema(draft: ProgressDraft, schema: EventoInputSch
 }
 
 const IA_VISIBLE_SCOPES = [
-  "encargos.ver",
-  "encargos.contactar",
-  "encargos.cargar_datos",
-  "encargos.resolver",
+  "tareas.ver",
+  "tareas.contactar",
+  "tareas.cargar_datos",
+  "tareas.resolver",
 ] as const;
 
 type ListIaJobsFilters = {
@@ -288,7 +288,7 @@ type ListIaJobsFilters = {
 };
 
 type SubmitIaResultInput = {
-  encargoAsignacionId: string;
+  tareaAsignacionId: string;
   botUserId: string;
   estado: "pendiente" | "en_progreso" | "completado" | "cancelado";
   observaciones?: string;
@@ -342,58 +342,20 @@ const iaAssignmentInclude = {
       whatsapp_e164: true,
     },
   },
-  encargo: {
+  tarea: {
     include: {
       bodega: { select: { bodega_id: true, nombre: true } },
       finca: { select: { finca_id: true, nombre_finca: true } },
       cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
-      milestone: {
-        include: {
-          protocolo_proceso: {
-            include: {
-              protocolo_etapa: true,
-            },
-          },
-          trazabilidad: {
-            include: {
-              bodega: { select: { bodega_id: true, nombre: true } },
-              finca: { select: { finca_id: true, nombre_finca: true } },
-              cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
-              campania: { select: { campania_id: true, nombre: true, estado: true } },
-              protocolo: { select: { protocolo_id: true, nombre: true, version: true } },
-              trazabilidad_origen: {
-                include: {
-                  finca: { select: { finca_id: true, nombre_finca: true } },
-                  cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
-                },
-              },
-              hallazgo_cumplimiento: {
-                where: { estado: { in: ["abierto", "en_proceso"] } },
-                orderBy: [{ created_at: "desc" }],
-                take: 10,
-              },
-            },
-          },
-          evidencia: {
-            orderBy: [{ created_at: "desc" }],
-          },
-          milestone_evento: {
-            orderBy: [{ created_at: "desc" }],
-          },
-          validacion_milestone: {
-            orderBy: [{ created_at: "desc" }],
-          },
-        },
-      },
     },
   },
   bot_action_log: {
     orderBy: [{ created_at: "desc" }],
     take: 20,
   },
-} satisfies Prisma.EncargoAsignacionInclude;
+} satisfies Prisma.TareaAsignacionInclude;
 
-type IaAssignment = Prisma.EncargoAsignacionGetPayload<{
+type IaAssignment = Prisma.TareaAsignacionGetPayload<{
   include: typeof iaAssignmentInclude;
 }>;
 
@@ -420,8 +382,10 @@ async function getActiveDelegations(botUserId: string, bodegaId?: string) {
       bot_user_id: botUserId,
       activo: true,
       revoked_at: null,
-      OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
-      ...(bodegaId ? { OR: [{ bodega_id: null }, { bodega_id: bodegaId }] } : {}),
+      AND: [
+        { OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }] },
+        ...(bodegaId ? [{ OR: [{ bodega_id: null }, { bodega_id: bodegaId }] }] : []),
+      ],
     },
     include: {
       bodega: {
@@ -536,11 +500,11 @@ async function getVisibleHallazgo(botUserId: string, hallazgoId: string) {
 
 async function getDelegationForAssignment(
   botUserId: string,
-  encargoAsignacionId: string,
+  tareaAsignacionId: string,
   requiredScopes: readonly string[],
 ) {
-  const asignacion = await prisma.encargoAsignacion.findUnique({
-    where: { encargo_asignacion_id: encargoAsignacionId },
+  const asignacion = await prisma.tareaAsignacion.findUnique({
+    where: { tarea_asignacion_id: tareaAsignacionId },
     include: iaAssignmentInclude,
   });
 
@@ -559,7 +523,7 @@ async function getDelegationForAssignment(
         {
           OR: [
             { bodega_id: null },
-            { bodega_id: asignacion.encargo.bodega_id },
+            { bodega_id: asignacion.tarea.bodega_id },
           ],
         },
       ],
@@ -586,7 +550,7 @@ function summarizeJob(
   delegation: Awaited<ReturnType<typeof getDelegationForAssignment>>["delegation"],
 ) {
   return {
-    encargoAsignacionId: assignment.encargo_asignacion_id,
+    tareaAsignacionId: assignment.tarea_asignacion_id,
     estado: assignment.estado,
     assignedAt: assignment.assigned_at,
     updatedAt: assignment.updated_at,
@@ -594,17 +558,16 @@ function summarizeJob(
     ultimaInteraccionBotAt: assignment.ultima_interaccion_bot_at,
     whatsappContactadoAt: assignment.whatsapp_contactado_at,
     operario: assignment.app_user,
-    encargo: {
-      encargoId: assignment.encargo.encargo_id,
-      titulo: assignment.encargo.titulo,
-      descripcion: assignment.encargo.descripcion,
-      prioridad: assignment.encargo.prioridad,
-      estado: assignment.encargo.estado,
-      fechaObjetivo: assignment.encargo.fecha_objetivo,
-      bodega: assignment.encargo.bodega,
-      finca: assignment.encargo.finca,
-      cuartel: assignment.encargo.cuartel,
-      milestoneId: assignment.encargo.milestone_id,
+    tarea: {
+      tareaId: assignment.tarea.tarea_id,
+      titulo: assignment.tarea.titulo,
+      descripcion: assignment.tarea.descripcion,
+      prioridad: assignment.tarea.prioridad,
+      estado: assignment.tarea.estado,
+      fechaFin: assignment.tarea.fecha_fin,
+      bodega: assignment.tarea.bodega,
+      finca: assignment.tarea.finca,
+      cuartel: assignment.tarea.cuartel,
     },
     delegation: {
       botDelegationId: delegation.bot_delegation_id,
@@ -657,17 +620,17 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
     return [];
   }
 
-  const where: Prisma.EncargoAsignacionWhereInput = {
-    encargo: { bodega_id: { in: visibleBodegaIds } },
+  const where: Prisma.TareaAsignacionWhereInput = {
+    tarea: { bodega_id: { in: visibleBodegaIds } },
   };
   if (filters.estado) {
     where.estado = filters.estado as never;
   }
   if (filters.bodegaId) {
-    where.encargo = { bodega_id: filters.bodegaId };
+    where.tarea = { bodega_id: filters.bodegaId };
   }
 
-  const assignments = await prisma.encargoAsignacion.findMany({
+  const assignments = await prisma.tareaAsignacion.findMany({
     where,
     include: {
       app_user: {
@@ -678,7 +641,7 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
           whatsapp_e164: true,
         },
       },
-      encargo: {
+      tarea: {
         include: {
           bodega: { select: { bodega_id: true, nombre: true } },
           finca: { select: { finca_id: true, nombre_finca: true } },
@@ -691,7 +654,7 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
 
   return assignments
     .map((assignment) => {
-      const bodegaId = assignment.encargo.bodega_id;
+      const bodegaId = assignment.tarea.bodega_id;
       const delegation =
         delegations.find((d) => d.bodega_id === bodegaId) ??
         delegations.find((d) => d.bodega_id === null) ??
@@ -704,22 +667,21 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
       if (!hasVisibleScope) return null;
 
       return {
-        encargoAsignacionId: assignment.encargo_asignacion_id,
+        tareaAsignacionId: assignment.tarea_asignacion_id,
         estado: assignment.estado,
         assignedAt: assignment.assigned_at,
         updatedAt: assignment.updated_at,
         ultimaInteraccionBotAt: assignment.ultima_interaccion_bot_at,
         operario: assignment.app_user,
-        encargo: {
-          encargoId: assignment.encargo.encargo_id,
-          titulo: assignment.encargo.titulo,
-          descripcion: assignment.encargo.descripcion,
-          prioridad: assignment.encargo.prioridad,
-          estado: assignment.encargo.estado,
-          bodega: assignment.encargo.bodega,
-          finca: assignment.encargo.finca,
-          cuartel: assignment.encargo.cuartel,
-          milestoneId: assignment.encargo.milestone_id,
+        tarea: {
+          tareaId: assignment.tarea.tarea_id,
+          titulo: assignment.tarea.titulo,
+          descripcion: assignment.tarea.descripcion,
+          prioridad: assignment.tarea.prioridad,
+          estado: assignment.tarea.estado,
+          bodega: assignment.tarea.bodega,
+          finca: assignment.tarea.finca,
+          cuartel: assignment.tarea.cuartel,
         },
         delegation: {
           botDelegationId: delegation.bot_delegation_id,
@@ -731,87 +693,33 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
     .filter((row): row is NonNullable<typeof row> => row !== null);
 }
 
-export async function getIaJobDetail(encargoAsignacionId: string, botUserId: string) {
+export async function getIaJobDetail(tareaAsignacionId: string, botUserId: string) {
   await ensureBotUser(botUserId);
-  const context = await getDelegationForAssignment(botUserId, encargoAsignacionId, [
+  const context = await getDelegationForAssignment(botUserId, tareaAsignacionId, [
     ...IA_VISIBLE_SCOPES,
   ]);
   return summarizeJob(context.asignacion, context.delegation);
 }
 
-export async function getIaJobContext(encargoAsignacionId: string, botUserId: string) {
+export async function getIaJobContext(tareaAsignacionId: string, botUserId: string) {
   await ensureBotUser(botUserId);
-  const context = await getDelegationForAssignment(botUserId, encargoAsignacionId, [
-    "encargos.ver",
-    "encargos.cargar_datos",
-    "encargos.resolver",
+  const context = await getDelegationForAssignment(botUserId, tareaAsignacionId, [
+    "tareas.ver",
+    "tareas.cargar_datos",
+    "tareas.resolver",
   ]);
 
   const { asignacion, delegation } = context;
-  const milestone = asignacion.encargo.milestone;
 
-  const eventoTipo =
-    milestone?.protocolo_proceso.evento_tipo ??
-    inferEventoTipo(asignacion.encargo.titulo, asignacion.encargo.descripcion);
-
+  const eventoTipo = inferEventoTipo(asignacion.tarea.titulo, asignacion.tarea.descripcion);
   const inputSchema = eventoTipo ? (EVENTO_INPUT_SCHEMAS[eventoTipo] ?? null) : null;
 
   return {
     trabajo: summarizeJob(asignacion, delegation),
     eventoTipo,
     inputSchema,
-    // cuando no se puede inferir el tipo, se devuelven todos los schemas para que el bot pueda preguntar al operario
     eventosDisponibles: inputSchema ? null : EVENTO_INPUT_SCHEMAS,
-    milestone: milestone
-      ? {
-          milestoneId: milestone.milestone_id,
-          estado: milestone.estado,
-          eventDate: milestone.event_date,
-          proceso: {
-            procesoId: milestone.protocolo_proceso.proceso_id,
-            nombre: milestone.protocolo_proceso.nombre,
-            eventoTipo,
-            obligatorio: milestone.protocolo_proceso.obligatorio,
-            orden: milestone.protocolo_proceso.orden,
-            etapa: {
-              etapaId: milestone.protocolo_proceso.protocolo_etapa.etapa_id,
-              nombre: milestone.protocolo_proceso.protocolo_etapa.nombre,
-              orden: milestone.protocolo_proceso.protocolo_etapa.orden,
-            },
-          },
-          evidencia: milestone.evidencia,
-          eventos: milestone.milestone_evento,
-          validaciones: milestone.validacion_milestone,
-        }
-      : null,
-    trazabilidad: milestone
-      ? {
-          id: milestone.trazabilidad.trazabilidad_id,
-          estado: milestone.trazabilidad.estado,
-          nombreProducto: milestone.trazabilidad.nombre_producto,
-          imagenProducto: milestone.trazabilidad.imagen_producto,
-          bodega: milestone.trazabilidad.bodega,
-          finca: milestone.trazabilidad.finca,
-          cuartel: milestone.trazabilidad.cuartel,
-          campania: milestone.trazabilidad.campania,
-          protocolo: milestone.trazabilidad.protocolo,
-          origenes: milestone.trazabilidad.trazabilidad_origen.map((origen) => ({
-            finca: origen.finca,
-            cuartel: origen.cuartel,
-            estado: origen.estado,
-          })),
-        }
-      : null,
-    hallazgosAbiertos:
-      milestone?.trazabilidad.hallazgo_cumplimiento.map((hallazgo) => ({
-        hallazgoId: hallazgo.hallazgo_id,
-        severidad: hallazgo.severidad,
-        estado: hallazgo.estado,
-        titulo: hallazgo.titulo,
-        mensaje: hallazgo.mensaje,
-        reglaCodigo: hallazgo.regla_codigo,
-        createdAt: hallazgo.created_at,
-      })) ?? [],
+    hallazgosAbiertos: [],
     historialBot: asignacion.bot_action_log.map((log) => ({
       botActionLogId: log.bot_action_log_id,
       action: log.action,
@@ -826,13 +734,13 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
   await ensureBotUser(input.botUserId);
   const context = await getDelegationForAssignment(
     input.botUserId,
-    input.encargoAsignacionId,
-    ["encargos.resolver"],
+    input.tareaAsignacionId,
+    ["tareas.resolver"],
   );
 
   const now = new Date();
-  const updated = await prisma.encargoAsignacion.update({
-    where: { encargo_asignacion_id: input.encargoAsignacionId },
+  const updated = await prisma.tareaAsignacion.update({
+    where: { tarea_asignacion_id: input.tareaAsignacionId },
     data: {
       estado: input.estado,
       ultima_interaccion_bot_at: now,
@@ -841,15 +749,15 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
         input.estado === "completado" || input.estado === "cancelado" ? now : null,
     },
     include: {
-      encargo: true,
+      tarea: true,
       app_user: {
         select: { user_id: true, nombre: true, email: true },
       },
     },
   });
   if (input.observaciones !== undefined) {
-    await prisma.encargoAsignacion.update({
-      where: { encargo_asignacion_id: input.encargoAsignacionId },
+    await prisma.tareaAsignacion.update({
+      where: { tarea_asignacion_id: input.tareaAsignacionId },
       data: { observaciones: input.observaciones },
     });
     updated.observaciones = input.observaciones;
@@ -860,8 +768,8 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
       bot_user_id: input.botUserId,
       on_behalf_user_id: context.asignacion.user_id,
       bot_delegation_id: context.delegation.bot_delegation_id,
-      encargo_asignacion_id: input.encargoAsignacionId,
-      action: "encargos.resultado",
+      tarea_asignacion_id: input.tareaAsignacionId,
+      action: "tareas.resultado",
       input_payload: {
         estado: input.estado,
         observaciones: input.observaciones ?? null,
@@ -872,7 +780,7 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
 
   return {
     assignment: {
-      encargoAsignacionId: updated.encargo_asignacion_id,
+      tareaAsignacionId: updated.tarea_asignacion_id,
       estado: updated.estado,
       observaciones: updated.observaciones,
       updatedAt: updated.updated_at,
@@ -884,48 +792,27 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
 
 export async function listIaBodegas(botUserId: string) {
   await ensureBotUser(botUserId);
-  const delegations = await getActiveDelegations(botUserId);
-  const unique = new Map<string, { bodega_id: string; nombre: string }>();
-
-  for (const delegation of delegations) {
-    if (!delegation.bodega) continue;
-    unique.set(delegation.bodega.bodega_id, delegation.bodega);
-  }
-
-  return Array.from(unique.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return prisma.bodega.findMany({
+    where: { activo: true },
+    select: { bodega_id: true, nombre: true },
+    orderBy: { nombre: "asc" },
+  });
 }
 
 export async function listIaFincas({ botUserId, bodegaId }: IaCatalogFilter) {
   await ensureBotUser(botUserId);
-  const visibleBodegaIds = await getVisibleBodegaIds(botUserId, bodegaId);
-  if (visibleBodegaIds.length === 0) return [];
-
   return prisma.finca.findMany({
-    where: { bodega_id: { in: visibleBodegaIds } },
+    where: { ...(bodegaId ? { bodega_id: bodegaId } : {}) },
     orderBy: [{ nombre_finca: "asc" }],
   });
 }
 
-export async function listIaCuarteles(params: IaCatalogFilter & { fincaId?: string }) {
+export async function listIaCuarteles(params: { botUserId: string; fincaId?: string }) {
   await ensureBotUser(params.botUserId);
-  const where: Prisma.CuartelWhereInput = {};
-
+  const where: Prisma.CuartelWhereInput = { activo: true };
   if (params.fincaId) {
-    const finca = await prisma.finca.findUnique({
-      where: { finca_id: params.fincaId },
-      select: { finca_id: true, bodega_id: true },
-    });
-    if (!finca) {
-      throw new IaError("Finca no encontrada", 404);
-    }
-    await ensureVisibleBodega(params.botUserId, finca.bodega_id);
-    where.finca_id = finca.finca_id;
-  } else {
-    const visibleBodegaIds = await getVisibleBodegaIds(params.botUserId, params.bodegaId);
-    if (visibleBodegaIds.length === 0) return [];
-    where.finca = { bodega_id: { in: visibleBodegaIds } };
+    where.finca_id = params.fincaId;
   }
-
   return prisma.cuartel.findMany({
     where,
     include: {
@@ -937,24 +824,168 @@ export async function listIaCuarteles(params: IaCatalogFilter & { fincaId?: stri
 
 export async function listIaCampanias({ botUserId, bodegaId }: IaCatalogFilter) {
   await ensureBotUser(botUserId);
-  const visibleBodegaIds = await getVisibleBodegaIds(botUserId, bodegaId);
-  if (visibleBodegaIds.length === 0) return [];
-
   return prisma.campania.findMany({
-    where: { bodega_id: { in: visibleBodegaIds } },
+    where: { ...(bodegaId ? { bodega_id: bodegaId } : {}) },
     orderBy: [{ fecha_inicio: "desc" }],
   });
 }
 
-export async function listIaPersonas({ botUserId, bodegaId }: IaCatalogFilter) {
+export async function createIaCuartel({
+  botUserId,
+  fincaId,
+  codigoCuartel,
+  superficieHa,
+  cultivo,
+  variedad,
+  sistemaProductivo,
+  sistemaConduccion,
+}: {
+  botUserId: string;
+  fincaId: string;
+  codigoCuartel: string;
+  superficieHa?: number;
+  cultivo?: string;
+  variedad?: string;
+  sistemaProductivo?: string;
+  sistemaConduccion?: string;
+}) {
   await ensureBotUser(botUserId);
-  const visibleBodegaIds = await getVisibleBodegaIds(botUserId, bodegaId);
-  if (visibleBodegaIds.length === 0) return [];
 
-  return prisma.persona.findMany({
-    where: { bodega_id: { in: visibleBodegaIds } },
-    orderBy: [{ nombre_apellido: "asc" }],
+  if (!fincaId?.trim()) throw new IaError("fincaId requerido", 400);
+  if (!codigoCuartel?.trim()) throw new IaError("codigoCuartel requerido", 400);
+
+  const finca = await prisma.finca.findUnique({
+    where: { finca_id: fincaId },
+    select: { finca_id: true, bodega_id: true },
   });
+  if (!finca) throw new IaError("Finca no encontrada", 404);
+
+  const delegations = await getActiveDelegations(botUserId, finca.bodega_id);
+  if (delegations.length === 0) {
+    throw new IaError("Delegación requerida para crear cuarteles", 403);
+  }
+
+  const existing = await prisma.cuartel.findFirst({
+    where: { finca_id: fincaId, codigo_cuartel: codigoCuartel.trim() },
+  });
+  if (existing) throw new IaError(`Ya existe un cuartel con código "${codigoCuartel}" en esta finca`, 409);
+
+  const data: Prisma.CuartelCreateInput = {
+    finca: { connect: { finca_id: fincaId } },
+    codigo_cuartel: codigoCuartel.trim(),
+    ...(superficieHa !== undefined ? { superficie_ha: superficieHa } : {}),
+    ...(cultivo ? { cultivo } : {}),
+    ...(variedad ? { variedad } : {}),
+    ...(sistemaProductivo ? { sistema_productivo: sistemaProductivo } : {}),
+    ...(sistemaConduccion ? { sistema_conduccion: sistemaConduccion } : {}),
+  };
+
+  return prisma.cuartel.create({ data });
+}
+
+export async function listIaTrabajadores({
+  botUserId,
+  bodegaId,
+}: {
+  botUserId: string;
+  bodegaId?: string;
+}) {
+  await ensureBotUser(botUserId);
+  const users = await prisma.appUser.findMany({
+    where: {
+      is_active: true,
+      ...(bodegaId
+        ? { user_bodega: { some: { bodega_id: bodegaId } } }
+        : {}),
+    },
+    select: {
+      user_id: true,
+      nombre: true,
+      email: true,
+      whatsapp_e164: true,
+      password_hash: true,
+      user_bodega: {
+        where: bodegaId ? { bodega_id: bodegaId } : {},
+        select: {
+          bodega_id: true,
+          user_bodega_rol: { select: { rol: true } },
+        },
+      },
+    },
+    orderBy: { nombre: "asc" },
+  });
+
+  return users.map((u) => ({
+    id: u.user_id,
+    nombre: u.nombre,
+    email: u.email,
+    whatsapp: u.whatsapp_e164,
+    tieneAcceso: u.password_hash !== null,
+    roles: u.user_bodega.flatMap((ub) => ub.user_bodega_rol.map((r) => r.rol)),
+  }));
+}
+
+export async function createIaTrabajador({
+  botUserId,
+  nombre,
+  bodegaId,
+  rol,
+  whatsapp,
+}: {
+  botUserId: string;
+  nombre: string;
+  bodegaId: string;
+  rol: string;
+  whatsapp?: string;
+}) {
+  await ensureBotUser(botUserId);
+
+  if (!nombre?.trim()) throw new IaError("nombre requerido", 400);
+  if (!bodegaId?.trim()) throw new IaError("bodegaId requerido", 400);
+  if (!rol?.trim()) throw new IaError("rol requerido", 400);
+
+  const bodega = await prisma.bodega.findUnique({ where: { bodega_id: bodegaId } });
+  if (!bodega) throw new IaError("Bodega no encontrada", 404);
+
+  let whatsapp_e164: string | undefined;
+  if (whatsapp) {
+    const normalized = whatsapp.trim();
+    if (!/^\+\d{7,15}$/.test(normalized)) {
+      throw new IaError("whatsapp debe estar en formato E.164 (ej: +5491112345678)", 400);
+    }
+    whatsapp_e164 = normalized;
+  }
+
+  const plainPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+  const password_hash = await import("bcryptjs").then((m) => m.default.hash(plainPassword, 10));
+
+  const user = await prisma.appUser.create({
+    data: {
+      nombre: nombre.trim(),
+      password_hash,
+      must_change_password: true,
+      ...(whatsapp_e164 ? { whatsapp_e164 } : {}),
+      user_bodega: {
+        create: {
+          bodega_id: bodegaId,
+          user_bodega_rol: {
+            create: { rol },
+          },
+        },
+      },
+    },
+  });
+
+  return {
+    id: user.user_id,
+    nombre: user.nombre,
+    email: user.email,
+    whatsapp: user.whatsapp_e164,
+    tieneAcceso: true,
+    must_change_password: true,
+    passwordTemporal: plainPassword,
+    roles: [rol],
+  };
 }
 
 export async function listIaProtocolos(botUserId: string) {
@@ -1394,25 +1425,22 @@ export async function iaConsultar(input: IaConsultaInput) {
   };
 }
 
-export async function contactIaJob(encargoAsignacionId: string, botUserId: string, message?: string) {
+export async function contactIaJob(tareaAsignacionId: string, botUserId: string, message?: string) {
   await ensureBotUser(botUserId);
-  return botContactarAsignacion(encargoAsignacionId, botUserId, message);
+  return botContactarAsignacion(tareaAsignacionId, botUserId, message);
 }
 
 export async function helpIaJobLoad(
-  encargoAsignacionId: string,
+  tareaAsignacionId: string,
   botUserId: string,
   payload?: unknown,
 ) {
   await ensureBotUser(botUserId);
-  const context = await getDelegationForAssignment(botUserId, encargoAsignacionId, [
-    "encargos.cargar_datos",
+  const context = await getDelegationForAssignment(botUserId, tareaAsignacionId, [
+    "tareas.cargar_datos",
   ]);
 
-  const milestone = context.asignacion.encargo.milestone;
-  const eventoTipo =
-    milestone?.protocolo_proceso.evento_tipo ??
-    inferEventoTipo(context.asignacion.encargo.titulo, context.asignacion.encargo.descripcion);
+  const eventoTipo = inferEventoTipo(context.asignacion.tarea.titulo, context.asignacion.tarea.descripcion);
   const inputSchema = eventoTipo ? (EVENTO_INPUT_SCHEMAS[eventoTipo] ?? null) : null;
 
   const body = isPlainObject(payload) ? payload : {};
@@ -1431,7 +1459,7 @@ export async function helpIaJobLoad(
     } as Prisma.InputJsonObject,
   };
 
-  const botActionLog = await botAyudarCarga(encargoAsignacionId, botUserId, enrichedPayload);
+  const botActionLog = await botAyudarCarga(tareaAsignacionId, botUserId, enrichedPayload);
 
   return {
     botActionLog,
@@ -1486,6 +1514,70 @@ export async function getIaUsuario(botUserId: string, targetUserId: string) {
   }
 
   return user;
+}
+
+export async function getIaUsuarioByWhatsapp(botUserId: string, whatsapp: string) {
+  await ensureBotUser(botUserId);
+
+  const user = await prisma.appUser.findUnique({
+    where: { whatsapp_e164: whatsapp },
+    select: {
+      user_id: true,
+      nombre: true,
+      email: true,
+      whatsapp_e164: true,
+      is_active: true,
+      user_bodega: {
+        include: {
+          bodega: { select: { bodega_id: true, nombre: true } },
+          user_bodega_rol: { select: { rol: true } },
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new IaError("Usuario no encontrado con ese whatsapp", 404);
+  }
+
+  const delegaciones = await prisma.botDelegation.findMany({
+    where: {
+      bot_user_id: botUserId,
+      granted_by_user_id: user.user_id,
+      activo: true,
+      revoked_at: null,
+      OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
+    },
+    select: {
+      bot_delegation_id: true,
+      scopes: true,
+      bodega_id: true,
+      bodega: { select: { bodega_id: true, nombre: true } },
+      expires_at: true,
+      created_at: true,
+    },
+  });
+
+  return {
+    user_id: user.user_id,
+    nombre: user.nombre,
+    email: user.email,
+    whatsapp: user.whatsapp_e164,
+    is_active: user.is_active,
+    bodegas: user.user_bodega.map((ub) => ({
+      bodega_id: ub.bodega_id,
+      nombre: ub.bodega?.nombre ?? "",
+      roles: ub.user_bodega_rol.map((r) => r.rol),
+    })),
+    delegaciones_activas: delegaciones.map((d) => ({
+      bot_delegation_id: d.bot_delegation_id,
+      scopes: d.scopes,
+      bodega: d.bodega ?? null,
+      expires_at: d.expires_at,
+      created_at: d.created_at,
+    })),
+    tiene_delegacion: delegaciones.length > 0,
+  };
 }
 
 export function getIaEventoSchema(tipo: string) {

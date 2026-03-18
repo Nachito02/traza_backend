@@ -18,12 +18,15 @@ import {
   listIaHallazgos,
   listIaInsumos,
   listIaJobs,
-  listIaPersonas,
+  listIaTrabajadores,
+  createIaTrabajador,
+  createIaCuartel,
   listIaProcesos,
   listIaProtocolos,
   listIaTrazabilidades,
   submitIaJobResult,
   getIaUsuario,
+  getIaUsuarioByWhatsapp,
   getIaEventoSchema,
   listIaEventoTipos,
 } from "./ia.service.js";
@@ -76,8 +79,8 @@ export async function getIaJobHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
-    return res.json(await getIaJobDetail(encargoAsignacionId, req.user.userId));
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    return res.json(await getIaJobDetail(tareaAsignacionId, req.user.userId));
   } catch (error) {
     return handleError(res, error);
   }
@@ -88,8 +91,8 @@ export async function getIaJobContextHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
-    return res.json(await getIaJobContext(encargoAsignacionId, req.user.userId));
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    return res.json(await getIaJobContext(tareaAsignacionId, req.user.userId));
   } catch (error) {
     return handleError(res, error);
   }
@@ -100,10 +103,10 @@ export async function contactIaJobHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
     const message =
       typeof req.body?.message === "string" ? req.body.message : undefined;
-    return res.json(await contactIaJob(encargoAsignacionId, req.user.userId, message));
+    return res.json(await contactIaJob(tareaAsignacionId, req.user.userId, message));
   } catch (error) {
     return handleError(res, error);
   }
@@ -114,8 +117,8 @@ export async function helpIaJobLoadHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
-    return res.json(await helpIaJobLoad(encargoAsignacionId, req.user.userId, req.body ?? {}));
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    return res.json(await helpIaJobLoad(tareaAsignacionId, req.user.userId, req.body ?? {}));
   } catch (error) {
     return handleError(res, error);
   }
@@ -126,7 +129,7 @@ export async function submitIaJobResultHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const encargoAsignacionId = String(req.params.encargoAsignacionId ?? "");
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
     const estado = String(req.body?.estado ?? "") as
       | "pendiente"
       | "en_progreso"
@@ -140,7 +143,7 @@ export async function submitIaJobResultHandler(req: Request, res: Response) {
 
     return res.json(
       await submitIaJobResult({
-        encargoAsignacionId,
+        tareaAsignacionId,
         botUserId: req.user.userId,
         estado,
         observaciones,
@@ -178,12 +181,8 @@ export async function listIaFincasHandler(req: Request, res: Response) {
 export async function listIaCuartelesHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
-    const bodegaId = typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
     const fincaId = typeof req.query.fincaId === "string" ? req.query.fincaId : undefined;
-    const params: { botUserId: string; bodegaId?: string; fincaId?: string } = {
-      botUserId: req.user.userId,
-    };
-    if (bodegaId) params.bodegaId = bodegaId;
+    const params: { botUserId: string; fincaId?: string } = { botUserId: req.user.userId };
     if (fincaId) params.fincaId = fincaId;
     return res.json(await listIaCuarteles(params));
   } catch (error) {
@@ -203,13 +202,30 @@ export async function listIaCampaniasHandler(req: Request, res: Response) {
   }
 }
 
-export async function listIaPersonasHandler(req: Request, res: Response) {
+export async function listIaTrabajadoresHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
-    const bodegaId = typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
     const params: { botUserId: string; bodegaId?: string } = { botUserId: req.user.userId };
-    if (bodegaId) params.bodegaId = bodegaId;
-    return res.json(await listIaPersonas(params));
+    if (typeof req.query.bodegaId === "string") params.bodegaId = req.query.bodegaId;
+    return res.json(await listIaTrabajadores(params));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function createIaTrabajadorHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const { nombre, bodegaId, rol, whatsapp } = req.body ?? {};
+    return res.status(201).json(
+      await createIaTrabajador({
+        botUserId: req.user.userId,
+        nombre,
+        bodegaId,
+        rol,
+        whatsapp,
+      }),
+    );
   } catch (error) {
     return handleError(res, error);
   }
@@ -364,6 +380,16 @@ export async function iaConsultarHandler(req: Request, res: Response) {
   }
 }
 
+export async function getIaUsuarioByWhatsappHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const whatsapp = String(req.params.whatsapp ?? "");
+    return res.json(await getIaUsuarioByWhatsapp(req.user.userId, whatsapp));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function getIaUsuarioHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
@@ -378,6 +404,23 @@ export async function listIaEventoTiposHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
     return res.json(listIaEventoTipos());
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function createIaCuartelHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const { fincaId, codigoCuartel, superficieHa, cultivo, variedad, sistemaProductivo, sistemaConduccion } =
+      req.body ?? {};
+    const params: Parameters<typeof createIaCuartel>[0] = { botUserId: req.user.userId, fincaId, codigoCuartel };
+    if (typeof superficieHa === "number") params.superficieHa = superficieHa;
+    if (typeof cultivo === "string") params.cultivo = cultivo;
+    if (typeof variedad === "string") params.variedad = variedad;
+    if (typeof sistemaProductivo === "string") params.sistemaProductivo = sistemaProductivo;
+    if (typeof sistemaConduccion === "string") params.sistemaConduccion = sistemaConduccion;
+    return res.status(201).json(await createIaCuartel(params));
   } catch (error) {
     return handleError(res, error);
   }
