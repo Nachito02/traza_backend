@@ -43,19 +43,19 @@ app.get("/docs/spec.json", (_req, res) => res.json(openapiSpec));
 app.get("/docs/ia/spec.json", (_req, res) => res.json(openapiIaSpec));
 
 // /docs/ia debe ir ANTES que /docs para evitar captura por prefijo.
-app.use(
-  "/docs/ia",
-  swaggerUi.serveFiles(openapiIaSpec),
-  swaggerUi.setup(openapiIaSpec, {
-    explorer: true,
-    customCss: `.opblock-tag { align-items: flex-start !important; } .opblock-tag small { margin-top: 4px; line-height: 1.5; white-space: normal; max-width: 70%; }`,
-  })
-);
-app.use(
-  "/docs",
-  swaggerUi.serveFiles(openapiSpec),
-  swaggerUi.setup(openapiSpec, { explorer: true })
-);
+const iaDocsOpts = {
+  explorer: true,
+  swaggerOptions: { tryItOutEnabled: true },
+  customCss: `.opblock-tag { align-items: flex-start !important; } .opblock-tag small { margin-top: 4px; line-height: 1.5; white-space: normal; max-width: 70%; } .try-out { display: none !important; }`,
+};
+app.use("/docs/ia", swaggerUi.serveFiles(openapiIaSpec, iaDocsOpts), swaggerUi.setup(openapiIaSpec, iaDocsOpts));
+
+const docsOpts = {
+  explorer: true,
+  swaggerOptions: { tryItOutEnabled: true },
+  customCss: `.try-out { display: none !important; }`,
+};
+app.use("/docs", swaggerUi.serveFiles(openapiSpec, docsOpts), swaggerUi.setup(openapiSpec, docsOpts));
 
 //Routes
 app.use('/api', routes);

@@ -828,7 +828,9 @@ export async function botIniciarCreacionTarea(
     if (input.prioridad !== undefined) tareaInput.prioridad = input.prioridad;
     if (input.imagenCid !== undefined) tareaInput.imagenCid = input.imagenCid;
     if (input.imagenUrl !== undefined) tareaInput.imagenUrl = input.imagenUrl;
-    if (input.assigneeUserIds !== undefined) tareaInput.assigneeUserIds = input.assigneeUserIds;
+    // Always include the whatsapp user as assignee so the task is visible in listIaJobs
+    const baseAssignees = input.assigneeUserIds ?? [];
+    tareaInput.assigneeUserIds = Array.from(new Set([user.user_id, ...baseAssignees]));
 
     const tarea = await botCrearTarea(tareaInput, botUserId);
     return { status: "created" as const, tarea };
@@ -836,7 +838,7 @@ export async function botIniciarCreacionTarea(
 
   const delegacionInput: Parameters<typeof botSolicitarDelegacion>[0] = {
     whatsapp: input.whatsapp,
-    scopes: ["tareas.crear"],
+    scopes: ["tareas.crear", "tareas.ver", "tareas.contactar", "tareas.cargar_datos", "tareas.resolver"],
     bodegaId: input.bodegaId,
   };
   if (input.delegacionExpiresAt !== undefined) delegacionInput.expiresAt = input.delegacionExpiresAt;
