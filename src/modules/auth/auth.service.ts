@@ -505,24 +505,43 @@ export async function getUserDetail(actorUserId: string, targetUserId: string) {
     ? targetUser.user_bodega.filter((ub) => scopedBodegaIds.includes(ub.bodega_id))
     : targetUser.user_bodega;
 
-  const fincas = await prisma.$queryRaw<
-    Array<{
-      finca_id: string;
-      nombre_finca: string;
-      bodega_id: string;
-      rol: string;
-    }>
-  >`
-    SELECT
-      ufr."finca_id",
-      f."nombre_finca",
-      f."bodega_id",
-      ufr."rol"
-    FROM "user_finca_rol" ufr
-    JOIN "finca" f ON f."finca_id" = ufr."finca_id"
-    WHERE ufr."user_id" = ${targetUserId}::uuid
-    ORDER BY f."nombre_finca" ASC, ufr."rol" ASC
-  `;
+  let fincas: Array<{
+    finca_id: string;
+    nombre_finca: string;
+    bodega_id: string;
+    rol: string;
+  }> = [];
+  try {
+    fincas = await prisma.$queryRaw<
+      Array<{
+        finca_id: string;
+        nombre_finca: string;
+        bodega_id: string;
+        rol: string;
+      }>
+    >`
+      SELECT
+        ufr."finca_id",
+        f."nombre_finca",
+        f."bodega_id",
+        ufr."rol"
+      FROM "user_finca_rol" ufr
+      JOIN "finca" f ON f."finca_id" = ufr."finca_id"
+      WHERE ufr."user_id" = ${targetUserId}::uuid
+      ORDER BY f."nombre_finca" ASC, ufr."rol" ASC
+    `;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2010"
+    ) {
+      fincas = [];
+    } else {
+      throw error;
+    }
+  }
 
   const filteredFincas = scopedBodegaIds
     ? fincas.filter((f) => scopedBodegaIds.includes(f.bodega_id))

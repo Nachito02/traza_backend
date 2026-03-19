@@ -200,34 +200,28 @@ export async function listFincaVinculosByBodega(bodegaId: string, userId: string
     throw new BodegaError("Bodega no encontrada", 404);
   }
 
-  const rows = await prisma.$queryRaw<
-    Array<{
-      bodega_id: string;
-      finca_id: string;
-      tipo_vinculo: string;
-      activo: boolean;
-      created_at: Date;
-      updated_at: Date;
-      finca_nombre: string;
-      finca_bodega_id: string;
-    }>
-  >`
-    SELECT
-      v."bodega_id",
-      v."finca_id",
-      v."tipo_vinculo",
-      v."activo",
-      v."created_at",
-      v."updated_at",
-      f."nombre_finca" AS "finca_nombre",
-      f."bodega_id" AS "finca_bodega_id"
-    FROM "bodega_finca_vinculo" v
-    JOIN "finca" f ON f."finca_id" = v."finca_id"
-    WHERE v."bodega_id" = ${bodegaId}::uuid
-    ORDER BY f."nombre_finca" ASC
-  `;
+  const fincas = await prisma.finca.findMany({
+    where: { bodega_id: bodegaId },
+    select: {
+      finca_id: true,
+      nombre_finca: true,
+      bodega_id: true,
+      created_at: true,
+      updated_at: true,
+    },
+    orderBy: { nombre_finca: "asc" },
+  });
 
-  return rows;
+  return fincas.map((finca) => ({
+    bodega_id: bodegaId,
+    finca_id: finca.finca_id,
+    tipo_vinculo: "propia",
+    activo: true,
+    created_at: finca.created_at,
+    updated_at: finca.updated_at,
+    finca_nombre: finca.nombre_finca,
+    finca_bodega_id: finca.bodega_id,
+  }));
 }
 
 export async function upsertBodegaFincaVinculo({
@@ -256,7 +250,13 @@ export async function upsertBodegaFincaVinculo({
     }),
     prisma.finca.findUnique({
       where: { finca_id: fincaId },
-      select: { finca_id: true, nombre_finca: true, bodega_id: true },
+      select: {
+        finca_id: true,
+        nombre_finca: true,
+        bodega_id: true,
+        created_at: true,
+        updated_at: true,
+      },
     }),
   ]);
 
@@ -267,40 +267,20 @@ export async function upsertBodegaFincaVinculo({
     throw new BodegaError("Finca no encontrada", 404);
   }
 
-  await prisma.$executeRaw`
-    INSERT INTO "bodega_finca_vinculo" ("bodega_id", "finca_id", "tipo_vinculo", "activo")
-    VALUES (${bodegaId}::uuid, ${fincaId}::uuid, ${normalizedTipo}, ${normalizedActivo})
-    ON CONFLICT ("bodega_id", "finca_id")
-    DO UPDATE SET
-      "tipo_vinculo" = EXCLUDED."tipo_vinculo",
-      "activo" = EXCLUDED."activo",
-      "updated_at" = CURRENT_TIMESTAMP
-  `;
-
-  const rows = await prisma.$queryRaw<
-    Array<{
-      bodega_id: string;
-      finca_id: string;
-      tipo_vinculo: string;
-      activo: boolean;
-      created_at: Date;
-      updated_at: Date;
-    }>
-  >`
-    SELECT "bodega_id", "finca_id", "tipo_vinculo", "activo", "created_at", "updated_at"
-    FROM "bodega_finca_vinculo"
-    WHERE "bodega_id" = ${bodegaId}::uuid
-      AND "finca_id" = ${fincaId}::uuid
-    LIMIT 1
-  `;
-
-  const relation = rows[0];
-  if (!relation) {
-    throw new BodegaError("No se pudo persistir el vínculo", 500);
+  if (finca.bodega_id !== bodegaId) {
+    throw new BodegaError(
+      "Los vínculos entre bodega y finca externa no están soportados en el esquema actual",
+      409,
+    );
   }
 
   return {
-    ...relation,
+    bodega_id: bodegaId,
+    finca_id: fincaId,
+    tipo_vinculo: normalizedTipo,
+    activo: normalizedActivo,
+    created_at: finca.created_at ?? new Date(),
+    updated_at: new Date(),
     bodega_nombre: bodega.nombre,
     finca_nombre: finca.nombre_finca,
     finca_bodega_id: finca.bodega_id,

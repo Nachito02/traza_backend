@@ -442,16 +442,6 @@ export async function deleteFinca(fincaId: string, userId: string) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        DELETE FROM "user_finca_rol"
-        WHERE "finca_id" = ${finca.finca_id}::uuid
-      `;
-
-      await tx.$executeRaw`
-        DELETE FROM "bodega_finca_vinculo"
-        WHERE "finca_id" = ${finca.finca_id}::uuid
-      `;
-
       await tx.finca.delete({
         where: { finca_id: finca.finca_id },
       });
