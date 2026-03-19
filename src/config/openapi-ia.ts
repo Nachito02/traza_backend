@@ -512,7 +512,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Agregar nota/entrada a la tarea",
-        description: "Registra una iteración o nota libre sobre la tarea. Las entradas se acumulan y son visibles en GET /tareas/:id.",
+        description: "Registra una entrada estructurada de iteración. Soporta notas, plantilla y documentos (cid/url). Mantiene compatibilidad con descripcion/adjuntos.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: true,
@@ -521,11 +521,35 @@ const openapiIaSpec = {
               schema: {
                 type: "object",
                 properties: {
-                  descripcion: { type: "string", description: "Texto de la nota o iteración" },
-                  adjuntos: { type: "array", items: { type: "object" }, description: "Archivos adjuntos opcionales" },
+                  notas: { type: "string", description: "Texto opcional de la entrada" },
+                  plantilla: {
+                    type: "object",
+                    nullable: true,
+                    description: "Plantilla de campos obligatorios/opcionales usada para la iteración",
+                  },
+                  documentos: {
+                    type: "array",
+                    description: "Documentos opcionales (IPFS + bucket)",
+                    items: {
+                      type: "object",
+                      properties: {
+                        cid: { type: "string" },
+                        url: { type: "string" },
+                        nombre: { type: "string" },
+                        mimeType: { type: "string" },
+                      },
+                    },
+                  },
+                  descripcion: { type: "string", description: "Compatibilidad legacy: alias de notas" },
+                  adjuntos: { type: "array", items: { type: "object" }, description: "Compatibilidad legacy: alias de documentos" },
                 },
               },
-              example: { descripcion: "Riego realizado en sector norte, 12m³ aplicados." },
+              example: {
+                notas: "Riego realizado en sector norte, 12m3 aplicados.",
+                documentos: [
+                  { cid: "bafy...", url: "https://bucket.example.com/doc1.pdf", nombre: "planilla-riego.pdf" },
+                ],
+              },
             },
           },
         },
@@ -539,7 +563,10 @@ const openapiIaSpec = {
                   properties: {
                     entradaId: { type: "string", format: "uuid" },
                     descripcion: { type: "string", nullable: true },
-                    adjuntos: { type: "array" },
+                    adjuntos: { oneOf: [{ type: "array" }, { type: "object" }] },
+                    notas: { type: "string", nullable: true },
+                    plantilla: { type: "object", nullable: true },
+                    documentos: { type: "array" },
                     fecha: { type: "string", format: "date-time" },
                     creadoPor: { type: "object", properties: { user_id: { type: "string" }, nombre: { type: "string" } } },
                   },
@@ -553,7 +580,8 @@ const openapiIaSpec = {
     "/tareas/{tareaAsignacionId}/guardar-progreso": {
       post: {
         tags: ["Tareas"],
-        summary: "Guardar progreso intermedio y validar contra el schema del evento",
+        summary: "Guardar progreso intermedio, validar y persistir entrada estructurada",
+        description: "Llamar N veces con datos parciales. Cada respuesta incluye `validation.missingRequired` (campos que faltan), `validation.canClose` (si se puede finalizar) y `nextAction` (`ask_missing_or_fix_invalid` | `ready_to_submit_result`). Cuando `canClose: true`, llamar a `/finalizar`.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: false,
@@ -562,13 +590,46 @@ const openapiIaSpec = {
               schema: {
                 type: "object",
                 additionalProperties: true,
+                properties: {
+                  draft: { type: "object", additionalProperties: true },
+                  notas: { type: "string" },
+                  documentos: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        cid: { type: "string" },
+                        url: { type: "string" },
+                        nombre: { type: "string" },
+                        mimeType: { type: "string" },
+                      },
+                    },
+                  },
+                  plantilla: { type: "object", nullable: true },
+                  descripcion: { type: "string", description: "Compatibilidad legacy: alias de notas" },
+                  adjuntos: { type: "array", items: { type: "object" }, description: "Compatibilidad legacy: alias de documentos" },
+                },
               },
-              example: {
-                draft: {
-                  tipo: "riego",
-                  fecha: "2026-03-09",
-                  volumen: 12.5,
-                  unidad: "m3",
+              examples: {
+                parcial: {
+                  summary: "1° llamada — datos parciales (falta unidad)",
+                  value: {
+                    draft: {
+                      fecha: "2026-03-18",
+                      volumen: 150,
+                    },
+                  },
+                },
+                completo: {
+                  summary: "2° llamada — completo (canClose: true)",
+                  value: {
+                    draft: {
+                      fecha: "2026-03-18",
+                      volumen: 150,
+                      unidad: "m3",
+                      sistema_riego: "goteo",
+                    },
+                  },
                 },
               },
             },
@@ -583,6 +644,7 @@ const openapiIaSpec = {
                   type: "object",
                   properties: {
                     botActionLog: { type: "object", description: "Registro de acción persistido" },
+                    entrada: { type: "object", description: "Entrada persistida en tarea_entrada con formato estructurado" },
                     eventoTipo: { type: "string", nullable: true },
                     inputSchema: { type: "object", nullable: true },
                     validation: {

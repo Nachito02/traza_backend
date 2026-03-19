@@ -417,10 +417,13 @@ export async function addIaEntradaHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
     const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
-    const { descripcion, adjuntos } = req.body ?? {};
+    const { descripcion, notas, adjuntos, documentos, plantilla } = req.body ?? {};
     const params: Parameters<typeof addIaEntrada>[0] = { botUserId: req.user.userId, tareaAsignacionId };
+    if (typeof notas === "string") params.notas = notas;
     if (typeof descripcion === "string") params.descripcion = descripcion;
     if (Array.isArray(adjuntos)) params.adjuntos = adjuntos;
+    if (Array.isArray(documentos)) params.documentos = documentos;
+    if (plantilla && typeof plantilla === "object" && !Array.isArray(plantilla)) params.plantilla = plantilla;
     return res.status(201).json(await addIaEntrada(params));
   } catch (error) {
     return handleError(res, error);

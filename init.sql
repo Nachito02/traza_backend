@@ -457,6 +457,44 @@ CREATE TABLE "evento_energia" (
 );
 
 -- CreateTable
+CREATE TABLE "evento_origen_unidad_productiva" (
+    "evento_origen_unidad_productiva_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "fecha" DATE NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
+    "productor_razon_social" TEXT NOT NULL,
+    "localidad" TEXT NOT NULL,
+    "provincia" TEXT NOT NULL,
+    "codigo_cuartel" TEXT NOT NULL,
+    "superficie_ha" DECIMAL(10,2) NOT NULL,
+    "cultivo" TEXT NOT NULL,
+    "variedad" TEXT NOT NULL,
+    "sistema_productivo" TEXT,
+    "sistema_riego" TEXT,
+    "sistema_conduccion" TEXT,
+    "coordenadas" TEXT,
+    "responsable_user_id" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "evento_origen_unidad_productiva_pkey" PRIMARY KEY ("evento_origen_unidad_productiva_id")
+);
+
+-- CreateTable
+CREATE TABLE "evento_inventario_insumos" (
+    "evento_inventario_insumos_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "fecha" DATE NOT NULL,
+    "bodega_id" UUID,
+    "producto" TEXT NOT NULL,
+    "cantidad" DECIMAL(12,3) NOT NULL,
+    "fecha_vencimiento" DATE,
+    "estado" TEXT NOT NULL,
+    "responsable_user_id" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "evento_inventario_insumos_pkey" PRIMARY KEY ("evento_inventario_insumos_id")
+);
+
+-- CreateTable
 CREATE TABLE "evento_entrega_epp" (
     "evento_entrega_epp_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "fecha" DATE NOT NULL,
@@ -791,6 +829,7 @@ CREATE TABLE "protocolo_proceso" (
     "nombre" TEXT NOT NULL,
     "evento_tipo" TEXT NOT NULL,
     "obligatorio" BOOLEAN NOT NULL DEFAULT false,
+    "plantilla" JSONB,
     "orden" INTEGER NOT NULL,
 
     CONSTRAINT "protocolo_proceso_pkey" PRIMARY KEY ("proceso_id")
@@ -1159,6 +1198,21 @@ CREATE INDEX "idx_despacho_fecha" ON "despacho"("fecha");
 
 -- CreateIndex
 CREATE INDEX "idx_energia_periodo_tipo" ON "evento_energia"("periodo", "tipo");
+
+-- CreateIndex
+CREATE INDEX "idx_origen_finca" ON "evento_origen_unidad_productiva"("finca_id");
+
+-- CreateIndex
+CREATE INDEX "idx_origen_cuartel" ON "evento_origen_unidad_productiva"("cuartel_id");
+
+-- CreateIndex
+CREATE INDEX "idx_origen_fecha" ON "evento_origen_unidad_productiva"("fecha");
+
+-- CreateIndex
+CREATE INDEX "idx_inventario_insumos_bodega" ON "evento_inventario_insumos"("bodega_id");
+
+-- CreateIndex
+CREATE INDEX "idx_inventario_insumos_fecha" ON "evento_inventario_insumos"("fecha");
 
 -- CreateIndex
 CREATE INDEX "idx_fenologia_cuartel_campania_fecha" ON "evento_fenologia"("cuartel_id", "campania_id", "fecha");
@@ -1741,4 +1795,3 @@ ALTER TABLE "bot_action_log" ADD CONSTRAINT "bot_action_log_encargo_asignacion_i
 
 -- AddForeignKey
 ALTER TABLE "validacion_milestone" ADD CONSTRAINT "validacion_milestone_milestone_id_fkey" FOREIGN KEY ("milestone_id") REFERENCES "milestone"("milestone_id") ON DELETE CASCADE ON UPDATE NO ACTION;
-

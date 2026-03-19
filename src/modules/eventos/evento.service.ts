@@ -40,6 +40,7 @@ const DIAS_HIGIENE_COSECHA = 7;
 const MESES_ANALISIS_SUELO = 12;
 
 const CUARTEL_EVENT_TYPES = new Set([
+  "origen_unidad_productiva",
   "riego",
   "cosecha",
   "fenologia",
@@ -49,9 +50,12 @@ const CUARTEL_EVENT_TYPES = new Set([
   "aplicacion_fitosanitaria",
   "monitoreo_enfermedad",
   "monitoreo_plaga",
+  "enmienda",
+  "cobertura_erosion",
 ]);
 
 const BODEGA_EVENT_TYPES = new Set([
+  "inventario_insumos",
   "accidente",
   "capacitacion",
   "entrega_epp",
@@ -339,7 +343,7 @@ async function createPostCreationAlerts(params: {
       if (campania) {
         const epp = await prisma.eventoEntregaEpp.findFirst({
           where: {
-            persona_id: responsablePersonaId,
+            receptor_user_id: responsablePersonaId,
             fecha: { gte: campania.fecha_inicio, lte: campania.fecha_fin },
           },
           select: { evento_entrega_epp_id: true },
@@ -455,6 +459,98 @@ async function createPostCreationAlerts(params: {
   }
 }
 
+// ─── Table config for CRUD operations ─────────────────────────────────────────
+
+type EventoTableConfig = {
+  idField: string;
+  dateField: string;
+  table: string;
+};
+
+const EVENTO_TABLE_CONFIG: Record<string, EventoTableConfig> = {
+  origen_unidad_productiva: { table: "evento_origen_unidad_productiva", idField: "evento_origen_unidad_productiva_id", dateField: "fecha" },
+  riego: { table: "evento_riego", idField: "evento_riego_id", dateField: "fecha" },
+  cosecha: { table: "evento_cosecha", idField: "lote_cosecha_id", dateField: "fecha_cosecha" },
+  fenologia: { table: "evento_fenologia", idField: "evento_fenologia_id", dateField: "fecha" },
+  fertilizacion: { table: "evento_fertilizacion", idField: "evento_fertilizacion_id", dateField: "fecha" },
+  labor_suelo: { table: "evento_labor_suelo", idField: "evento_labor_suelo_id", dateField: "fecha" },
+  canopia: { table: "evento_canopia", idField: "evento_canopia_id", dateField: "fecha" },
+  aplicacion_fitosanitaria: { table: "evento_aplicacion_fitosanitaria", idField: "evento_fito_id", dateField: "fecha" },
+  monitoreo_enfermedad: { table: "evento_monitoreo_enfermedad", idField: "evento_monitoreo_enfermedad_id", dateField: "fecha" },
+  monitoreo_plaga: { table: "evento_monitoreo_plaga", idField: "evento_monitoreo_plaga_id", dateField: "fecha" },
+  analisis_suelo: { table: "evento_analisis_suelo", idField: "evento_analisis_suelo_id", dateField: "fecha" },
+  precipitacion: { table: "evento_precipitacion", idField: "evento_precipitacion_id", dateField: "fecha" },
+  energia: { table: "evento_energia", idField: "evento_energia_id", dateField: "periodo" },
+  inventario_insumos: { table: "evento_inventario_insumos", idField: "evento_inventario_insumos_id", dateField: "fecha" },
+  accidente: { table: "evento_accidente", idField: "evento_accidente_id", dateField: "fecha" },
+  capacitacion: { table: "evento_capacitacion", idField: "evento_capacitacion_id", dateField: "fecha" },
+  entrega_epp: { table: "evento_entrega_epp", idField: "evento_entrega_epp_id", dateField: "fecha" },
+  limpieza_cosecha: { table: "evento_limpieza_cosecha", idField: "evento_limpieza_cosecha_id", dateField: "fecha" },
+  mantenimiento: { table: "evento_mantenimiento", idField: "evento_mantenimiento_id", dateField: "fecha" },
+  no_conforme: { table: "evento_no_conforme", idField: "evento_no_conforme_id", dateField: "fecha" },
+  reclamo: { table: "evento_reclamo", idField: "evento_reclamo_id", dateField: "fecha" },
+  residuo: { table: "evento_residuo", idField: "evento_residuo_id", dateField: "fecha" },
+  sanitizacion_banos: { table: "evento_sanitizacion_banos", idField: "evento_sanitizacion_banos_id", dateField: "fecha" },
+  sobrante_lavado: { table: "evento_sobrante_lavado", idField: "evento_sobrante_lavado_id", dateField: "fecha" },
+  enmienda: { table: "evento_enmienda", idField: "evento_enmienda_id", dateField: "fecha" },
+  cobertura_erosion: { table: "evento_cobertura_erosion", idField: "evento_cobertura_erosion_id", dateField: "fecha" },
+};
+
+export async function listEventosByMilestone(milestoneId: string, userId: string, tipo?: string) {
+  await ensureUserMilestone(userId, milestoneId);
+
+  const whereClause = tipo
+    ? { milestone_id: milestoneId, evento_tabla: EVENTO_TABLE_CONFIG[tipo]?.table ?? tipo }
+    : { milestone_id: milestoneId };
+
+  const links = await prisma.milestoneEvento.findMany({
+    where: whereClause,
+    orderBy: { created_at: "asc" },
+  });
+
+  return links;
+}
+
+export async function getEventoById(tipo: string, eventoId: string, userId: string, milestoneId: string) {
+  const config = EVENTO_TABLE_CONFIG[tipo];
+  if (!config) throw new EventoError("Tipo de evento no soportado", 400);
+
+  await ensureUserMilestone(userId, milestoneId);
+
+  const link = await prisma.milestoneEvento.findFirst({
+    where: { milestone_id: milestoneId, evento_tabla: config.table, evento_id: eventoId },
+  });
+  if (!link) throw new EventoError("Evento no encontrado en este milestone", 404);
+
+  // Fetch the actual record via raw query
+  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM "${config.table}" WHERE "${config.idField}" = $1::uuid`,
+    eventoId,
+  );
+  if (!rows[0]) throw new EventoError("Evento no encontrado", 404);
+  return rows[0];
+}
+
+export async function deleteEvento(tipo: string, eventoId: string, userId: string, milestoneId: string) {
+  const config = EVENTO_TABLE_CONFIG[tipo];
+  if (!config) throw new EventoError("Tipo de evento no soportado", 400);
+
+  await ensureUserMilestone(userId, milestoneId);
+
+  const link = await prisma.milestoneEvento.findFirst({
+    where: { milestone_id: milestoneId, evento_tabla: config.table, evento_id: eventoId },
+  });
+  if (!link) throw new EventoError("Evento no encontrado en este milestone", 404);
+
+  await prisma.$transaction([
+    prisma.milestoneEvento.delete({ where: { milestone_evento_id: link.milestone_evento_id } }),
+    prisma.eventoFingerprint.deleteMany({ where: { evento_tabla: config.table, evento_id: eventoId } }),
+    prisma.$executeRawUnsafe(`DELETE FROM "${config.table}" WHERE "${config.idField}" = $1::uuid`, eventoId),
+  ]);
+
+  return { deleted: true };
+}
+
 export async function createEvento(input: CreateEventoInput) {
   const context = await ensureUserMilestone(input.userId, input.milestoneId);
   validateAnchoring(input, context);
@@ -526,6 +622,44 @@ export async function createEvento(input: CreateEventoInput) {
   }
 
   switch (input.tipo) {
+    case "origen_unidad_productiva": {
+      const fecha = requireDate(input.fecha ?? new Date().toISOString(), "Fecha");
+      const evento = await prisma.eventoOrigenUnidadProductiva.create({
+        data: {
+          fecha,
+          finca_id: requireString(input.fincaId, "Finca"),
+          cuartel_id: requireString(input.cuartelId, "Cuartel"),
+          productor_razon_social: requireString(input.productor_razon_social, "Productor / Razón social"),
+          localidad: requireString(input.localidad, "Localidad"),
+          provincia: requireString(input.provincia, "Provincia"),
+          codigo_cuartel: requireString(input.codigo_cuartel, "Código de cuartel"),
+          superficie_ha: requirePositiveNumber(input.superficie_ha, "Superficie (ha)"),
+          cultivo: requireString(input.cultivo, "Cultivo"),
+          variedad: requireString(input.variedad, "Variedad"),
+          sistema_productivo: asNullableString(input.sistema_productivo),
+          sistema_riego: asNullableString(input.sistema_riego),
+          sistema_conduccion: asNullableString(input.sistema_conduccion),
+          coordenadas: asNullableString(input.coordenadas),
+          responsable_user_id: asNullableString(input.responsable_user_id),
+        },
+      });
+      await prisma.milestoneEvento.create({
+        data: {
+          milestone_id: input.milestoneId,
+          evento_tabla: "evento_origen_unidad_productiva",
+          evento_id: evento.evento_origen_unidad_productiva_id,
+        },
+      });
+      await registerFingerprint(
+        input.tipo,
+        "evento_origen_unidad_productiva",
+        evento.evento_origen_unidad_productiva_id,
+        fecha,
+        evento.cuartel_id,
+        evento.finca_id,
+      );
+      return { tipo: "origen_unidad_productiva", evento };
+    }
     case "riego": {
       const fecha = requireDate(input.fecha, "Fecha");
       const evento = await prisma.eventoRiego.create({
@@ -535,8 +669,9 @@ export async function createEvento(input: CreateEventoInput) {
           campania_id: requireString(input.campaniaId, "Campaña"),
           volumen: requirePositiveNumber(input.volumen, "Volumen"),
           unidad: requireString(input.unidad, "Unidad"),
+          tiempo_horas: asNullableNumber(input.tiempo_horas),
           sistema_riego: asNullableString(input.sistema_riego),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -577,7 +712,7 @@ export async function createEvento(input: CreateEventoInput) {
           cantidad: requirePositiveNumber(input.cantidad, "Cantidad"),
           unidad: requireString(input.unidad, "Unidad"),
           destino: asNullableString(input.destino),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -612,7 +747,7 @@ export async function createEvento(input: CreateEventoInput) {
           campania_id: requireString(input.campaniaId, "Campaña"),
           estado_fenologico: requireString(input.estado_fenologico, "Estado fenológico"),
           porcentaje_avance: asNullableNumber(input.porcentaje_avance),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -641,8 +776,9 @@ export async function createEvento(input: CreateEventoInput) {
           insumo_id: asNullableString(input.insumo_id),
           dosis: requirePositiveNumber(input.dosis, "Dosis"),
           unidad: requireString(input.unidad, "Unidad"),
+          metodo: asNullableString(input.metodo),
           cantidad_total: asNullableNumber(input.cantidad_total),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -676,10 +812,11 @@ export async function createEvento(input: CreateEventoInput) {
           cuartel_id: requireString(input.cuartelId, "Cuartel"),
           campania_id: requireString(input.campaniaId, "Campaña"),
           tipo_labor: requireString(input.tipo_labor, "Tipo de labor"),
+          intensidad: asNullableString(input.intensidad),
           horas: asNullableNumber(input.horas),
           hs_por_ha: asNullableNumber(input.hs_por_ha),
           total_horas_cuartel: asNullableNumber(input.total_horas_cuartel),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -709,7 +846,7 @@ export async function createEvento(input: CreateEventoInput) {
           intensidad: asNullableString(input.intensidad),
           jornales: asNullableNumber(input.jornales),
           observaciones: asNullableString(input.observaciones),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -744,7 +881,7 @@ export async function createEvento(input: CreateEventoInput) {
           unidad: requireString(input.unidad, "Unidad"),
           carencia_dias: Math.trunc(requirePositiveNumber(input.carencia_dias, "Carencia (días)")),
           motivo: asNullableString(input.motivo),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -767,7 +904,7 @@ export async function createEvento(input: CreateEventoInput) {
         eventId: evento.evento_fito_id,
         eventTable: "evento_aplicacion_fitosanitaria",
         fecha,
-        responsablePersonaId: evento.responsable_persona_id,
+        responsablePersonaId: evento.responsable_user_id,
       });
       return { tipo: "aplicacion_fitosanitaria", evento };
     }
@@ -780,7 +917,7 @@ export async function createEvento(input: CreateEventoInput) {
           campania_id: requireString(input.campaniaId, "Campaña"),
           enfermedad: requireString(input.enfermedad, "Enfermedad"),
           incidencia: asNullableString(input.incidencia),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -808,7 +945,7 @@ export async function createEvento(input: CreateEventoInput) {
           campania_id: requireString(input.campaniaId, "Campaña"),
           plaga: requireString(input.plaga, "Plaga"),
           nivel: asNullableString(input.nivel),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -921,13 +1058,42 @@ export async function createEvento(input: CreateEventoInput) {
       );
       return { tipo: "energia", evento };
     }
+    case "inventario_insumos": {
+      const fecha = requireDate(input.fecha ?? new Date().toISOString(), "Fecha");
+      const evento = await prisma.eventoInventarioInsumos.create({
+        data: {
+          fecha,
+          bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
+          producto: requireString(input.producto, "Producto"),
+          cantidad: requirePositiveNumber(input.cantidad, "Cantidad"),
+          fecha_vencimiento: input.fecha_vencimiento ? requireDate(input.fecha_vencimiento, "Fecha vencimiento") : null,
+          estado: requireString(input.estado, "Estado"),
+          responsable_user_id: asNullableString(input.responsable_user_id),
+        },
+      });
+      await prisma.milestoneEvento.create({
+        data: {
+          milestone_id: input.milestoneId,
+          evento_tabla: "evento_inventario_insumos",
+          evento_id: evento.evento_inventario_insumos_id,
+        },
+      });
+      await registerFingerprint(
+        input.tipo,
+        "evento_inventario_insumos",
+        evento.evento_inventario_insumos_id,
+        fecha,
+      );
+      return { tipo: "inventario_insumos", evento };
+    }
     case "accidente": {
       const fecha = requireDate(input.fecha, "Fecha");
       const evento = await prisma.eventoAccidente.create({
         data: {
           fecha,
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
-          persona_id: requireString(input.persona_id, "Persona"),
+          accidentado_user_id: requireString(input.accidentado_user_id ?? input.persona_id, "Persona accidentada"),
+          tipo: asNullableString(input.tipo),
           accion_correctiva: asNullableString(input.accion_correctiva),
         },
       });
@@ -948,6 +1114,7 @@ export async function createEvento(input: CreateEventoInput) {
           fecha,
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           tema: requireString(input.tema, "Tema"),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -966,7 +1133,7 @@ export async function createEvento(input: CreateEventoInput) {
         data: {
           fecha,
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
-          persona_id: requireString(input.persona_id, "Persona"),
+          receptor_user_id: requireString(input.receptor_user_id ?? input.persona_id, "Persona receptora"),
           epp: requireString(input.epp, "EPP"),
         },
       });
@@ -988,7 +1155,7 @@ export async function createEvento(input: CreateEventoInput) {
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           elemento: requireString(input.elemento, "Elemento"),
           metodo: asNullableString(input.metodo),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -1014,7 +1181,7 @@ export async function createEvento(input: CreateEventoInput) {
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           equipo: requireString(input.equipo, "Equipo"),
           tipo: requireString(input.tipo_mantenimiento, "Tipo"),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -1040,6 +1207,8 @@ export async function createEvento(input: CreateEventoInput) {
           fecha,
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           descripcion: requireString(input.descripcion, "Descripción"),
+          accion_correctiva: asNullableString(input.accion_correctiva),
+          responsable_user_id: asNullableString(input.responsable_user_id),
           estado,
         },
       });
@@ -1062,6 +1231,7 @@ export async function createEvento(input: CreateEventoInput) {
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           origen: requireString(input.origen, "Origen"),
           descripcion: asNullableString(input.descripcion),
+          responsable_user_id: asNullableString(input.responsable_user_id),
           estado,
         },
       });
@@ -1085,7 +1255,7 @@ export async function createEvento(input: CreateEventoInput) {
           cantidad: asNullableNumber(input.cantidad),
           unidad: asNullableString(input.unidad),
           destino: requireString(input.destino, "Destino"),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -1117,7 +1287,7 @@ export async function createEvento(input: CreateEventoInput) {
           bodega_id: asNullableString(input.bodegaId) ?? context.bodegaId,
           tipo_bano: requireString(input.tipo_bano, "Tipo de baño"),
           checklist: checklist as Prisma.InputJsonValue,
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -1144,7 +1314,7 @@ export async function createEvento(input: CreateEventoInput) {
           tipo: requireString(input.tipo_sobrante, "Tipo"),
           volumen: asNullableNumber(input.volumen),
           disposicion: asNullableString(input.disposicion),
-          responsable_persona_id: asNullableString(input.responsable_persona_id),
+          responsable_user_id: asNullableString(input.responsable_user_id),
         },
       });
       await prisma.milestoneEvento.create({
@@ -1161,6 +1331,63 @@ export async function createEvento(input: CreateEventoInput) {
         fecha,
       );
       return { tipo: "sobrante_lavado", evento };
+    }
+    case "enmienda": {
+      const fecha = requireDate(input.fecha, "Fecha");
+      const evento = await prisma.eventoEnmienda.create({
+        data: {
+          fecha,
+          cuartel_id: requireString(input.cuartelId, "Cuartel"),
+          campania_id: requireString(input.campaniaId, "Campaña"),
+          tipo: requireString(input.tipo, "Tipo"),
+          dosis: asNullableNumber(input.dosis),
+          unidad: asNullableString(input.unidad),
+          responsable_user_id: asNullableString(input.responsable_user_id),
+        },
+      });
+      await prisma.milestoneEvento.create({
+        data: {
+          milestone_id: input.milestoneId,
+          evento_tabla: "evento_enmienda",
+          evento_id: evento.evento_enmienda_id,
+        },
+      });
+      await registerFingerprint(
+        input.tipo,
+        "evento_enmienda",
+        evento.evento_enmienda_id,
+        fecha,
+        evento.cuartel_id,
+      );
+      return { tipo: "enmienda", evento };
+    }
+    case "cobertura_erosion": {
+      const fecha = requireDate(input.fecha, "Fecha");
+      const evento = await prisma.eventoCoberturaErosion.create({
+        data: {
+          fecha,
+          cuartel_id: requireString(input.cuartelId, "Cuartel"),
+          campania_id: requireString(input.campaniaId, "Campaña"),
+          tipo_cobertura: requireString(input.tipo_cobertura, "Tipo de cobertura"),
+          manejo: asNullableString(input.manejo),
+          responsable_user_id: asNullableString(input.responsable_user_id),
+        },
+      });
+      await prisma.milestoneEvento.create({
+        data: {
+          milestone_id: input.milestoneId,
+          evento_tabla: "evento_cobertura_erosion",
+          evento_id: evento.evento_cobertura_erosion_id,
+        },
+      });
+      await registerFingerprint(
+        input.tipo,
+        "evento_cobertura_erosion",
+        evento.evento_cobertura_erosion_id,
+        fecha,
+        evento.cuartel_id,
+      );
+      return { tipo: "cobertura_erosion", evento };
     }
     default:
       throw new EventoError("Tipo de evento no soportado", 400);

@@ -87,7 +87,7 @@ export async function listFincasByBodega(bodegaId: string, userId: string) {
   ]);
 
   if (isAdminSistema || canManage) {
-    return prisma.finca.findMany({ where: { bodega_id: resolvedBodegaId } });
+    return prisma.finca.findMany({ where: { bodega_id: resolvedBodegaId, activo: true } });
   }
 
   return prisma.$queryRaw<Array<{
@@ -201,8 +201,9 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
           LEFT JOIN "bodega_finca_vinculo" v
             ON v."finca_id" = f."finca_id"
            AND v."bodega_id" = ${resolvedBodegaId}::uuid
-          WHERE f."bodega_id" = ${resolvedBodegaId}::uuid
-             OR v."bodega_id" IS NOT NULL
+          WHERE f."activo" = true
+            AND (f."bodega_id" = ${resolvedBodegaId}::uuid
+             OR v."bodega_id" IS NOT NULL)
           ORDER BY f."nombre_finca" ASC
         `
       : await prisma.$queryRaw<FincaDetalleRow[]>`
@@ -223,8 +224,9 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
           LEFT JOIN "bodega_finca_vinculo" v
             ON v."finca_id" = f."finca_id"
            AND v."bodega_id" = ${resolvedBodegaId}::uuid
-          WHERE f."bodega_id" = ${resolvedBodegaId}::uuid
-             OR v."bodega_id" IS NOT NULL
+          WHERE f."activo" = true
+            AND (f."bodega_id" = ${resolvedBodegaId}::uuid
+             OR v."bodega_id" IS NOT NULL)
           ORDER BY f."nombre_finca" ASC
         `;
 
@@ -258,6 +260,7 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
           "created_at",
           "updated_at"
         FROM "finca"
+        WHERE "activo" = true
         ORDER BY "nombre_finca" ASC
       `
     : await prisma.$queryRaw<FincaDetalleRow[]>`
@@ -272,18 +275,19 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
           f."created_at",
           f."updated_at"
         FROM "finca" f
-        WHERE f."bodega_id" IN (
-          SELECT ubr."bodega_id"
-          FROM "user_bodega_rol" ubr
-          WHERE ubr."user_id" = ${userId}::uuid
-            AND ubr."rol" IN ('admin_bodega', 'encargado_bodega')
-        )
-        OR EXISTS (
-          SELECT 1
-          FROM "user_finca_rol" ufr
-          WHERE ufr."user_id" = ${userId}::uuid
-            AND ufr."finca_id" = f."finca_id"
-        )
+        WHERE f."activo" = true
+          AND (f."bodega_id" IN (
+            SELECT ubr."bodega_id"
+            FROM "user_bodega_rol" ubr
+            WHERE ubr."user_id" = ${userId}::uuid
+              AND ubr."rol" IN ('admin_bodega', 'encargado_bodega')
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM "user_finca_rol" ufr
+            WHERE ufr."user_id" = ${userId}::uuid
+              AND ufr."finca_id" = f."finca_id"
+          ))
         ORDER BY f."nombre_finca" ASC
       `;
 
@@ -440,27 +444,10 @@ export async function deleteFinca(fincaId: string, userId: string) {
     throw new FincaError("No autorizado para esta finca", 403);
   }
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.finca.delete({
-        where: { finca_id: finca.finca_id },
-      });
-    });
-  } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      ((error as { code?: string }).code === "P2003" ||
-        (error as { code?: string }).code === "P2014")
-    ) {
-      throw new FincaError(
-        "No se puede eliminar la finca porque tiene registros relacionados",
-        409,
-      );
-    }
-    throw error;
-  }
+  await prisma.finca.update({
+    where: { finca_id: finca.finca_id },
+    data: { activo: false, updated_at: new Date() },
+  });
 
   return { deleted: true };
 }

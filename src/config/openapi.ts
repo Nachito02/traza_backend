@@ -768,6 +768,40 @@ const openapiSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/protocolos/{protocoloId}": {
+      get: {
+        summary: "Get protocolo por ID (incluye etapas, procesos y plantilla)",
+        parameters: [
+          {
+            name: "protocoloId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: {
+          200: { description: "OK" },
+          404: { description: "Protocolo no encontrado" },
+        },
+      },
+    },
+    "/protocolos/{protocoloId}/plantilla": {
+      get: {
+        summary: "Plantilla de campos obligatorios/opcionales por iteración del protocolo",
+        parameters: [
+          {
+            name: "protocoloId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: {
+          200: { description: "OK" },
+          404: { description: "Protocolo no encontrado" },
+        },
+      },
+    },
     "/trazabilidades": {
       get: {
         summary: "List trazabilidades",
@@ -1545,14 +1579,81 @@ const openapiSpec = {
     },
     "/ia/tareas/{tareaAsignacionId}/guardar-progreso": {
       post: {
-        summary: "Guardar progreso intermedio y validar contra el schema del evento",
+        summary: "Guardar progreso intermedio, validar y persistir entrada estructurada",
         tags: ["IA"],
         parameters: [{ name: "tareaAsignacionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: {
           required: false,
-          content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: true,
+                properties: {
+                  draft: { type: "object", additionalProperties: true, description: "Datos parciales o completos de la iteración" },
+                  notas: { type: "string", description: "Notas opcionales del progreso" },
+                  documentos: {
+                    type: "array",
+                    description: "Documentos opcionales (IPFS + bucket)",
+                    items: {
+                      type: "object",
+                      properties: {
+                        cid: { type: "string" },
+                        url: { type: "string" },
+                        nombre: { type: "string" },
+                        mimeType: { type: "string" },
+                      },
+                    },
+                  },
+                  plantilla: {
+                    type: "object",
+                    nullable: true,
+                    description: "Plantilla opcional enviada por cliente. Si no se envía, se deriva del schema del evento.",
+                  },
+                  descripcion: { type: "string", description: "Compatibilidad legacy: alias de notas" },
+                  adjuntos: { type: "array", items: { type: "object" }, description: "Compatibilidad legacy: alias de documentos" },
+                },
+              },
+            },
+          },
         },
         responses: { 200: { description: "OK" } },
+      },
+    },
+    "/ia/tareas/{tareaAsignacionId}/entradas": {
+      post: {
+        summary: "Guardar entrada estructurada (notas, plantilla, documentos)",
+        tags: ["IA"],
+        parameters: [{ name: "tareaAsignacionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  notas: { type: "string" },
+                  plantilla: { type: "object", nullable: true },
+                  documentos: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        cid: { type: "string" },
+                        url: { type: "string" },
+                        nombre: { type: "string" },
+                        mimeType: { type: "string" },
+                      },
+                    },
+                  },
+                  descripcion: { type: "string", description: "Compatibilidad legacy: alias de notas" },
+                  adjuntos: { type: "array", items: { type: "object" }, description: "Compatibilidad legacy: alias de documentos" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: "Created" } },
       },
     },
     "/ia/tareas/{tareaAsignacionId}/finalizar": {

@@ -14,6 +14,7 @@ import { tareaRoutes } from "../modules/tareas/tarea.route.js";
 import { botRoutes } from "../modules/bot/bot.route.js";
 import { iaRoutes } from "../modules/ia/ia.route.js";
 import { elaboracionRoutes } from "../modules/elaboracion/elaboracion.route.js";
+import { personaRoutes } from "../modules/personas/persona.route.js";
 
 export const routes = Router();
 
@@ -32,3 +33,4 @@ routes.use("/tareas", tareaRoutes);
 routes.use("/bot", botRoutes);
 routes.use("/ia", iaRoutes);
 routes.use("/elaboracion", elaboracionRoutes);
+routes.use("/operarios", personaRoutes);
