@@ -722,7 +722,7 @@ curl "https://api.traza.com/api/ia/trabajos?estado=pendiente&bodegaId=a1b2c3d4-.
 
 ### `GET /api/ia/trabajos/:encargoAsignacionId`
 
-Detalle completo de un trabajo específico, incluyendo milestone y trazabilidad asociada.
+Detalle completo de específico, incluyendo milestone y trazabilidad asociada.
 
 **curl**
 ```bash

@@ -2,11 +2,14 @@ import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import {
   addTareaAsignacionesHandler,
+  addTareaEntradaHandler,
   assignTareaCompatHandler,
   canManageTareasHandler,
   cancelTareaHandler,
   createTareaHandler,
+  finalizarTareaAsignacionHandler,
   listBodegaPendientesHandler,
+  listTareaEntradasHandler,
   listTareasHandler,
   listMyTareasHandler,
   listMyPendientesHandler,
@@ -27,6 +30,21 @@ tareaRoutes.patch(
   "/me/asignaciones/:tareaAsignacionId/estado",
   authMiddleware,
   updateMyAsignacionEstadoHandler,
+);
+tareaRoutes.get(
+  "/me/asignaciones/:tareaAsignacionId/entradas",
+  authMiddleware,
+  listTareaEntradasHandler,
+);
+tareaRoutes.post(
+  "/me/asignaciones/:tareaAsignacionId/entradas",
+  authMiddleware,
+  addTareaEntradaHandler,
+);
+tareaRoutes.post(
+  "/me/asignaciones/:tareaAsignacionId/finalizar",
+  authMiddleware,
+  finalizarTareaAsignacionHandler,
 );
 
 tareaRoutes.get(

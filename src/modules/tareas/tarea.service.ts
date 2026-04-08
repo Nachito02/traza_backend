@@ -400,6 +400,98 @@ export async function updateMyTareaAsignacionEstado(input: UpdateTareaAsignacion
   return updated;
 }
 
+export async function addTareaEntrada(input: {
+  tareaAsignacionId: string;
+  userId: string;
+  descripcion?: string;
+  adjuntos?: unknown;
+}) {
+  const asignacion = await prisma.tareaAsignacion.findUnique({
+    where: { tarea_asignacion_id: input.tareaAsignacionId },
+    select: { tarea_id: true, user_id: true },
+  });
+  if (!asignacion) {
+    throw new TareaError("Asignación no encontrada", 404);
+  }
+  const canManage = await canUserManageTareas(input.userId);
+  if (asignacion.user_id !== input.userId && !canManage) {
+    throw new TareaError("No autorizado", 403);
+  }
+  const entry = await prisma.tareaEntrada.create({
+    data: {
+      tarea_id: asignacion.tarea_id,
+      created_by: input.userId,
+      descripcion: input.descripcion ?? null,
+      adjuntos: input.adjuntos ?? [],
+    },
+    select: {
+      entrada_id: true,
+      fecha: true,
+      descripcion: true,
+      adjuntos: true,
+      app_user: { select: { user_id: true, nombre: true } },
+    },
+  });
+  return {
+    entradaId: entry.entrada_id,
+    fecha: entry.fecha,
+    descripcion: entry.descripcion,
+    adjuntos: entry.adjuntos,
+    creadoPor: entry.app_user,
+  };
+}
+
+export async function listTareaEntradas(tareaAsignacionId: string, userId: string) {
+  const asignacion = await prisma.tareaAsignacion.findUnique({
+    where: { tarea_asignacion_id: tareaAsignacionId },
+    select: { tarea_id: true, user_id: true },
+  });
+  if (!asignacion) throw new TareaError("Asignación no encontrada", 404);
+  const canManage = await canUserManageTareas(userId);
+  if (asignacion.user_id !== userId && !canManage) {
+    throw new TareaError("No autorizado", 403);
+  }
+  const entries = await prisma.tareaEntrada.findMany({
+    where: { tarea_id: asignacion.tarea_id },
+    orderBy: { fecha: "asc" },
+    select: {
+      entrada_id: true,
+      fecha: true,
+      descripcion: true,
+      adjuntos: true,
+      app_user: { select: { user_id: true, nombre: true } },
+    },
+  });
+  return entries.map((e) => ({
+    entradaId: e.entrada_id,
+    fecha: e.fecha,
+    descripcion: e.descripcion,
+    adjuntos: e.adjuntos,
+    creadoPor: e.app_user,
+  }));
+}
+
+export async function finalizarTareaAsignacion(tareaAsignacionId: string, userId: string) {
+  const asignacion = await prisma.tareaAsignacion.findUnique({
+    where: { tarea_asignacion_id: tareaAsignacionId },
+    select: { tarea_id: true, user_id: true },
+  });
+  if (!asignacion) throw new TareaError("Asignación no encontrada", 404);
+  const canManage = await canUserManageTareas(userId);
+  if (asignacion.user_id !== userId && !canManage) {
+    throw new TareaError("No autorizado", 403);
+  }
+  const updated = await prisma.tareaAsignacion.update({
+    where: { tarea_asignacion_id: tareaAsignacionId },
+    data: { estado: "completado", completed_at: new Date(), updated_at: new Date() },
+  });
+  await prisma.tarea.update({
+    where: { tarea_id: asignacion.tarea_id },
+    data: { estado: "completado", updated_at: new Date() },
+  });
+  return updated;
+}
+
 export async function canUserManageTareas(userId: string) {
   if (await isSystemAdmin(userId)) return true;
   const [bodegaRole, fincaRole] = await Promise.all([

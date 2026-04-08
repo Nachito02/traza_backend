@@ -1,9 +1,12 @@
 import type { Request, Response } from "express";
 import {
   addTareaAsignaciones,
+  addTareaEntrada,
   canUserManageTareas,
   cancelTarea,
   createTarea,
+  finalizarTareaAsignacion,
+  listTareaEntradas,
   TareaError,
   listTareas,
   listMyTareaAsignaciones,
@@ -161,6 +164,52 @@ export async function updateMyAsignacionEstadoHandler(req: Request, res: Respons
       observaciones,
     });
     return res.json(row);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function addTareaEntradaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    const body = req.body ?? {};
+    const descripcion =
+      typeof body.descripcion === "string" ? body.descripcion :
+      typeof body.notas === "string" ? body.notas :
+      body.draft ? JSON.stringify(body.draft) : undefined;
+    const adjuntos = body.adjuntos ?? body.documentos ?? [];
+    const entry = await addTareaEntrada({
+      tareaAsignacionId,
+      userId: req.user.userId,
+      descripcion,
+      adjuntos,
+    });
+    return res.status(201).json(entry);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function listTareaEntradasHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    const entries = await listTareaEntradas(tareaAsignacionId, req.user.userId);
+    return res.json(entries);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function finalizarTareaAsignacionHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const tareaAsignacionId = String(req.params.tareaAsignacionId ?? "");
+    const result = await finalizarTareaAsignacion(tareaAsignacionId, req.user.userId);
+    return res.json(result);
   } catch (error) {
     return handleError(res, error);
   }
