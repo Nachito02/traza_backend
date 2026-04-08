@@ -328,7 +328,12 @@ export async function updateUserFincaRoleHandler(req: Request, res: Response) {
 
 export async function refreshHandler(req: Request, res: Response) {
   try {
-    const refreshToken = req.cookies?.refresh_token;
+    const refreshToken =
+      req.cookies?.refresh_token ||
+      (typeof req.header("x-refresh-token") === "string"
+        ? req.header("x-refresh-token")
+        : undefined) ||
+      (typeof req.body?.refreshToken === "string" ? req.body.refreshToken : undefined);
     const result = await refreshAccessToken(refreshToken);
     const options = cookieOptions(req);
     res.cookie('access_token', result.token, {
