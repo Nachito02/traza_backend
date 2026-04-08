@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prismaClient.js';
 import {
+  canAccessBodega,
   canManageBodega,
   hasAnyFincaRole,
   isSystemAdmin,
@@ -25,13 +26,21 @@ async function ensureUserTrazabilidad(userId: string, trazabilidadId: string) {
     throw new Error('Trazabilidad no encontrada');
   }
 
-  const [isAdminSistema, canManageBodegaRole, hasFincaRole] = await Promise.all([
-    isSystemAdmin(userId),
-    canManageBodega(userId, trazabilidad.bodega_id),
-    trazabilidad.finca_id ? hasAnyFincaRole(userId, trazabilidad.finca_id) : Promise.resolve(false),
-  ]);
+  const isAdminSistema = await isSystemAdmin(userId);
+  if (isAdminSistema) {
+    return;
+  }
 
-  if (!isAdminSistema && !canManageBodegaRole && !hasFincaRole) {
+  const hasBodegaAccess = await canAccessBodega(userId, trazabilidad.bodega_id);
+  if (hasBodegaAccess) {
+    return;
+  }
+
+  const hasFincaRole = trazabilidad.finca_id
+    ? await hasAnyFincaRole(userId, trazabilidad.finca_id)
+    : false;
+
+  if (!hasFincaRole) {
     throw new Error('No autorizado');
   }
 }

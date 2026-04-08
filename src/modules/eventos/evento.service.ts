@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "../../config/prismaClient.js";
 import type { Prisma } from "../../generated/prisma/index.js";
 import {
+  canAccessBodega,
   canManageBodega,
   hasAnyFincaRole,
   isSystemAdmin,
@@ -179,15 +180,17 @@ async function ensureUserMilestone(userId: string, milestoneId: string): Promise
     throw new EventoError("Milestone no encontrado", 404);
   }
 
-  const [isAdminSistema, canManageBodegaRole, hasFincaRole] = await Promise.all([
-    isSystemAdmin(userId),
-    canManageBodega(userId, milestone.trazabilidad.bodega_id),
-    milestone.trazabilidad.finca_id
-      ? hasAnyFincaRole(userId, milestone.trazabilidad.finca_id)
-      : Promise.resolve(false),
-  ]);
-  if (!isAdminSistema && !canManageBodegaRole && !hasFincaRole) {
-    throw new EventoError("No autorizado", 403);
+  const isAdminSistema = await isSystemAdmin(userId);
+  if (!isAdminSistema) {
+    const hasBodegaAccess = await canAccessBodega(userId, milestone.trazabilidad.bodega_id);
+    if (!hasBodegaAccess) {
+      const hasFincaRole = milestone.trazabilidad.finca_id
+        ? await hasAnyFincaRole(userId, milestone.trazabilidad.finca_id)
+        : false;
+      if (!hasFincaRole) {
+        throw new EventoError("No autorizado", 403);
+      }
+    }
   }
 
   if (!milestone.trazabilidad.finca_id || !milestone.trazabilidad.cuartel_id) {

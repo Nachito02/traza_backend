@@ -1,0 +1,255 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica-Light;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 FLUJO DE USUARIO Y BOTS EN TRAZA BACKEND\
+\
+Documento de explicacion funcional y tecnica del backend orientado a tareas, delegaciones y automatizacion mediante bots/IA.\
+\
+1. OBJETIVO DEL SISTEMA\
+\
+Traza Backend administra operaciones vinculadas a bodegas, usuarios, tareas, eventos, trazabilidad y cumplimiento.\
+Dentro de ese ecosistema, la API de IA permite que un bot o agente externo opere sobre el sistema de forma controlada,\
+especialmente en contextos conversacionales como WhatsApp.\
+\
+Idea central:\
+El bot no reemplaza al usuario humano. El bot actua en nombre del usuario humano unicamente cuando ese usuario le otorgo una delegacion valida.\
+\
+2. ACTORES PRINCIPALES\
+\
+- Admin del sistema:\
+  Crea bots, administra usuarios y mantiene la plataforma.\
+\
+- Usuario humano:\
+  Responsable real del negocio. Pertenece a una o mas bodegas, recibe tareas y puede delegar permisos al bot.\
+\
+- Bot / Agente IA:\
+  Interfaz automatizada que conversa, consulta datos, crea tareas, guia cargas y cierra procesos permitidos.\
+\
+- Backend:\
+  Valida autenticacion, roles, delegaciones, visibilidad y persiste toda la operacion.\
+\
+3. POR QUE EXISTEN LOS BOTS\
+\
+Los bots existen para habilitar una capa de automatizacion sobre el backend. En vez de obligar a que toda interaccion\
+ocurra desde una interfaz tradicional, el sistema permite que una conversacion por WhatsApp o un agente de IA consuma\
+endpoints especializados y ejecute acciones reales dentro de Traza.\
+\
+En la practica, el bot sirve para:\
+- Identificar usuarios por WhatsApp.\
+- Solicitar o confirmar delegaciones.\
+- Listar y crear tareas.\
+- Contactar operarios.\
+- Guiar cargas parciales de informacion.\
+- Validar datos contra un esquema esperado.\
+- Finalizar tareas y dejar trazabilidad de cada accion.\
+\
+4. QUE HACE EL USUARIO HUMANO\
+\
+El usuario humano sigue siendo la autoridad principal del flujo.\
+\
+- Existe como usuario del sistema.\
+- Puede pertenecer a una o varias bodegas.\
+- Puede tener roles globales o roles dentro de una bodega.\
+- Puede recibir tareas o formar parte de procesos productivos.\
+- Puede autorizar a un bot para que actue en su nombre.\
+\
+Conclusion operativa:\
+El humano conserva la responsabilidad; el bot solamente automatiza la ejecucion.\
+\
+5. QUE HACE EL BOT\
+\
+El bot es una cuenta especial con rol bot_agent. Se autentica como cualquier usuario, pero su superficie de trabajo\
+esta orientada a integraciones externas. A traves de la API /api/ia/*, el bot puede operar dentro de un marco\
+de permisos acotado.\
+\
+El bot puede:\
+- Consultar su propia identidad y sus delegaciones activas.\
+- Buscar usuarios por WhatsApp.\
+- Consultar catalogos de bodegas, fincas, cuarteles, campanias, protocolos e insumos.\
+- Crear tareas cuando dispone del permiso adecuado.\
+- Contactar a un usuario respecto de una asignacion.\
+- Guardar avances parciales en una tarea.\
+- Cerrar una tarea cuando los datos estan completos.\
+\
+6. CONCEPTO DE DELEGACION\
+\
+La delegacion es el mecanismo que conecta al bot con la autoridad de un usuario humano. Sin delegacion, el bot no deberia\
+ejecutar acciones sensibles en nombre de ese usuario.\
+\
+Una delegacion define:\
+- Que bot recibe el permiso.\
+- Que usuario humano otorga ese permiso.\
+- Si la delegacion aplica a una bodega especifica o es global.\
+- Que scopes o acciones quedan habilitados.\
+- Si la delegacion vence o permanece activa hasta ser revocada.\
+\
+Scopes frecuentes:\
+- tareas.crear\
+- tareas.ver\
+- tareas.contactar\
+- tareas.cargar_datos\
+- tareas.resolver\
+- cuarteles.crear\
+- vasijas.crear\
+\
+7. FLUJO GENERAL DEL SISTEMA\
+\
+[Admin del sistema]\
+    |\
+    | crea\
+    v\
+[Bot / Agente IA]\
+    |\
+    | hace login\
+    v\
+[API /api/ia/*]\
+    |\
+    | identifica a un usuario humano\
+    v\
+[Usuario humano]\
+    |\
+    | delega permisos\
+    v\
+[BotDelegation]\
+    |\
+    | habilita acciones\
+    v\
+[Bot]\
+    |\
+    | consulta catalogos / tareas / contexto\
+    | crea tareas / guarda progreso / finaliza\
+    v\
+[Base de datos + logs de auditoria]\
+\
+8. FLUJO DETALLADO PASO A PASO\
+\
+8.1. Creacion del bot\
+\
+1. Un administrador del sistema crea un usuario bot.\
+2. Ese usuario recibe el rol bot_agent.\
+3. Desde ese momento el bot puede autenticarse programaticamente.\
+\
+8.2. Login del bot\
+\
+1. El bot envia email y contrasena.\
+2. El backend devuelve access_token y refresh_token.\
+3. Ese token se usa para consumir los endpoints de IA.\
+\
+8.3. Identificacion del usuario humano\
+\
+1. El bot recibe un mensaje o pedido desde WhatsApp.\
+2. Busca al usuario humano por numero telefonico.\
+3. El backend devuelve sus datos, bodegas y delegaciones activas hacia ese bot.\
+\
+8.4. Delegacion manual o conversacional\
+\
+Hay dos formas principales de obtener permiso:\
+\
+- Manual:\
+  El usuario autenticado crea la delegacion directamente.\
+\
+- Conversacional:\
+  El bot solicita un codigo, el humano lo confirma y se crea la delegacion.\
+\
+8.5. Operacion del bot con permisos validos\
+\
+1. El bot consulta catalogos y contexto operativo.\
+2. Si necesita iniciar trabajo, crea una tarea o ubica una existente.\
+3. Si la tarea requiere captura progresiva, el bot guarda borradores parciales.\
+4. Cuando la informacion queda completa y valida, el bot finaliza la tarea.\
+\
+9. FLUJO DE UNA TAREA CON IA\
+\
+[Usuario / Encargado por WhatsApp]\
+          |\
+          | "Necesito registrar un riego"\
+          v\
+[Bot / IA]\
+          |\
+          | busca usuario + verifica delegacion\
+          v\
+[POST /api/ia/tareas/iniciar]\
+          |\
+          | crea tarea o solicita delegacion\
+          v\
+[Tarea + TareaAsignacion]\
+          |\
+          | consulta contexto\
+          v\
+[GET /api/ia/tareas/:id/contexto]\
+          |\
+          | pide datos faltantes\
+          v\
+[POST /api/ia/tareas/:id/guardar-progreso]\
+          |\
+          | valida contra un schema\
+          v\
+[validation.canClose = true]\
+          |\
+          | finaliza\
+          v\
+[POST /api/ia/tareas/:id/finalizar]\
+\
+9.1. Inicio de creacion de tarea\
+\
+El endpoint de inicio de tarea revisa si el bot ya posee una delegacion activa para el usuario identificado por WhatsApp.\
+Si existe una delegacion con scope tareas.crear, la tarea se crea de inmediato. Si no existe, el flujo devuelve\
+un estado de "delegacion requerida" y genera un codigo de confirmacion.\
+\
+9.2. Consulta de contexto\
+\
+Una vez que la tarea existe, el bot puede obtener un contexto ampliado: datos de la tarea, historial previo del bot,\
+tipo de evento inferido y esquema de entrada esperado. Esto permite que el agente converse con el usuario de forma guiada.\
+\
+9.3. Guardado de progreso\
+\
+La carga no tiene que ocurrir de una sola vez. El bot puede enviar borradores parciales con los campos disponibles en cada momento.\
+El backend valida esos borradores contra un esquema y devuelve:\
+\
+- Campos requeridos faltantes.\
+- Campos invalidos.\
+- Progreso total sobre los campos obligatorios.\
+- Una sugerencia de siguiente accion.\
+\
+9.4. Finalizacion\
+\
+Cuando los datos ya estan completos y el bot dispone del permiso tareas.resolver, puede cerrar la asignacion.\
+Ese cierre deja registros de auditoria y estado final de la tarea.\
+\
+10. QUE SIGNIFICA QUE TODO QUEDE AUDITADO\
+\
+Cada operacion importante del bot genera registros internos. Esto permite reconstruir:\
+\
+- Que bot actuo.\
+- En nombre de que usuario humano actuo.\
+- Con que delegacion lo hizo.\
+- Sobre que tarea o asignacion opero.\
+- Que payload de entrada recibio y que resultado produjo.\
+\
+Valor de negocio:\
+La automatizacion no sacrifica control. El sistema conserva trazabilidad operativa y responsabilidad humana.\
+\
+11. RESUMEN CONCEPTUAL\
+\
+- Humano:\
+  Autoridad y responsable del negocio.\
+\
+- Bot:\
+  Operador automatizado para integraciones y flujos conversacionales.\
+\
+- Delegacion:\
+  Permiso explicito que habilita al bot a actuar en nombre de un humano.\
+\
+- Tarea:\
+  Unidad concreta de trabajo que puede ser creada, seguida y cerrada.\
+\
+- IA / WhatsApp:\
+  Canal de interaccion, no fuente de autoridad.\
+\
+12. FRASE FINAL PARA COMUNICAR EL MODELO\
+\
+El usuario humano autoriza, el bot ejecuta, la API controla y la tarea registra el trabajo.\
+}

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flujo de Usuario y Bots en Traza Backend</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      margin: 44px;
+      color: #1f2937;
+      line-height: 1.55;
+      font-size: 12pt;
+    }
+    h1, h2, h3 {
+      color: #0f172a;
+    }
+    h1 {
+      font-size: 24pt;
+      margin-bottom: 8px;
+    }
+    h2 {
+      font-size: 17pt;
+      margin-top: 28px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 4px;
+    }
+    h3 {
+      font-size: 13pt;
+      margin-top: 18px;
+      margin-bottom: 6px;
+    }
+    p {
+      margin: 8px 0;
+    }
+    ul, ol {
+      margin-top: 6px;
+      margin-bottom: 10px;
+    }
+    li {
+      margin: 4px 0;
+    }
+    .muted {
+      color: #475569;
+    }
+    .box {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+    }
+    .flow {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, monospace;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 10.5pt;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 12px 0 18px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #e2e8f0;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, monospace;
+      background: #f1f5f9;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Flujo de Usuario y Bots en Traza Backend</h1>
+  <p class="muted">Documento de explicación funcional y técnica del backend orientado a tareas, delegaciones y automatización mediante bots/IA.</p>
+
+  <h2>1. Objetivo del sistema</h2>
+  <p>
+    Traza Backend administra operaciones vinculadas a bodegas, usuarios, tareas, eventos, trazabilidad y cumplimiento.
+    Dentro de ese ecosistema, la API de IA permite que un bot o agente externo opere sobre el sistema de forma controlada,
+    especialmente en contextos conversacionales como WhatsApp.
+  </p>
+
+  <div class="box">
+    <strong>Idea central:</strong> el bot no reemplaza al usuario humano. El bot actúa en nombre del usuario humano
+    únicamente cuando ese usuario le otorgó una delegación válida.
+  </div>
+
+  <h2>2. Actores principales</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Actor</th>
+        <th>Rol dentro del sistema</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Admin del sistema</td>
+        <td>Crea bots, administra usuarios y mantiene la plataforma.</td>
+      </tr>
+      <tr>
+        <td>Usuario humano</td>
+        <td>Responsable real del negocio. Pertenece a una o más bodegas, recibe tareas y puede delegar permisos al bot.</td>
+      </tr>
+      <tr>
+        <td>Bot / Agente IA</td>
+        <td>Interfaz automatizada que conversa, consulta datos, crea tareas, guía cargas y cierra procesos permitidos.</td>
+      </tr>
+      <tr>
+        <td>Backend</td>
+        <td>Valida autenticación, roles, delegaciones, visibilidad y persiste toda la operación.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Por qué existen los bots</h2>
+  <p>
+    Los bots existen para habilitar una capa de automatización sobre el backend. En vez de obligar a que toda interacción
+    ocurra desde una interfaz tradicional, el sistema permite que una conversación por WhatsApp o un agente de IA consuma
+    endpoints especializados y ejecute acciones reales dentro de Traza.
+  </p>
+  <p>En la práctica, el bot sirve para:</p>
+  <ul>
+    <li>Identificar usuarios por WhatsApp.</li>
+    <li>Solicitar o confirmar delegaciones.</li>
+    <li>Listar y crear tareas.</li>
+    <li>Contactar operarios.</li>
+    <li>Guiar cargas parciales de información.</li>
+    <li>Validar datos contra un esquema esperado.</li>
+    <li>Finalizar tareas y dejar trazabilidad de cada acción.</li>
+  </ul>
+
+  <h2>4. Qué hace el usuario humano</h2>
+  <p>El usuario humano sigue siendo la autoridad principal del flujo.</p>
+  <ul>
+    <li>Existe como usuario del sistema.</li>
+    <li>Puede pertenecer a una o varias bodegas.</li>
+    <li>Puede tener roles globales o roles dentro de una bodega.</li>
+    <li>Puede recibir tareas o formar parte de procesos productivos.</li>
+    <li>Puede autorizar a un bot para que actúe en su nombre.</li>
+  </ul>
+
+  <div class="box">
+    <strong>Conclusión operativa:</strong> el humano conserva la responsabilidad; el bot solamente automatiza la ejecución.
+  </div>
+
+  <h2>5. Qué hace el bot</h2>
+  <p>
+    El bot es una cuenta especial con rol <code>bot_agent</code>. Se autentica como cualquier usuario, pero su superficie de
+    trabajo está orientada a integraciones externas. A través de la API <code>/api/ia/*</code>, el bot puede operar dentro de un
+    marco de permisos acotado.
+  </p>
+  <p>El bot puede:</p>
+  <ul>
+    <li>Consultar su propia identidad y sus delegaciones activas.</li>
+    <li>Buscar usuarios por WhatsApp.</li>
+    <li>Consultar catálogos de bodegas, fincas, cuarteles, campañas, protocolos e insumos.</li>
+    <li>Crear tareas cuando dispone del permiso adecuado.</li>
+    <li>Contactar a un usuario respecto de una asignación.</li>
+    <li>Guardar avances parciales en una tarea.</li>
+    <li>Cerrar una tarea cuando los datos están completos.</li>
+  </ul>
+
+  <h2>6. Concepto de delegación</h2>
+  <p>
+    La delegación es el mecanismo que conecta al bot con la autoridad de un usuario humano. Sin delegación, el bot no debería
+    ejecutar acciones sensibles en nombre de ese usuario.
+  </p>
+  <p>Una delegación define:</p>
+  <ul>
+    <li>Qué bot recibe el permiso.</li>
+    <li>Qué usuario humano otorga ese permiso.</li>
+    <li>Si la delegación aplica a una bodega específica o es global.</li>
+    <li>Qué scopes o acciones quedan habilitados.</li>
+    <li>Si la delegación vence o permanece activa hasta ser revocada.</li>
+  </ul>
+
+  <h3>Scopes frecuentes</h3>
+  <ul>
+    <li><code>tareas.crear</code></li>
+    <li><code>tareas.ver</code></li>
+    <li><code>tareas.contactar</code></li>
+    <li><code>tareas.cargar_datos</code></li>
+    <li><code>tareas.resolver</code></li>
+    <li><code>cuarteles.crear</code></li>
+    <li><code>vasijas.crear</code></li>
+  </ul>
+
+  <h2>7. Flujo general del sistema</h2>
+  <div class="flow">[Admin del sistema]
+    |
+    | crea
+    v
+[Bot / Agente IA]
+    |
+    | hace login
+    v
+[API /api/ia/*]
+    |
+    | identifica a un usuario humano
+    v
+[Usuario humano]
+    |
+    | delega permisos
+    v
+[BotDelegation]
+    |
+    | habilita acciones
+    v
+[Bot]
+    |
+    | consulta catálogos / tareas / contexto
+    | crea tareas / guarda progreso / finaliza
+    v
+[Base de datos + logs de auditoría]</div>
+
+  <h2>8. Flujo detallado paso a paso</h2>
+
+  <h3>8.1. Creación del bot</h3>
+  <ol>
+    <li>Un administrador del sistema crea un usuario bot.</li>
+    <li>Ese usuario recibe el rol <code>bot_agent</code>.</li>
+    <li>Desde ese momento el bot puede autenticarse programáticamente.</li>
+  </ol>
+
+  <h3>8.2. Login del bot</h3>
+  <ol>
+    <li>El bot envía email y contraseña.</li>
+    <li>El backend devuelve <code>access_token</code> y <code>refresh_token</code>.</li>
+    <li>Ese token se usa para consumir los endpoints de IA.</li>
+  </ol>
+
+  <h3>8.3. Identificación del usuario humano</h3>
+  <ol>
+    <li>El bot recibe un mensaje o pedido desde WhatsApp.</li>
+    <li>Busca al usuario humano por número telefónico.</li>
+    <li>El backend devuelve sus datos, bodegas y delegaciones activas hacia ese bot.</li>
+  </ol>
+
+  <h3>8.4. Delegación manual o conversacional</h3>
+  <p>Hay dos formas principales de obtener permiso:</p>
+  <ul>
+    <li><strong>Manual:</strong> el usuario autenticado crea la delegación directamente.</li>
+    <li><strong>Conversacional:</strong> el bot solicita un código, el humano lo confirma y se crea la delegación.</li>
+  </ul>
+
+  <h3>8.5. Operación del bot con permisos válidos</h3>
+  <ol>
+    <li>El bot consulta catálogos y contexto operativo.</li>
+    <li>Si necesita iniciar trabajo, crea una tarea o ubica una existente.</li>
+    <li>Si la tarea requiere captura progresiva, el bot guarda borradores parciales.</li>
+    <li>Cuando la información queda completa y válida, el bot finaliza la tarea.</li>
+  </ol>
+
+  <h2>9. Flujo de una tarea con IA</h2>
+  <div class="flow">[Usuario / Encargado por WhatsApp]
+          |
+          | "Necesito registrar un riego"
+          v
+[Bot / IA]
+          |
+          | busca usuario + verifica delegación
+          v
+[POST /api/ia/tareas/iniciar]
+          |
+          | crea tarea o solicita delegación
+          v
+[Tarea + TareaAsignacion]
+          |
+          | consulta contexto
+          v
+[GET /api/ia/tareas/:id/contexto]
+          |
+          | pide datos faltantes
+          v
+[POST /api/ia/tareas/:id/guardar-progreso]
+          |
+          | valida contra un schema
+          v
+[validation.canClose = true]
+          |
+          | finaliza
+          v
+[POST /api/ia/tareas/:id/finalizar]</div>
+
+  <h3>9.1. Inicio de creación de tarea</h3>
+  <p>
+    El endpoint de inicio de tarea revisa si el bot ya posee una delegación activa para el usuario identificado por WhatsApp.
+    Si existe una delegación con scope <code>tareas.crear</code>, la tarea se crea de inmediato. Si no existe, el flujo devuelve
+    un estado de “delegación requerida” y genera un código de confirmación.
+  </p>
+
+  <h3>9.2. Consulta de contexto</h3>
+  <p>
+    Una vez que la tarea existe, el bot puede obtener un contexto ampliado: datos de la tarea, historial previo del bot,
+    tipo de evento inferido y esquema de entrada esperado. Esto permite que el agente converse con el usuario de forma guiada.
+  </p>
+
+  <h3>9.3. Guardado de progreso</h3>
+  <p>
+    La carga no tiene que ocurrir de una sola vez. El bot puede enviar borradores parciales con los campos disponibles en cada momento.
+    El backend valida esos borradores contra un esquema y devuelve:
+  </p>
+  <ul>
+    <li>Campos requeridos faltantes.</li>
+    <li>Campos inválidos.</li>
+    <li>Progreso total sobre los campos obligatorios.</li>
+    <li>Una sugerencia de siguiente acción.</li>
+  </ul>
+
+  <h3>9.4. Finalización</h3>
+  <p>
+    Cuando los datos ya están completos y el bot dispone del permiso <code>tareas.resolver</code>, puede cerrar la asignación.
+    Ese cierre deja registros de auditoría y estado final de la tarea.
+  </p>
+
+  <h2>10. Qué significa que todo quede auditado</h2>
+  <p>
+    Cada operación importante del bot genera registros internos. Esto permite reconstruir:
+  </p>
+  <ul>
+    <li>Qué bot actuó.</li>
+    <li>En nombre de qué usuario humano actuó.</li>
+    <li>Con qué delegación lo hizo.</li>
+    <li>Sobre qué tarea o asignación operó.</li>
+    <li>Qué payload de entrada recibió y qué resultado produjo.</li>
+  </ul>
+
+  <div class="box">
+    <strong>Valor de negocio:</strong> la automatización no sacrifica control. El sistema conserva trazabilidad operativa y responsabilidad humana.
+  </div>
+
+  <h2>11. Resumen conceptual</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Concepto</th>
+        <th>Significado</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Humano</td>
+        <td>Autoridad y responsable del negocio.</td>
+      </tr>
+      <tr>
+        <td>Bot</td>
+        <td>Operador automatizado para integraciones y flujos conversacionales.</td>
+      </tr>
+      <tr>
+        <td>Delegación</td>
+        <td>Permiso explícito que habilita al bot a actuar en nombre de un humano.</td>
+      </tr>
+      <tr>
+        <td>Tarea</td>
+        <td>Unidad concreta de trabajo que puede ser creada, seguida y cerrada.</td>
+      </tr>
+      <tr>
+        <td>IA / WhatsApp</td>
+        <td>Canal de interacción, no fuente de autoridad.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>12. Frase final para comunicar el modelo</h2>
+  <div class="box">
+    El usuario humano autoriza, el bot ejecuta, la API controla y la tarea registra el trabajo.
+  </div>
+</body>
+</html>
