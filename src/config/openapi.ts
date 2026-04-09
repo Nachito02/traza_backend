@@ -1378,6 +1378,136 @@ const openapiSpec = {
     },
 
     // ── IA / Bot ─────────────────────────────────────────────────────────────
+    "/ia/auth/register-super": {
+      post: {
+        summary: "Crear super agente — sin email, actúa en nombre de cualquiera (requiere admin_sistema)",
+        description: "Crea un usuario con rol `super_agent`. No necesita email ni delegación. Puede actuar en nombre de cualquier usuario pasando `onBehalfUserId`. Todo queda logueado en `BotActionLog`.",
+        tags: ["IA - Super Agent"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre", "password"],
+                properties: {
+                  nombre: { type: "string", description: "Username único del super agente" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Super agente creado",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", format: "uuid" },
+                    nombre: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/ia/auth/login-super": {
+      post: {
+        summary: "Login del super agente — nombre + password, sin email",
+        tags: ["IA - Super Agent"],
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre", "password"],
+                properties: {
+                  nombre: { type: "string" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    access_token: { type: "string" },
+                    refresh_token: { type: "string" },
+                    user: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        nombre: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/bot/auth/register-super": {
+      post: {
+        summary: "Crear super agente (bot route — requiere admin_sistema)",
+        tags: ["Bot - Super Agent"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre", "password"],
+                properties: {
+                  nombre: { type: "string" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: "Super agente creado" } },
+      },
+    },
+    "/bot/auth/login-super": {
+      post: {
+        summary: "Login del super agente (bot route)",
+        tags: ["Bot - Super Agent"],
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre", "password"],
+                properties: {
+                  nombre: { type: "string" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK — access_token + refresh_token" } },
+      },
+    },
     "/ia/auth/register": {
       post: {
         summary: "Crear usuario bot (requiere admin_sistema)",

@@ -18,14 +18,18 @@ import {
   botRegisterHandler,
   botSolicitarDelegacionHandler,
   createDelegationHandler,
+  createSuperAgentHandler,
   myDelegationsHandler,
   revokeDelegationHandler,
+  superAgentLoginHandler,
 } from "./bot.controller.js";
 
 export const botRoutes = Router();
 
 botRoutes.post("/auth/register", authMiddleware, requireRoles(["admin_sistema"]), botRegisterHandler);
+botRoutes.post("/auth/register-super", authMiddleware, requireRoles(["admin_sistema"]), createSuperAgentHandler);
 botRoutes.post("/auth/login", botLoginHandler);
+botRoutes.post("/auth/login-super", superAgentLoginHandler);
 
 botRoutes.get(
   "/usuarios/whatsapp/:whatsapp",

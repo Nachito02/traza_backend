@@ -1289,6 +1289,7 @@ curl -X POST https://api.traza.com/api/ia/consultas \
 | `admin_bodega` | Administración de una bodega |
 | `encargado_bodega` | Crea y asigna encargos |
 | `bot_agent` | Cuenta técnica del bot, opera por delegación |
+| `super_agent` | Bot global sin delegación, actúa en nombre de cualquiera |
 
 ## WhatsApp en usuarios
 
@@ -1296,3 +1297,56 @@ Campos en `app_user`:
 - `whatsapp_e164` — número en formato internacional (ej: `+5491112345678`)
 - `whatsapp_verified_at` — fecha de verificación del número
 - `whatsapp_opt_in_at` — fecha en que el usuario aceptó recibir mensajes
+
+---
+
+## Super Agent
+
+El **super agent** es un tipo especial de bot con rol `super_agent` que puede actuar en nombre de cualquier usuario **sin necesitar delegación explícita**. Está pensado para integraciones de sistema (n8n, Make, etc.) donde no es viable hacer el flujo de delegación por WhatsApp.
+
+Todo lo que hace queda logueado en `BotActionLog` con `on_behalf_user_id` = el usuario en cuyo nombre actúa.
+
+### Crear un super agent (requiere admin_sistema)
+
+```bash
+curl -X POST https://api.traza.com/api/ia/auth/register-super \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "mi-bot", "password": "contraseña-segura"}'
+# → { "id": "uuid", "nombre": "mi-bot" }
+```
+
+### Login del super agent
+
+```bash
+curl -X POST https://api.traza.com/api/ia/auth/login-super \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "mi-bot", "password": "contraseña-segura"}'
+# → { "access_token": "...", "refresh_token": "...", "user": { "id": "...", "nombre": "mi-bot" } }
+```
+
+### Usar el super agent
+
+Una vez logueado, el super agent usa los mismos endpoints de `/api/ia` que un bot normal. La diferencia es que **no necesita delegación** — puede operar sobre cualquier bodega y en nombre de cualquier usuario.
+
+Por ejemplo, crear una tarea en nombre de un encargado:
+```bash
+curl -X POST https://api.traza.com/api/ia/tareas \
+  -H "Authorization: Bearer <super_agent_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "onBehalfUserId": "uuid-del-encargado",
+    "bodegaId": "uuid-de-bodega",
+    "procesoId": "uuid-del-proceso",
+    "assigneeUserIds": ["uuid-operario"]
+  }'
+```
+
+### Diferencias con bot_agent
+
+| Característica | `bot_agent` | `super_agent` |
+|---|---|---|
+| Requiere delegación | Sí | No |
+| Login con email | Sí | No (solo nombre + password) |
+| Loguea acciones | Sí | Sí |
+| Alcance | Solo bodegas delegadas | Todas las bodegas |

@@ -5,11 +5,13 @@ import {
   botLoginHandler,
   botRegisterHandler,
   createDelegationHandler,
+  createSuperAgentHandler,
   myDelegationsHandler,
   revokeDelegationHandler,
   botSolicitarDelegacionHandler,
   botConfirmarDelegacionHandler,
   botIniciarCreacionTareaHandler,
+  superAgentLoginHandler,
 } from "../bot/bot.controller.js";
 import {
   contactIaJobHandler,
@@ -46,7 +48,9 @@ import {
 export const iaRoutes = Router();
 
 iaRoutes.post("/auth/register", authMiddleware, requireRoles(["admin_sistema"]), botRegisterHandler);
+iaRoutes.post("/auth/register-super", authMiddleware, requireRoles(["admin_sistema"]), createSuperAgentHandler);
 iaRoutes.post("/auth/login", botLoginHandler);
+iaRoutes.post("/auth/login-super", superAgentLoginHandler);
 
 iaRoutes.use(authMiddleware, requireRoles(["bot_agent", "admin_sistema"]));
 

@@ -227,6 +227,33 @@ async function issueRefreshToken(userId: string) {
   return refreshToken;
 }
 
+export async function loginByNombre(nombre: string, password: string) {
+  if (!nombre || !password) {
+    throw new AuthError("nombre y password son requeridos", 400);
+  }
+
+  const user = await prisma.appUser.findFirst({
+    where: { nombre, email: null },
+    select: { user_id: true, nombre: true, email: true, password_hash: true, must_change_password: true },
+  });
+  if (!user || !user.password_hash) {
+    throw new AuthError("Credenciales inválidas", 401);
+  }
+
+  const ok = await bcrypt.compare(password, user.password_hash);
+  if (!ok) {
+    throw new AuthError("Credenciales inválidas", 401);
+  }
+
+  const token = signToken({ userId: user.user_id, email: user.email });
+  const refreshToken = await issueRefreshToken(user.user_id);
+  return {
+    access_token: token,
+    refresh_token: refreshToken,
+    user: { id: user.user_id, nombre: user.nombre, email: user.email },
+  };
+}
+
 export async function login({ email, password }: LoginInput) {
   if (!email || !password) {
     throw new AuthError("Email y password son requeridos", 400);

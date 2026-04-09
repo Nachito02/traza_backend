@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prismaClient.js";
-import { login } from "../auth/auth.service.js";
+import { login, loginByNombre } from "../auth/auth.service.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 
 type PendingDelegation = {
@@ -54,6 +54,10 @@ function normalizeScopes(scopes: string[]) {
   return Array.from(new Set(scopes.filter((s) => typeof s === "string" && s.trim().length > 0)));
 }
 
+async function isSuperAgent(userId: string): Promise<boolean> {
+  return userHasAnyRole(userId, ["super_agent"]);
+}
+
 async function ensureBotUser(botUserId: string) {
   const exists = await prisma.appUser.findUnique({
     where: { user_id: botUserId },
@@ -62,9 +66,9 @@ async function ensureBotUser(botUserId: string) {
   if (!exists) {
     throw new BotError("Usuario bot no encontrado", 404);
   }
-  const isBotAgent = await userHasAnyRole(botUserId, ["bot_agent", "admin_sistema"]);
+  const isBotAgent = await userHasAnyRole(botUserId, ["bot_agent", "super_agent", "admin_sistema"]);
   if (!isBotAgent) {
-    throw new BotError("El usuario indicado no tiene rol bot_agent", 400);
+    throw new BotError("El usuario indicado no tiene rol bot_agent o super_agent", 400);
   }
 }
 
@@ -152,7 +156,7 @@ export async function revokeBotDelegation(botDelegationId: string, userId: strin
 }
 
 async function validateBotActionAndGetContext(input: BotActionInput) {
-  const isBot = await userHasAnyRole(input.botUserId, ["bot_agent", "admin_sistema"]);
+  const isBot = await userHasAnyRole(input.botUserId, ["bot_agent", "super_agent", "admin_sistema"]);
   if (!isBot) {
     throw new BotError("El actor no tiene permisos de bot", 403);
   }
@@ -169,6 +173,10 @@ async function validateBotActionAndGetContext(input: BotActionInput) {
   });
   if (!asignacion) {
     throw new BotError("Asignación no encontrada", 404);
+  }
+
+  if (await isSuperAgent(input.botUserId)) {
+    return { asignacion, delegation: { bot_delegation_id: null as string | null } };
   }
 
   const delegation = await prisma.botDelegation.findFirst({
@@ -402,9 +410,13 @@ async function validateBotActionByBodega(
   bodegaId: string,
   scopeRequired: string,
 ) {
-  const isBot = await userHasAnyRole(botUserId, ["bot_agent", "admin_sistema"]);
+  const isBot = await userHasAnyRole(botUserId, ["bot_agent", "super_agent", "admin_sistema"]);
   if (!isBot) {
     throw new BotError("El actor no tiene permisos de bot", 403);
+  }
+
+  if (await isSuperAgent(botUserId)) {
+    return { bot_delegation_id: null as string | null };
   }
 
   const delegation = await prisma.botDelegation.findFirst({
@@ -919,6 +931,44 @@ export async function botCrearCuartel(
   });
 
   return cuartel;
+}
+
+export async function createSuperAgentUser(
+  actorUserId: string,
+  input: { nombre: string; password: string },
+) {
+  const isSystemAdmin = await userHasAnyRole(actorUserId, ["admin_sistema"]);
+  if (!isSystemAdmin) {
+    throw new BotError("Solo admin_sistema puede crear super agentes", 403);
+  }
+
+  if (!input.nombre || !input.password) {
+    throw new BotError("nombre y password son requeridos", 400);
+  }
+
+  const existing = await prisma.appUser.findFirst({ where: { nombre: input.nombre, email: null } });
+  if (existing) {
+    throw new BotError("Ya existe un super agente con ese nombre", 409);
+  }
+
+  const password_hash = await bcrypt.hash(input.password, 10);
+  const user = await prisma.appUser.create({
+    data: { nombre: input.nombre, password_hash },
+  });
+
+  const role = await prisma.rol.upsert({
+    where: { nombre: "super_agent" },
+    create: { nombre: "super_agent" },
+    update: {},
+  });
+
+  await prisma.userRol.create({ data: { user_id: user.user_id, rol_id: role.rol_id } });
+
+  return { id: user.user_id, nombre: user.nombre };
+}
+
+export async function superAgentLogin(nombre: string, password: string) {
+  return loginByNombre(nombre, password);
 }
 
 export async function botCrearVasija(

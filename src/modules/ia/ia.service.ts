@@ -510,12 +510,16 @@ async function ensureBotUser(botUserId: string) {
     throw new IaError("Usuario bot no encontrado", 404);
   }
 
-  const isBot = await userHasAnyRole(botUserId, ["bot_agent", "admin_sistema"]);
+  const isBot = await userHasAnyRole(botUserId, ["bot_agent", "super_agent", "admin_sistema"]);
   if (!isBot) {
     throw new IaError("El usuario no tiene permisos de bot", 403);
   }
 
   return user;
+}
+
+async function isSuperAgent(botUserId: string): Promise<boolean> {
+  return userHasAnyRole(botUserId, ["super_agent"]);
 }
 
 async function getActiveDelegations(botUserId: string, bodegaId?: string) {
@@ -542,6 +546,14 @@ async function getActiveDelegations(botUserId: string, bodegaId?: string) {
 }
 
 async function getVisibleBodegaIds(botUserId: string, requestedBodegaId?: string) {
+  if (await isSuperAgent(botUserId)) {
+    const all = await prisma.bodega.findMany({
+      where: { activo: true, ...(requestedBodegaId ? { bodega_id: requestedBodegaId } : {}) },
+      select: { bodega_id: true },
+    });
+    return all.map((b) => b.bodega_id);
+  }
+
   const delegations = await getActiveDelegations(botUserId, requestedBodegaId);
   if (delegations.length === 0) {
     return [];
@@ -654,6 +666,21 @@ async function getDelegationForAssignment(
     throw new IaError("Asignación no encontrada", 404);
   }
 
+  if (await isSuperAgent(botUserId)) {
+    const virtualDelegation = {
+      bot_delegation_id: null as string | null,
+      granted_by_user: {
+        user_id: asignacion.user_id,
+        nombre: asignacion.app_user?.nombre ?? "",
+        email: asignacion.app_user?.email ?? null,
+      },
+      bodega: asignacion.tarea.bodega,
+      scopes: [...requiredScopes] as string[],
+      expires_at: null as Date | null,
+    };
+    return { asignacion, delegation: virtualDelegation };
+  }
+
   const delegation = await prisma.botDelegation.findFirst({
     where: {
       bot_user_id: botUserId,
@@ -762,9 +789,13 @@ export async function getIaIdentity(botUserId: string) {
 export async function listIaJobs(filters: ListIaJobsFilters) {
   await ensureBotUser(filters.botUserId);
 
-  const delegations = await getActiveDelegations(filters.botUserId, filters.bodegaId);
-  if (delegations.length === 0) {
-    return [];
+  const superAgent = await isSuperAgent(filters.botUserId);
+
+  if (!superAgent) {
+    const delegations = await getActiveDelegations(filters.botUserId, filters.bodegaId);
+    if (delegations.length === 0) {
+      return [];
+    }
   }
 
   const visibleBodegaIds = await getVisibleBodegaIds(filters.botUserId, filters.bodegaId);
@@ -807,19 +838,33 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
     orderBy: [{ assigned_at: "desc" }],
   });
 
+  const delegations = superAgent ? [] : await getActiveDelegations(filters.botUserId, filters.bodegaId);
+
   return assignments
     .map((assignment) => {
-      const bodegaId = assignment.tarea.bodega_id;
-      const delegation =
-        delegations.find((d) => d.bodega_id === bodegaId) ??
-        delegations.find((d) => d.bodega_id === null) ??
-        null;
-      if (!delegation) return null;
+      let delegationInfo: { botDelegationId: string | null; scopes: string[]; grantedBy: { user_id: string; nombre: string; email: string | null } | null };
 
-      const hasVisibleScope = delegation.scopes.some((scope) =>
-        IA_VISIBLE_SCOPES.includes(scope as (typeof IA_VISIBLE_SCOPES)[number]),
-      );
-      if (!hasVisibleScope) return null;
+      if (superAgent) {
+        delegationInfo = { botDelegationId: null, scopes: [...IA_VISIBLE_SCOPES], grantedBy: null };
+      } else {
+        const bodegaId = assignment.tarea.bodega_id;
+        const delegation =
+          delegations.find((d) => d.bodega_id === bodegaId) ??
+          delegations.find((d) => d.bodega_id === null) ??
+          null;
+        if (!delegation) return null;
+
+        const hasVisibleScope = delegation.scopes.some((scope) =>
+          IA_VISIBLE_SCOPES.includes(scope as (typeof IA_VISIBLE_SCOPES)[number]),
+        );
+        if (!hasVisibleScope) return null;
+
+        delegationInfo = {
+          botDelegationId: delegation.bot_delegation_id,
+          scopes: delegation.scopes,
+          grantedBy: delegation.granted_by_user,
+        };
+      }
 
       return {
         tareaAsignacionId: assignment.tarea_asignacion_id,
@@ -838,11 +883,7 @@ export async function listIaJobs(filters: ListIaJobsFilters) {
           finca: assignment.tarea.finca,
           cuartel: assignment.tarea.cuartel,
         },
-        delegation: {
-          botDelegationId: delegation.bot_delegation_id,
-          scopes: delegation.scopes,
-          grantedBy: delegation.granted_by_user,
-        },
+        delegation: delegationInfo,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
@@ -1081,9 +1122,12 @@ export async function createIaCuartel({
   });
   if (!finca) throw new IaError("Finca no encontrada", 404);
 
-  const delegations = await getActiveDelegations(botUserId, finca.bodega_id);
-  if (delegations.length === 0) {
-    throw new IaError("Delegación requerida para crear cuarteles", 403);
+  const superAgent = await isSuperAgent(botUserId);
+  if (!superAgent) {
+    const delegations = await getActiveDelegations(botUserId, finca.bodega_id);
+    if (delegations.length === 0) {
+      throw new IaError("Delegación requerida para crear cuarteles", 403);
+    }
   }
 
   const existing = await prisma.cuartel.findFirst({
@@ -1754,31 +1798,32 @@ export async function helpIaJobLoad(
 export async function getIaUsuario(botUserId: string, targetUserId: string) {
   await ensureBotUser(botUserId);
 
-  const visibleBodegaIds = await getVisibleBodegaIds(botUserId);
-  if (visibleBodegaIds.length === 0) {
-    throw new IaError("Sin delegaciones activas", 403);
+  const superAgent = await isSuperAgent(botUserId);
+
+  if (!superAgent) {
+    const visibleBodegaIds = await getVisibleBodegaIds(botUserId);
+    if (visibleBodegaIds.length === 0) {
+      throw new IaError("Sin delegaciones activas", 403);
+    }
+
+    const user = await prisma.appUser.findFirst({
+      where: {
+        user_id: targetUserId,
+        user_bodega: { some: { bodega_id: { in: visibleBodegaIds } } },
+      },
+      select: { user_id: true, nombre: true, email: true, whatsapp_e164: true, is_active: true },
+    });
+
+    if (!user) throw new IaError("Usuario no encontrado o sin acceso", 404);
+    return user;
   }
 
-  const user = await prisma.appUser.findFirst({
-    where: {
-      user_id: targetUserId,
-      user_bodega: {
-        some: { bodega_id: { in: visibleBodegaIds } },
-      },
-    },
-    select: {
-      user_id: true,
-      nombre: true,
-      email: true,
-      whatsapp_e164: true,
-      is_active: true,
-    },
+  const user = await prisma.appUser.findUnique({
+    where: { user_id: targetUserId },
+    select: { user_id: true, nombre: true, email: true, whatsapp_e164: true, is_active: true },
   });
 
-  if (!user) {
-    throw new IaError("Usuario no encontrado o sin acceso", 404);
-  }
-
+  if (!user) throw new IaError("Usuario no encontrado", 404);
   return user;
 }
 

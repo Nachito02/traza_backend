@@ -18,6 +18,8 @@ import {
   BotError,
   createBotDelegation,
   createBotUser,
+  createSuperAgentUser,
+  superAgentLogin,
   listMyBotDelegations,
   revokeBotDelegation,
 } from "./bot.service.js";
@@ -31,6 +33,29 @@ function handleError(res: Response, error: unknown) {
   }
   console.error("[bot]", error);
   return res.status(500).json({ error: "Error interno" });
+}
+
+export async function createSuperAgentHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const { nombre, password } = req.body ?? {};
+    const user = await createSuperAgentUser(req.user.userId, { nombre, password });
+    return res.status(201).json(user);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function superAgentLoginHandler(req: Request, res: Response) {
+  try {
+    const { nombre, password } = req.body ?? {};
+    const result = await superAgentLogin(nombre, password);
+    return res.json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
 }
 
 export async function botRegisterHandler(req: Request, res: Response) {
