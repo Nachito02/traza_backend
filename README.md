@@ -1309,7 +1309,7 @@ Todo lo que hace queda logueado en `BotActionLog` con `on_behalf_user_id` = el u
 ### Crear un super agent (requiere admin_sistema)
 
 ```bash
-curl -X POST https://api.traza.com/api/ia/auth/register-super \
+curl -X POST https://api.traza.com/api/ia/auth/register-agent \
   -H "Authorization: Bearer <admin_token>" \
   -H "Content-Type: application/json" \
   -d '{"nombre": "mi-bot", "password": "contraseña-segura"}'
@@ -1319,7 +1319,7 @@ curl -X POST https://api.traza.com/api/ia/auth/register-super \
 ### Login del super agent
 
 ```bash
-curl -X POST https://api.traza.com/api/ia/auth/login-super \
+curl -X POST https://api.traza.com/api/ia/auth/login-agent \
   -H "Content-Type: application/json" \
   -d '{"nombre": "mi-bot", "password": "contraseña-segura"}'
 # → { "access_token": "...", "refresh_token": "...", "user": { "id": "...", "nombre": "mi-bot" } }

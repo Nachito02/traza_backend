@@ -53,8 +53,8 @@ function cookieOptions(req: Request) {
 
 export async function loginHandler(req: Request, res: Response) {
   try {
-    const { email, password } = req.body ?? {};
-    const result = await login({ email, password });
+    const { username, email, password } = req.body ?? {};
+    const result = await login({ email: username ?? email, password });
 
     if ('must_change_password' in result) {
       return res.status(200).json({ must_change_password: true, userId: result.userId });

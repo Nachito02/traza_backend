@@ -30,8 +30,8 @@ const openapiIaSpec = {
   },
   security: [{ bearerAuth: [] }],
   tags: [
-    { name: "Autenticación", description: "Login y registro del bot. Todos los endpoints requieren `Authorization: Bearer <token>` excepto `/auth/login` y `/auth/login-super`." },
-    { name: "Super Agent", description: "Bot con permisos globales. Actúa en nombre de cualquier usuario sin necesitar delegación explícita. Ideal para integraciones de sistema. Todo se loguea con `on_behalf_user_id`." },
+    { name: "Autenticación", description: "Login y registro del bot. Todos los endpoints requieren `Authorization: Bearer <token>` excepto `/auth/login` y `/auth/login-agent`." },
+    { name: "Agent", description: "Bot con permisos globales. Actúa en nombre de cualquier usuario sin necesitar delegación explícita. Todo se loguea con `on_behalf_user_id`." },
     { name: "Usuarios", description: "Buscar usuarios por WhatsApp o ID. `tiene_delegacion: true` indica que el bot ya tiene delegación activa para ese usuario." },
     { name: "Delegaciones", description: "Permiso que el encargado le da al bot para actuar en su nombre. Requerida para bots normales; el super agent no la necesita." },
     { name: "Catálogos", description: "Datos de referencia: bodegas, fincas, cuarteles, trabajadores, protocolos, insumos. Accesibles sin delegación, solo con el token del bot." },
@@ -40,9 +40,9 @@ const openapiIaSpec = {
     { name: "Consultas", description: "Búsqueda transversal para responder preguntas libres del bot sobre datos de la bodega." },
   ],
   paths: {
-    "/auth/register-super": {
+    "/auth/register-agent": {
       post: {
-        tags: ["Super Agent"],
+        tags: ["Agent"],
         summary: "Crear super agente (requiere admin_sistema)",
         description: "Crea un usuario con rol `super_agent`. No requiere email, solo nombre (actúa como username único) y password.",
         security: [{ bearerAuth: [] }],
@@ -79,51 +79,6 @@ const openapiIaSpec = {
         },
       },
     },
-    "/auth/login-super": {
-      post: {
-        tags: ["Super Agent"],
-        summary: "Login del super agente — sin email, solo nombre + password",
-        security: [],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["nombre", "password"],
-                properties: {
-                  nombre: { type: "string" },
-                  password: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          200: {
-            description: "OK",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    access_token: { type: "string" },
-                    refresh_token: { type: "string" },
-                    user: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        nombre: { type: "string" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
     "/auth/register": {
       post: {
         tags: ["Autenticación"],
@@ -151,7 +106,8 @@ const openapiIaSpec = {
     "/auth/login": {
       post: {
         tags: ["Autenticación"],
-        summary: "Login del bot — devuelve token en body",
+        summary: "Login — bot_agent o super_agent",
+        description: "`username` puede ser el email del bot_agent o el nombre del super_agent.",
         security: [],
         requestBody: {
           required: true,
@@ -159,9 +115,9 @@ const openapiIaSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["email", "password"],
+                required: ["username", "password"],
                 properties: {
-                  email: { type: "string", format: "email" },
+                  username: { type: "string", description: "Email (bot_agent) o nombre (super_agent)" },
                   password: { type: "string" },
                 },
               },

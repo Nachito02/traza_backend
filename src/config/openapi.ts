@@ -32,9 +32,9 @@ const openapiSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["email", "password"],
+                required: ["username", "password"],
                 properties: {
-                  email: { type: "string", format: "email" },
+                  username: { type: "string", description: "Email del usuario" },
                   password: { type: "string" },
                 },
               },
@@ -1378,11 +1378,11 @@ const openapiSpec = {
     },
 
     // ── IA / Bot ─────────────────────────────────────────────────────────────
-    "/ia/auth/register-super": {
+    "/ia/auth/register-agent": {
       post: {
         summary: "Crear super agente — sin email, actúa en nombre de cualquiera (requiere admin_sistema)",
         description: "Crea un usuario con rol `super_agent`. No necesita email ni delegación. Puede actuar en nombre de cualquier usuario pasando `onBehalfUserId`. Todo queda logueado en `BotActionLog`.",
-        tags: ["IA - Super Agent"],
+        tags: ["IA - Agent"],
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1417,10 +1417,10 @@ const openapiSpec = {
         },
       },
     },
-    "/ia/auth/login-super": {
+    "/ia/auth/login-agent": {
       post: {
         summary: "Login del super agente — nombre + password, sin email",
-        tags: ["IA - Super Agent"],
+        tags: ["IA - Agent"],
         security: [],
         requestBody: {
           required: true,
@@ -1462,10 +1462,10 @@ const openapiSpec = {
         },
       },
     },
-    "/bot/auth/register-super": {
+    "/bot/auth/register-agent": {
       post: {
         summary: "Crear super agente (bot route — requiere admin_sistema)",
-        tags: ["Bot - Super Agent"],
+        tags: ["Bot - Agent"],
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1485,10 +1485,10 @@ const openapiSpec = {
         responses: { 201: { description: "Super agente creado" } },
       },
     },
-    "/bot/auth/login-super": {
+    "/bot/auth/login-agent": {
       post: {
         summary: "Login del super agente (bot route)",
-        tags: ["Bot - Super Agent"],
+        tags: ["Bot - Agent"],
         security: [],
         requestBody: {
           required: true,
@@ -1534,7 +1534,8 @@ const openapiSpec = {
     },
     "/ia/auth/login": {
       post: {
-        summary: "Login del bot — devuelve token en body",
+        summary: "Login del bot — bot_agent o super_agent",
+        description: "`username` puede ser el email del bot_agent o el nombre del super_agent.",
         tags: ["IA"],
         security: [],
         requestBody: {
@@ -1543,9 +1544,9 @@ const openapiSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["email", "password"],
+                required: ["username", "password"],
                 properties: {
-                  email: { type: "string", format: "email" },
+                  username: { type: "string", description: "Email (bot_agent) o nombre (super_agent)" },
                   password: { type: "string" },
                 },
               },

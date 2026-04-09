@@ -269,8 +269,12 @@ export async function createBotUser(
   return { id: user.user_id, email: user.email, nombre: user.nombre };
 }
 
-export async function botLogin(email: string, password: string) {
-  const result = await login({ email, password });
+export async function botLogin(username: string, password: string) {
+  const isEmail = username.includes("@");
+  if (!isEmail) {
+    return loginByNombre(username, password);
+  }
+  const result = await login({ email: username, password });
   if ('must_change_password' in result) {
     return { must_change_password: true, userId: result.userId };
   }
@@ -815,7 +819,9 @@ export async function botIniciarCreacionTarea(
     throw new BotError("Usuario inactivo", 403);
   }
 
-  const delegation = await prisma.botDelegation.findFirst({
+  const superAgent = await isSuperAgent(botUserId);
+
+  const delegation = superAgent ? true : await prisma.botDelegation.findFirst({
     where: {
       bot_user_id: botUserId,
       granted_by_user_id: user.user_id,

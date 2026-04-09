@@ -48,11 +48,10 @@ import {
 export const iaRoutes = Router();
 
 iaRoutes.post("/auth/register", authMiddleware, requireRoles(["admin_sistema"]), botRegisterHandler);
-iaRoutes.post("/auth/register-super", authMiddleware, requireRoles(["admin_sistema"]), createSuperAgentHandler);
+iaRoutes.post("/auth/register-agent", authMiddleware, requireRoles(["admin_sistema"]), createSuperAgentHandler);
 iaRoutes.post("/auth/login", botLoginHandler);
-iaRoutes.post("/auth/login-super", superAgentLoginHandler);
 
-iaRoutes.use(authMiddleware, requireRoles(["bot_agent", "admin_sistema"]));
+iaRoutes.use(authMiddleware, requireRoles(["bot_agent", "super_agent", "admin_sistema"]));
 
 iaRoutes.get("/me", iaMeHandler);
 iaRoutes.get("/catalogos/bodegas", listIaBodegasHandler);

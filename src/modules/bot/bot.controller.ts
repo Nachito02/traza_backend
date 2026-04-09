@@ -73,8 +73,8 @@ export async function botRegisterHandler(req: Request, res: Response) {
 
 export async function botLoginHandler(req: Request, res: Response) {
   try {
-    const { email, password } = req.body ?? {};
-    const result = await botLogin(email, password);
+    const { username, password } = req.body ?? {};
+    const result = await botLogin(username, password);
     return res.json(result);
   } catch (error) {
     return handleError(res, error);
