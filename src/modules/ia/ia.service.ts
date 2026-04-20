@@ -1099,6 +1099,7 @@ export async function createIaCuartel({
   superficieHa,
   cultivo,
   variedad,
+  sistemaRiego,
   sistemaProductivo,
   sistemaConduccion,
 }: {
@@ -1108,6 +1109,7 @@ export async function createIaCuartel({
   superficieHa?: number;
   cultivo?: string;
   variedad?: string;
+  sistemaRiego?: string;
   sistemaProductivo?: string;
   sistemaConduccion?: string;
 }) {
@@ -1141,6 +1143,7 @@ export async function createIaCuartel({
     ...(superficieHa !== undefined ? { superficie_ha: superficieHa } : {}),
     ...(cultivo ? { cultivo } : {}),
     ...(variedad ? { variedad } : {}),
+    ...(sistemaRiego ? { sistema_riego: sistemaRiego } : {}),
     ...(sistemaProductivo ? { sistema_productivo: sistemaProductivo } : {}),
     ...(sistemaConduccion ? { sistema_conduccion: sistemaConduccion } : {}),
   };

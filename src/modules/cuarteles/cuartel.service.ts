@@ -7,6 +7,7 @@ type CreateCuartelInput = {
   superficie_ha?: number;
   cultivo?: string;
   variedad?: string;
+  sistema_riego?: string;
   sistema_productivo?: string;
   sistema_conduccion?: string;
   userId: string;
@@ -17,6 +18,7 @@ type UpdateCuartelInput = {
   superficie_ha?: number;
   cultivo?: string | null;
   variedad?: string | null;
+  sistema_riego?: string | null;
   sistema_productivo?: string | null;
   sistema_conduccion?: string | null;
   userId: string;
@@ -57,6 +59,7 @@ export async function createCuartel({
   superficie_ha,
   cultivo,
   variedad,
+  sistema_riego,
   sistema_productivo,
   sistema_conduccion,
   userId,
@@ -77,6 +80,7 @@ export async function createCuartel({
     superficie_ha?: number;
     cultivo?: string | null;
     variedad?: string | null;
+    sistema_riego?: string | null;
     sistema_productivo?: string | null;
     sistema_conduccion?: string | null;
   } = { finca_id: finca.finca_id, codigo_cuartel };
@@ -84,6 +88,7 @@ export async function createCuartel({
   if (superficie_ha !== undefined) data.superficie_ha = superficie_ha;
   if (cultivo !== undefined) data.cultivo = cultivo;
   if (variedad !== undefined) data.variedad = variedad;
+  if (sistema_riego !== undefined) data.sistema_riego = sistema_riego;
   if (sistema_productivo !== undefined) data.sistema_productivo = sistema_productivo;
   if (sistema_conduccion !== undefined) data.sistema_conduccion = sistema_conduccion;
 
@@ -113,6 +118,7 @@ export async function updateCuartel(
     superficie_ha,
     cultivo,
     variedad,
+    sistema_riego,
     sistema_productivo,
     sistema_conduccion,
     userId,
@@ -129,6 +135,7 @@ export async function updateCuartel(
     superficie_ha?: number;
     cultivo?: string | null;
     variedad?: string | null;
+    sistema_riego?: string | null;
     sistema_productivo?: string | null;
     sistema_conduccion?: string | null;
   } = {};
@@ -137,6 +144,7 @@ export async function updateCuartel(
   if (superficie_ha !== undefined) data.superficie_ha = superficie_ha;
   if (cultivo !== undefined) data.cultivo = cultivo;
   if (variedad !== undefined) data.variedad = variedad;
+  if (sistema_riego !== undefined) data.sistema_riego = sistema_riego;
   if (sistema_productivo !== undefined) data.sistema_productivo = sistema_productivo;
   if (sistema_conduccion !== undefined) data.sistema_conduccion = sistema_conduccion;
 

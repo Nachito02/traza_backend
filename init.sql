@@ -87,6 +87,7 @@ CREATE TABLE "cuartel" (
     "superficie_ha" DECIMAL(10,2),
     "cultivo" TEXT,
     "variedad" TEXT,
+    "sistema_riego" TEXT,
     "sistema_productivo" TEXT,
     "sistema_conduccion" TEXT,
     "activo" BOOLEAN NOT NULL DEFAULT true,

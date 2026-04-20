@@ -27,6 +27,7 @@ export async function createCuartelHandler(req: Request, res: Response) {
       superficie_ha,
       cultivo,
       variedad,
+      sistema_riego,
       sistema_productivo,
       sistema_conduccion,
     } = req.body ?? {};
@@ -36,6 +37,7 @@ export async function createCuartelHandler(req: Request, res: Response) {
       superficie_ha,
       cultivo,
       variedad,
+      sistema_riego,
       sistema_productivo,
       sistema_conduccion,
       userId: req.user.userId,
@@ -89,6 +91,7 @@ export async function updateCuartelHandler(req: Request, res: Response) {
       superficie_ha,
       cultivo,
       variedad,
+      sistema_riego,
       sistema_productivo,
       sistema_conduccion,
     } = req.body ?? {};
@@ -97,6 +100,7 @@ export async function updateCuartelHandler(req: Request, res: Response) {
       superficie_ha,
       cultivo,
       variedad,
+      sistema_riego,
       sistema_productivo,
       sistema_conduccion,
       userId: req.user.userId,

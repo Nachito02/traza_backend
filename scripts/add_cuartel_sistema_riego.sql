@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE cuartel
+ADD COLUMN IF NOT EXISTS sistema_riego TEXT;
+
+COMMIT;

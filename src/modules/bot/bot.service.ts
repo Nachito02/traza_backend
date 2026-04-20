@@ -889,6 +889,7 @@ export async function botCrearCuartel(
     superficie_ha?: number;
     cultivo?: string;
     variedad?: string;
+    sistema_riego?: string;
     sistema_productivo?: string;
     sistema_conduccion?: string;
   },
@@ -920,6 +921,7 @@ export async function botCrearCuartel(
       ...(input.superficie_ha !== undefined ? { superficie_ha: input.superficie_ha } : {}),
       ...(input.cultivo !== undefined ? { cultivo: input.cultivo } : {}),
       ...(input.variedad !== undefined ? { variedad: input.variedad } : {}),
+      ...(input.sistema_riego !== undefined ? { sistema_riego: input.sistema_riego } : {}),
       ...(input.sistema_productivo !== undefined ? { sistema_productivo: input.sistema_productivo } : {}),
       ...(input.sistema_conduccion !== undefined ? { sistema_conduccion: input.sistema_conduccion } : {}),
     },

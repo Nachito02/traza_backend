@@ -149,6 +149,7 @@ model Cuartel {
   superficie_ha                   Decimal?                        @db.Decimal(10, 2)
   cultivo                         String?
   variedad                        String?
+  sistema_riego                   String?
   sistema_productivo              String?
   sistema_conduccion              String?
   activo                          Boolean                         @default(true)

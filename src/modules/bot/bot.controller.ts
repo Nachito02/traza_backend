@@ -283,9 +283,9 @@ export async function botCrearCuartelHandler(req: Request, res: Response) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const fincaId = String(req.params.fincaId ?? "");
-    const { onBehalfUserId, codigo_cuartel, superficie_ha, cultivo, variedad, sistema_productivo, sistema_conduccion } = req.body ?? {};
+    const { onBehalfUserId, codigo_cuartel, superficie_ha, cultivo, variedad, sistema_riego, sistema_productivo, sistema_conduccion } = req.body ?? {};
     const cuartel = await botCrearCuartel(
-      { onBehalfUserId, fincaId, codigo_cuartel, superficie_ha, cultivo, variedad, sistema_productivo, sistema_conduccion },
+      { onBehalfUserId, fincaId, codigo_cuartel, superficie_ha, cultivo, variedad, sistema_riego, sistema_productivo, sistema_conduccion },
       req.user.userId,
     );
     return res.status(201).json(cuartel);

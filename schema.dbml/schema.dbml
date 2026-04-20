@@ -141,6 +141,7 @@ Table cuartel {
   superficie_ha Decimal
   cultivo String
   variedad String
+  sistema_riego String
   sistema_productivo String
   sistema_conduccion String
   activo Boolean [not null, default: true]

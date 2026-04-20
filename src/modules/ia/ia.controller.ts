@@ -433,12 +433,13 @@ export async function addIaEntradaHandler(req: Request, res: Response) {
 export async function createIaCuartelHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
-    const { fincaId, codigoCuartel, superficieHa, cultivo, variedad, sistemaProductivo, sistemaConduccion } =
+    const { fincaId, codigoCuartel, superficieHa, cultivo, variedad, sistemaRiego, sistemaProductivo, sistemaConduccion } =
       req.body ?? {};
     const params: Parameters<typeof createIaCuartel>[0] = { botUserId: req.user.userId, fincaId, codigoCuartel };
     if (typeof superficieHa === "number") params.superficieHa = superficieHa;
     if (typeof cultivo === "string") params.cultivo = cultivo;
     if (typeof variedad === "string") params.variedad = variedad;
+    if (typeof sistemaRiego === "string") params.sistemaRiego = sistemaRiego;
     if (typeof sistemaProductivo === "string") params.sistemaProductivo = sistemaProductivo;
     if (typeof sistemaConduccion === "string") params.sistemaConduccion = sistemaConduccion;
     return res.status(201).json(await createIaCuartel(params));

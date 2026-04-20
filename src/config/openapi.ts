@@ -1298,6 +1298,7 @@ const openapiSpec = {
                   superficie_ha: { type: "number", example: 4.5 },
                   cultivo: { type: "string", example: "vid" },
                   variedad: { type: "string", example: "Malbec" },
+                  sistema_riego: { type: "string", example: "goteo" },
                   sistema_productivo: { type: "string", example: "espaldera" },
                   sistema_conduccion: { type: "string", example: "doble cordón" },
                 },
