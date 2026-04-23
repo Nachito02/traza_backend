@@ -1,3 +1,63 @@
+const uuidParam = (name: string, description?: string) => ({
+  name,
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" },
+  ...(description ? { description } : {}),
+});
+
+const genericJsonBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: true,
+      },
+    },
+  },
+} as const;
+
+const createCrudCollectionPath = (tag: string, pluralLabel: string, singularLabel: string) => ({
+  get: {
+    summary: `Listar ${pluralLabel}`,
+    tags: [tag],
+    responses: { 200: { description: "OK" } },
+  },
+  post: {
+    summary: `Crear ${singularLabel}`,
+    tags: [tag],
+    requestBody: genericJsonBody,
+    responses: { 201: { description: "Creado" }, 400: { description: "Bad request" } },
+  },
+});
+
+const createCrudItemPath = (
+  tag: string,
+  singularLabel: string,
+  pathParamName = "id",
+) => ({
+  get: {
+    summary: `Obtener ${singularLabel}`,
+    tags: [tag],
+    parameters: [uuidParam(pathParamName)],
+    responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+  },
+  patch: {
+    summary: `Actualizar ${singularLabel}`,
+    tags: [tag],
+    parameters: [uuidParam(pathParamName)],
+    requestBody: genericJsonBody,
+    responses: { 200: { description: "Actualizado" }, 404: { description: "No encontrado" } },
+  },
+  delete: {
+    summary: `Eliminar ${singularLabel}`,
+    tags: [tag],
+    parameters: [uuidParam(pathParamName)],
+    responses: { 200: { description: "Eliminado" }, 404: { description: "No encontrado" } },
+  },
+});
+
 const openapiSpec = {
   openapi: "3.0.3",
   info: {
@@ -697,6 +757,27 @@ const openapiSpec = {
     "/cuarteles": {
       post: {
         summary: "Create cuartel",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["fincaId", "codigo_cuartel"],
+                properties: {
+                  fincaId: { type: "string", format: "uuid" },
+                  codigo_cuartel: { type: "string", example: "C-01" },
+                  superficie_ha: { type: "number", example: 3.5 },
+                  cultivo: { type: "string", example: "Vid" },
+                  variedad: { type: "string", example: "Malbec" },
+                  sistema_riego: { type: "string", example: "goteo" },
+                  sistema_productivo: { type: "string", example: "convencional" },
+                  sistema_conduccion: { type: "string", example: "espaldera" },
+                },
+              },
+            },
+          },
+        },
         responses: { 201: { description: "Created" } },
       },
     },
@@ -712,6 +793,42 @@ const openapiSpec = {
           },
         ],
         responses: { 200: { description: "OK" } },
+      },
+    },
+    "/cuarteles/{cuartelId}": {
+      get: {
+        summary: "Obtener cuartel por ID",
+        parameters: [uuidParam("cuartelId")],
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+      },
+      patch: {
+        summary: "Actualizar cuartel",
+        parameters: [uuidParam("cuartelId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  codigo_cuartel: { type: "string", example: "C-01" },
+                  superficie_ha: { type: "number", example: 3.5 },
+                  cultivo: { type: "string", example: "Vid" },
+                  variedad: { type: "string", example: "Malbec" },
+                  sistema_riego: { type: "string", example: "goteo" },
+                  sistema_productivo: { type: "string", example: "convencional" },
+                  sistema_conduccion: { type: "string", example: "espaldera" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+      },
+      delete: {
+        summary: "Eliminar cuartel",
+        parameters: [uuidParam("cuartelId")],
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
       },
     },
     "/campanias": {
@@ -887,6 +1004,45 @@ const openapiSpec = {
           },
         ],
         responses: { 201: { description: "Created" } },
+      },
+    },
+    "/eventos/milestone/{milestoneId}": {
+      get: {
+        summary: "Listar eventos vinculados a un milestone",
+        tags: ["Eventos"],
+        parameters: [
+          uuidParam("milestoneId", "ID del milestone"),
+          {
+            name: "tipo",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Filtra por tipo de evento",
+          },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/eventos/milestone/{milestoneId}/{tipo}/{eventoId}": {
+      get: {
+        summary: "Obtener un evento específico de un milestone",
+        tags: ["Eventos"],
+        parameters: [
+          uuidParam("milestoneId"),
+          { name: "tipo", in: "path", required: true, schema: { type: "string" } },
+          uuidParam("eventoId", "ID del evento"),
+        ],
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+      },
+      delete: {
+        summary: "Eliminar un evento específico de un milestone",
+        tags: ["Eventos"],
+        parameters: [
+          uuidParam("milestoneId"),
+          { name: "tipo", in: "path", required: true, schema: { type: "string" } },
+          uuidParam("eventoId", "ID del evento"),
+        ],
+        responses: { 200: { description: "Eliminado" }, 404: { description: "No encontrado" } },
       },
     },
     "/milestones/me": {
@@ -1377,6 +1533,317 @@ const openapiSpec = {
         responses: { 200: { description: "OK" } },
       },
     },
+    "/operarios/bodega/{bodegaId}": {
+      get: {
+        summary: "Listar operarios de una bodega",
+        tags: ["Operarios"],
+        parameters: [uuidParam("bodegaId")],
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Crear operario en una bodega",
+        tags: ["Operarios"],
+        parameters: [uuidParam("bodegaId")],
+        requestBody: genericJsonBody,
+        responses: { 201: { description: "Creado" }, 400: { description: "Bad request" } },
+      },
+    },
+    "/operarios/{userId}": {
+      delete: {
+        summary: "Desactivar operario",
+        tags: ["Operarios"],
+        parameters: [uuidParam("userId")],
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+      },
+    },
+    "/tareas/me/can-manage": {
+      get: {
+        summary: "Verificar si el usuario puede gestionar tareas",
+        tags: ["Tareas"],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/me/asignaciones": {
+      get: {
+        summary: "Listar asignaciones de tareas del usuario autenticado",
+        tags: ["Tareas"],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/mis-pendientes": {
+      get: {
+        summary: "Listar pendientes del usuario autenticado",
+        tags: ["Tareas"],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/bodega/{bodegaId}/pendientes": {
+      get: {
+        summary: "Listar pendientes por bodega",
+        tags: ["Tareas"],
+        parameters: [uuidParam("bodegaId")],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/me/asignaciones/{tareaAsignacionId}/estado": {
+      patch: {
+        summary: "Actualizar estado de una asignación propia",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaAsignacionId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["estado"],
+                properties: {
+                  estado: {
+                    type: "string",
+                    enum: ["pendiente", "en_progreso", "completado", "cancelado"],
+                  },
+                  observaciones: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/me/asignaciones/{tareaAsignacionId}/entradas": {
+      get: {
+        summary: "Listar entradas de una asignación propia",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaAsignacionId")],
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Agregar entrada a una asignación propia",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaAsignacionId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  descripcion: { type: "string" },
+                  notas: { type: "string" },
+                  draft: { type: "object", additionalProperties: true },
+                  adjuntos: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  documentos: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: "Creado" } },
+      },
+    },
+    "/tareas/me/asignaciones/{tareaAsignacionId}/finalizar": {
+      post: {
+        summary: "Finalizar una asignación propia",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaAsignacionId")],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas": {
+      get: {
+        summary: "Listar tareas",
+        tags: ["Tareas"],
+        parameters: [
+          { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+          { name: "fincaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+          { name: "pendientes", in: "query", required: false, schema: { type: "boolean" } },
+        ],
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Crear tarea",
+        tags: ["Tareas"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["bodegaId"],
+                properties: {
+                  bodegaId: { type: "string", format: "uuid" },
+                  procesoId: { type: "string", format: "uuid" },
+                  fincaId: { type: "string", format: "uuid" },
+                  cuartelId: { type: "string", format: "uuid" },
+                  descripcion: { type: "string" },
+                  fechaFin: { type: "string", format: "date-time" },
+                  prioridad: { type: "string", enum: ["baja", "media", "alta"] },
+                  imagenCid: { type: "string" },
+                  imagenUrl: { type: "string" },
+                  assigneeUserIds: {
+                    type: "array",
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: "Creado" } },
+      },
+    },
+    "/tareas/{tareaId}/asignaciones": {
+      post: {
+        summary: "Agregar asignaciones a una tarea",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["userIds"],
+                properties: {
+                  userIds: {
+                    type: "array",
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/{tareaId}/asignar": {
+      patch: {
+        summary: "Asignar usuarios a una tarea",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  userId: { type: "string", format: "uuid" },
+                  assigneeUserId: { type: "string", format: "uuid" },
+                  userIds: {
+                    type: "array",
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Asignar usuarios a una tarea (compatibilidad)",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  userId: { type: "string", format: "uuid" },
+                  assigneeUserId: { type: "string", format: "uuid" },
+                  userIds: {
+                    type: "array",
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/tareas/{tareaId}/cancelar": {
+      patch: {
+        summary: "Cancelar tarea",
+        tags: ["Tareas"],
+        parameters: [uuidParam("tareaId")],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/elaboracion/vasijas": createCrudCollectionPath("Elaboración", "vasijas", "vasija"),
+    "/elaboracion/vasijas/{id}": createCrudItemPath("Elaboración", "vasija"),
+    "/elaboracion/cortes": createCrudCollectionPath("Elaboración", "cortes", "corte"),
+    "/elaboracion/cortes/{id}": createCrudItemPath("Elaboración", "corte"),
+    "/elaboracion/productos": createCrudCollectionPath("Elaboración", "productos", "producto"),
+    "/elaboracion/productos/{id}": createCrudItemPath("Elaboración", "producto"),
+    "/elaboracion/lotes-fraccionamiento": createCrudCollectionPath("Elaboración", "lotes de fraccionamiento", "lote de fraccionamiento"),
+    "/elaboracion/lotes-fraccionamiento/{id}": createCrudItemPath("Elaboración", "lote de fraccionamiento"),
+    "/elaboracion/codigos-envase": createCrudCollectionPath("Elaboración", "códigos de envase", "código de envase"),
+    "/elaboracion/codigos-envase/{id}": createCrudItemPath("Elaboración", "código de envase"),
+    "/elaboracion/remitos-uva": createCrudCollectionPath("Elaboración", "remitos de uva", "remito de uva"),
+    "/elaboracion/remitos-uva/{id}": createCrudItemPath("Elaboración", "remito de uva"),
+    "/elaboracion/recepciones-bodega": createCrudCollectionPath("Elaboración", "recepciones de bodega", "recepción de bodega"),
+    "/elaboracion/recepciones-bodega/{id}": createCrudItemPath("Elaboración", "recepción de bodega"),
+    "/elaboracion/analisis-recepcion": createCrudCollectionPath("Elaboración", "análisis de recepción", "análisis de recepción"),
+    "/elaboracion/analisis-recepcion/{id}": createCrudItemPath("Elaboración", "análisis de recepción"),
+    "/elaboracion/operaciones-vasija": createCrudCollectionPath("Elaboración", "operaciones de vasija", "operación de vasija"),
+    "/elaboracion/operaciones-vasija/{id}": createCrudItemPath("Elaboración", "operación de vasija"),
+    "/elaboracion/despachos": createCrudCollectionPath("Elaboración", "despachos", "despacho"),
+    "/elaboracion/despachos/{id}": createCrudItemPath("Elaboración", "despacho"),
+    "/elaboracion/cius": createCrudCollectionPath("Elaboración", "CIUs", "CIU"),
+    "/elaboracion/cius/{id}": createCrudItemPath("Elaboración", "CIU"),
+    "/elaboracion/ciu-recepciones": {
+      get: {
+        summary: "Listar relaciones CIU-Recepción",
+        tags: ["Elaboración"],
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Crear relación CIU-Recepción",
+        tags: ["Elaboración"],
+        requestBody: genericJsonBody,
+        responses: { 201: { description: "Creado" } },
+      },
+    },
+    "/elaboracion/ciu-recepciones/{ciuId}/{recepcionBodegaId}": {
+      get: {
+        summary: "Obtener relación CIU-Recepción",
+        tags: ["Elaboración"],
+        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
+        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
+      },
+      patch: {
+        summary: "Actualizar relación CIU-Recepción",
+        tags: ["Elaboración"],
+        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
+        requestBody: genericJsonBody,
+        responses: { 200: { description: "Actualizado" } },
+      },
+      delete: {
+        summary: "Eliminar relación CIU-Recepción",
+        tags: ["Elaboración"],
+        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
+        responses: { 200: { description: "Eliminado" } },
+      },
+    },
+    "/elaboracion/qc-ingreso-uva": createCrudCollectionPath("Elaboración", "QC ingreso uva", "QC ingreso uva"),
+    "/elaboracion/qc-ingreso-uva/{id}": createCrudItemPath("Elaboración", "QC ingreso uva"),
+    "/elaboracion/existencias-vasija": createCrudCollectionPath("Elaboración", "existencias de vasija", "existencia de vasija"),
+    "/elaboracion/existencias-vasija/{id}": createCrudItemPath("Elaboración", "existencia de vasija"),
+    "/elaboracion/controles-fermentacion": createCrudCollectionPath("Elaboración", "controles de fermentación", "control de fermentación"),
+    "/elaboracion/controles-fermentacion/{id}": createCrudItemPath("Elaboración", "control de fermentación"),
 
     // ── IA / Bot ─────────────────────────────────────────────────────────────
     "/ia/auth/register-agent": {
