@@ -15,6 +15,7 @@ Table app_user {
   is_active Boolean [not null, default: true]
   refresh_token refresh_token [not null]
   user_bodega user_bodega [not null]
+  user_finca_rol user_finca_rol [not null]
   user_rol user_rol [not null]
   tareas_creadas tarea [not null]
   tareas_asignadas tarea_asignacion [not null]
@@ -73,6 +74,7 @@ Table bodega {
   evento_sanitizacion_banos evento_sanitizacion_banos [not null]
   evento_sobrante_lavado evento_sobrante_lavado [not null]
   finca finca [not null]
+  bodega_finca_vinculo bodega_finca_vinculo [not null]
   campania campania [not null]
   trazabilidad trazabilidad [not null]
   user_bodega user_bodega [not null]
@@ -167,6 +169,7 @@ Table cuartel {
   evento_riego evento_riego [not null]
   evento_enmienda evento_enmienda [not null]
   evento_cobertura_erosion evento_cobertura_erosion [not null]
+  remito_uva remito_uva [not null]
   trazabilidad trazabilidad [not null]
   trazabilidad_origen trazabilidad_origen [not null]
   tarea tarea [not null]
@@ -287,6 +290,8 @@ Table evento_cosecha {
 Table remito_uva {
   remito_uva_id String [pk]
   bodega_id String [not null]
+  finca_id String [not null]
+  cuartel_id String [not null]
   lote_cosecha_id String [not null]
   salida_finca DateTime [not null]
   llegada_bodega DateTime
@@ -295,6 +300,8 @@ Table remito_uva {
   kg_declarados Decimal
   created_at DateTime [default: `now()`, not null]
   bodega bodega [not null]
+  finca finca [not null]
+  cuartel cuartel [not null]
   evento_cosecha evento_cosecha [not null]
   recepcion_bodega recepcion_bodega [not null]
 }
@@ -322,6 +329,7 @@ Table analisis_recepcion {
   acidez Decimal
   sanidad String
   temperatura_uva Decimal
+  observaciones String
   created_at DateTime [default: `now()`, not null]
   recepcion_bodega recepcion_bodega [not null]
 }
@@ -862,11 +870,14 @@ Table finca {
   updated_at DateTime [default: `now()`, not null]
   cuartel cuartel [not null]
   evento_precipitacion evento_precipitacion [not null]
+  remito_uva remito_uva [not null]
   bodega bodega [not null]
+  bodega_finca_vinculo bodega_finca_vinculo [not null]
   trazabilidad trazabilidad [not null]
   trazabilidad_origen trazabilidad_origen [not null]
   tarea tarea [not null]
   milestone_asignacion milestone_asignacion [not null]
+  user_finca_rol user_finca_rol [not null]
 }
 
 Table insumo_catalogo {
@@ -1100,6 +1111,34 @@ Table user_bodega_rol {
 
   indexes {
     (user_id, bodega_id, rol) [pk]
+  }
+}
+
+Table user_finca_rol {
+  user_id String [not null]
+  finca_id String [not null]
+  rol String [not null]
+  created_at DateTime [default: `now()`, not null]
+  app_user app_user [not null]
+  finca finca [not null]
+
+  indexes {
+    (user_id, finca_id, rol) [pk]
+  }
+}
+
+Table bodega_finca_vinculo {
+  bodega_id String [not null]
+  finca_id String [not null]
+  tipo_vinculo String [not null, default: 'propia']
+  activo Boolean [not null, default: true]
+  created_at DateTime [default: `now()`, not null]
+  updated_at DateTime [default: `now()`, not null]
+  bodega bodega [not null]
+  finca finca [not null]
+
+  indexes {
+    (bodega_id, finca_id) [pk]
   }
 }
 
@@ -1359,6 +1398,10 @@ Ref: evento_cosecha.responsable_user_id > app_user.user_id
 
 Ref: remito_uva.bodega_id > bodega.bodega_id [delete: Restrict]
 
+Ref: remito_uva.finca_id > finca.finca_id [delete: Restrict]
+
+Ref: remito_uva.cuartel_id > cuartel.cuartel_id [delete: Restrict]
+
 Ref: remito_uva.lote_cosecha_id > evento_cosecha.lote_cosecha_id [delete: Restrict]
 
 Ref: recepcion_bodega.remito_uva_id > remito_uva.remito_uva_id [delete: Restrict]
@@ -1552,6 +1595,14 @@ Ref: user_bodega.bodega_id > bodega.bodega_id
 Ref: user_bodega.user_id > app_user.user_id [delete: Cascade]
 
 Ref: user_bodega_rol.(user_id, bodega_id) > user_bodega.(user_id, bodega_id) [delete: Cascade]
+
+Ref: user_finca_rol.user_id > app_user.user_id [delete: Cascade]
+
+Ref: user_finca_rol.finca_id > finca.finca_id [delete: Cascade]
+
+Ref: bodega_finca_vinculo.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: bodega_finca_vinculo.finca_id > finca.finca_id [delete: Restrict]
 
 Ref: user_rol.rol_id > rol.rol_id
 
