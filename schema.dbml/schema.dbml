@@ -140,10 +140,15 @@ Table cuartel {
   codigo_cuartel String [not null]
   superficie_ha Decimal
   cultivo String
+  tipo_variedad String
   variedad String
   sistema_riego String
   sistema_productivo String
   sistema_conduccion String
+  cantidad_hileras Int
+  largo_hileras_m Decimal
+  densidad_hileras Decimal
+  distancia_plantacion String
   activo Boolean [not null, default: true]
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]

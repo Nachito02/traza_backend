@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prismaClient.js";
+import type { Prisma } from "../../generated/prisma/index.js";
 
 type CreateVasijaInput = {
   userId: string;
@@ -95,6 +96,8 @@ type UpdateCodigoEnvaseInput = {
 type CreateRemitoUvaInput = {
   userId: string;
   bodegaId: string;
+  fincaId: string;
+  cuartelId: string;
   loteCosechaId: string;
   salida_finca: string;
   llegada_bodega?: string;
@@ -104,11 +107,21 @@ type CreateRemitoUvaInput = {
 };
 
 type UpdateRemitoUvaInput = {
+  fincaId?: string;
+  cuartelId?: string;
+  loteCosechaId?: string;
   salida_finca?: string;
   llegada_bodega?: string;
   transportista?: string;
   patente?: string;
   kg_declarados?: number;
+};
+
+type ListLotesCosechaInput = {
+  userId: string;
+  bodegaId?: string;
+  fincaId?: string;
+  cuartelId?: string;
 };
 
 type CreateRecepcionBodegaInput = {
@@ -135,6 +148,7 @@ type CreateAnalisisRecepcionInput = {
   acidez?: number;
   sanidad?: string;
   temperatura_uva?: number;
+  observaciones?: string;
 };
 
 type UpdateAnalisisRecepcionInput = {
@@ -143,6 +157,7 @@ type UpdateAnalisisRecepcionInput = {
   acidez?: number;
   sanidad?: string;
   temperatura_uva?: number;
+  observaciones?: string;
 };
 
 type CreateOperacionVasijaInput = {
@@ -360,6 +375,34 @@ async function getRemitoScoped(remitoUvaId: string, userId: string) {
   if (!remito) throw new ElaboracionError("Remito de uva no encontrado", 404);
   await ensureUserBodega(userId, remito.bodega_id);
   return remito;
+}
+
+async function validateRemitoOrigen(input: {
+  bodegaId: string;
+  fincaId: string;
+  cuartelId: string;
+  loteCosechaId: string;
+}) {
+  const cuartel = await prisma.cuartel.findFirst({
+    where: {
+      cuartel_id: input.cuartelId,
+      finca_id: input.fincaId,
+      finca: { bodega_id: input.bodegaId },
+    },
+    select: { cuartel_id: true },
+  });
+  if (!cuartel) {
+    throw new ElaboracionError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+  }
+
+  const lote = await prisma.eventoCosecha.findUnique({
+    where: { lote_cosecha_id: input.loteCosechaId },
+    select: { lote_cosecha_id: true, cuartel_id: true },
+  });
+  if (!lote) throw new ElaboracionError("Lote de cosecha no encontrado", 404);
+  if (lote.cuartel_id !== input.cuartelId) {
+    throw new ElaboracionError("El lote de cosecha no corresponde al cuartel seleccionado", 400);
+  }
 }
 
 async function getRecepcionScoped(recepcionBodegaId: string, userId: string) {
@@ -979,12 +1022,55 @@ export async function deleteCodigoEnvase(codigoEnvaseId: string, userId: string)
   return { deleted: true };
 }
 
+export async function listLotesCosecha(input: ListLotesCosechaInput) {
+  const { userId, bodegaId, fincaId, cuartelId } = input;
+  const bodegaIds = bodegaId ? [bodegaId] : await getUserBodegaIds(userId);
+  if (bodegaIds.length === 0) return [];
+  if (bodegaId) await ensureUserBodega(userId, bodegaId);
+
+  const where: Prisma.EventoCosechaWhereInput = {
+    cuartel: {
+      ...(cuartelId ? { cuartel_id: cuartelId } : {}),
+      ...(fincaId ? { finca_id: fincaId } : {}),
+      finca: { bodega_id: { in: bodegaIds } },
+    },
+  };
+
+  return prisma.eventoCosecha.findMany({
+    where,
+    select: {
+      lote_cosecha_id: true,
+      fecha_cosecha: true,
+      cantidad: true,
+      unidad: true,
+      destino: true,
+      cuartel_id: true,
+      campania_id: true,
+      cuartel: {
+        select: {
+          cuartel_id: true,
+          codigo_cuartel: true,
+          finca_id: true,
+          finca: {
+            select: {
+              finca_id: true,
+              nombre_finca: true,
+              bodega_id: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ fecha_cosecha: "desc" }],
+  });
+}
+
 export async function listRemitosUva(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
     return prisma.remitoUva.findMany({
       where: { bodega_id: bodegaId },
-      include: { evento_cosecha: true, recepcion_bodega: true },
+      include: { finca: true, cuartel: true, evento_cosecha: true, recepcion_bodega: true },
       orderBy: [{ salida_finca: "desc" }],
     });
   }
@@ -992,7 +1078,7 @@ export async function listRemitosUva(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.remitoUva.findMany({
     where: { bodega_id: { in: bodegaIds } },
-    include: { evento_cosecha: true, recepcion_bodega: true },
+    include: { finca: true, cuartel: true, evento_cosecha: true, recepcion_bodega: true },
     orderBy: [{ salida_finca: "desc" }],
   });
 }
@@ -1001,7 +1087,7 @@ export async function getRemitoUvaById(remitoUvaId: string, userId: string) {
   await getRemitoScoped(remitoUvaId, userId);
   return prisma.remitoUva.findUnique({
     where: { remito_uva_id: remitoUvaId },
-    include: { evento_cosecha: true, recepcion_bodega: true },
+    include: { finca: true, cuartel: true, evento_cosecha: true, recepcion_bodega: true },
   });
 }
 
@@ -1009,6 +1095,8 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
   const {
     userId,
     bodegaId,
+    fincaId,
+    cuartelId,
     loteCosechaId,
     salida_finca,
     llegada_bodega,
@@ -1016,22 +1104,20 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
     patente,
     kg_declarados,
   } = input;
-  if (!bodegaId || !loteCosechaId || !salida_finca) {
+  if (!bodegaId || !fincaId || !cuartelId || !loteCosechaId || !salida_finca) {
     throw new ElaboracionError(
-      "bodegaId, loteCosechaId y salida_finca son requeridos",
+      "bodegaId, fincaId, cuartelId, loteCosechaId y salida_finca son requeridos",
       400,
     );
   }
   await ensureUserBodega(userId, bodegaId);
-  const lote = await prisma.eventoCosecha.findUnique({
-    where: { lote_cosecha_id: loteCosechaId },
-    select: { lote_cosecha_id: true },
-  });
-  if (!lote) throw new ElaboracionError("Lote de cosecha no encontrado", 404);
+  await validateRemitoOrigen({ bodegaId, fincaId, cuartelId, loteCosechaId });
 
   return prisma.remitoUva.create({
     data: {
       bodega_id: bodegaId,
+      finca_id: fincaId,
+      cuartel_id: cuartelId,
       lote_cosecha_id: loteCosechaId,
       salida_finca: parseDate(salida_finca, "Salida finca"),
       ...(llegada_bodega !== undefined
@@ -1049,10 +1135,32 @@ export async function updateRemitoUva(
   userId: string,
   input: UpdateRemitoUvaInput,
 ) {
-  await getRemitoScoped(remitoUvaId, userId);
+  const current = await getRemitoScoped(remitoUvaId, userId);
+  const nextBodegaId = current.bodega_id;
+  const nextFincaId = input.fincaId;
+  const nextCuartelId = input.cuartelId;
+  const nextLoteCosechaId = input.loteCosechaId;
+
+  if (nextFincaId || nextCuartelId || nextLoteCosechaId) {
+    const existing = await prisma.remitoUva.findUnique({
+      where: { remito_uva_id: remitoUvaId },
+      select: { finca_id: true, cuartel_id: true, lote_cosecha_id: true },
+    });
+    if (!existing) throw new ElaboracionError("Remito de uva no encontrado", 404);
+    await validateRemitoOrigen({
+      bodegaId: nextBodegaId,
+      fincaId: nextFincaId ?? existing.finca_id,
+      cuartelId: nextCuartelId ?? existing.cuartel_id,
+      loteCosechaId: nextLoteCosechaId ?? existing.lote_cosecha_id,
+    });
+  }
+
   return prisma.remitoUva.update({
     where: { remito_uva_id: remitoUvaId },
     data: {
+      ...(input.fincaId !== undefined ? { finca_id: input.fincaId } : {}),
+      ...(input.cuartelId !== undefined ? { cuartel_id: input.cuartelId } : {}),
+      ...(input.loteCosechaId !== undefined ? { lote_cosecha_id: input.loteCosechaId } : {}),
       ...(input.salida_finca !== undefined
         ? { salida_finca: parseDate(input.salida_finca, "Salida finca") }
         : {}),
@@ -1078,7 +1186,10 @@ export async function listRecepcionesBodega(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.recepcionBodega.findMany({
     where: { remito_uva: { bodega_id: { in: bodegaIds } } },
-    include: { remito_uva: true, analisis_recepcion: true },
+    include: {
+      remito_uva: { include: { finca: true, cuartel: true, evento_cosecha: true } },
+      analisis_recepcion: true,
+    },
     orderBy: [{ fecha_hora: "desc" }],
   });
 }
@@ -1087,7 +1198,10 @@ export async function getRecepcionBodegaById(recepcionBodegaId: string, userId: 
   await getRecepcionScoped(recepcionBodegaId, userId);
   return prisma.recepcionBodega.findUnique({
     where: { recepcion_bodega_id: recepcionBodegaId },
-    include: { remito_uva: true, analisis_recepcion: true },
+    include: {
+      remito_uva: { include: { finca: true, cuartel: true, evento_cosecha: true } },
+      analisis_recepcion: true,
+    },
   });
 }
 
@@ -1153,7 +1267,16 @@ export async function getAnalisisRecepcionById(analisisRecepcionId: string, user
 }
 
 export async function createAnalisisRecepcion(input: CreateAnalisisRecepcionInput) {
-  const { userId, recepcionBodegaId, brix, ph, acidez, sanidad, temperatura_uva } = input;
+  const {
+    userId,
+    recepcionBodegaId,
+    brix,
+    ph,
+    acidez,
+    sanidad,
+    temperatura_uva,
+    observaciones,
+  } = input;
   if (!recepcionBodegaId) {
     throw new ElaboracionError("recepcionBodegaId es requerido", 400);
   }
@@ -1166,6 +1289,7 @@ export async function createAnalisisRecepcion(input: CreateAnalisisRecepcionInpu
       ...(acidez !== undefined ? { acidez } : {}),
       ...(sanidad !== undefined ? { sanidad } : {}),
       ...(temperatura_uva !== undefined ? { temperatura_uva } : {}),
+      ...(observaciones !== undefined ? { observaciones } : {}),
     },
   });
 }
@@ -1185,6 +1309,9 @@ export async function updateAnalisisRecepcion(
       ...(input.sanidad !== undefined ? { sanidad: input.sanidad } : {}),
       ...(input.temperatura_uva !== undefined
         ? { temperatura_uva: input.temperatura_uva }
+        : {}),
+      ...(input.observaciones !== undefined
+        ? { observaciones: input.observaciones }
         : {}),
     },
   });

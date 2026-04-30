@@ -2,6 +2,19 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prismaClient.js";
 import { login, loginByNombre } from "../auth/auth.service.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
+import {
+  getTipoVariedadForVariedad,
+  isValidCultivo,
+  isValidManejoCultivo,
+  isValidSistemaRiego,
+  isValidSistemaConduccion,
+  isValidVariedad,
+  normalizeCultivo,
+  normalizeManejoCultivo,
+  normalizeSistemaRiego,
+  normalizeSistemaConduccion,
+  normalizeVariedad,
+} from "../cuarteles/cuartel.catalog.js";
 
 type PendingDelegation = {
   botUserId: string;
@@ -50,6 +63,20 @@ export class BotError extends Error {
   }
 }
 
+const FINCA_PRODUCCION_EVENT_TYPES = new Set([
+  "riego",
+  "cosecha",
+  "fenologia",
+  "fertilizacion",
+  "labor_suelo",
+  "canopia",
+  "aplicacion_fitosanitaria",
+  "monitoreo_enfermedad",
+  "monitoreo_plaga",
+  "analisis_suelo",
+  "precipitacion",
+]);
+
 function normalizeScopes(scopes: string[]) {
   return Array.from(new Set(scopes.filter((s) => typeof s === "string" && s.trim().length > 0)));
 }
@@ -85,6 +112,36 @@ async function ensureBodegaMembership(userId: string, bodegaId?: string) {
   });
   if (!rel) {
     throw new BotError("No autorizado para delegar en esta bodega", 403);
+  }
+}
+
+async function ensureValidFincaTargetForTask(input: {
+  bodegaId: string;
+  fincaId?: string | undefined;
+  cuartelId?: string | undefined;
+  eventoTipo?: string | null;
+}) {
+  const normalizedEventoTipo = String(input.eventoTipo ?? "").toLowerCase().trim();
+  const requiresTarget = FINCA_PRODUCCION_EVENT_TYPES.has(normalizedEventoTipo);
+
+  if (requiresTarget && (!input.fincaId || !input.cuartelId)) {
+    throw new BotError("Las ordenes de finca requieren fincaId y cuartelId", 400);
+  }
+  if (!input.fincaId && !input.cuartelId) return;
+  if (!input.fincaId || !input.cuartelId) {
+    throw new BotError("Para indicar destino de finca se requiere fincaId y cuartelId", 400);
+  }
+
+  const cuartel = await prisma.cuartel.findFirst({
+    where: {
+      cuartel_id: input.cuartelId,
+      finca_id: input.fincaId,
+      finca: { bodega_id: input.bodegaId },
+    },
+    select: { cuartel_id: true },
+  });
+  if (!cuartel) {
+    throw new BotError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
   }
 }
 
@@ -470,11 +527,17 @@ export async function botCrearTarea(
 
   const proceso = await prisma.protocoloProceso.findUnique({
     where: { proceso_id: input.procesoId },
-    select: { nombre: true },
+    select: { nombre: true, evento_tipo: true },
   });
   if (!proceso) {
     throw new BotError("Proceso no encontrado", 404);
   }
+  await ensureValidFincaTargetForTask({
+    bodegaId: input.bodegaId,
+    fincaId: input.fincaId,
+    cuartelId: input.cuartelId,
+    eventoTipo: proceso.evento_tipo,
+  });
 
   const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
   if (assigneeUserIds.length > 0) {
@@ -914,16 +977,42 @@ export async function botCrearCuartel(
     "cuarteles.crear",
   );
 
+  const cultivoNormalizado = normalizeCultivo(input.cultivo);
+  if (!isValidCultivo(cultivoNormalizado)) {
+    throw new BotError("Cultivo inválido. Actualmente solo se permite Vid.", 400);
+  }
+
+  const variedadNormalizada = normalizeVariedad(input.variedad);
+  if (!isValidVariedad(variedadNormalizada)) {
+    throw new BotError("Variedad inválida. Usá una variedad del catálogo.", 400);
+  }
+
+  const manejoCultivo = normalizeManejoCultivo(input.sistema_productivo);
+  if (!isValidManejoCultivo(manejoCultivo)) {
+    throw new BotError("Manejo de cultivo inválido. Usá una opción del catálogo.", 400);
+  }
+
+  const sistemaRiegoNormalizado = normalizeSistemaRiego(input.sistema_riego);
+  if (!isValidSistemaRiego(sistemaRiegoNormalizado)) {
+    throw new BotError("Sistema de riego inválido. Usá una opción del catálogo.", 400);
+  }
+
+  const sistemaConduccionNormalizado = normalizeSistemaConduccion(input.sistema_conduccion);
+  if (!isValidSistemaConduccion(sistemaConduccionNormalizado)) {
+    throw new BotError("Sistema de conducción inválido. Usá una opción del catálogo.", 400);
+  }
+
   const cuartel = await prisma.cuartel.create({
     data: {
       finca_id: input.fincaId,
       codigo_cuartel: input.codigo_cuartel,
       ...(input.superficie_ha !== undefined ? { superficie_ha: input.superficie_ha } : {}),
-      ...(input.cultivo !== undefined ? { cultivo: input.cultivo } : {}),
-      ...(input.variedad !== undefined ? { variedad: input.variedad } : {}),
-      ...(input.sistema_riego !== undefined ? { sistema_riego: input.sistema_riego } : {}),
-      ...(input.sistema_productivo !== undefined ? { sistema_productivo: input.sistema_productivo } : {}),
-      ...(input.sistema_conduccion !== undefined ? { sistema_conduccion: input.sistema_conduccion } : {}),
+      cultivo: cultivoNormalizado,
+      tipo_variedad: getTipoVariedadForVariedad(variedadNormalizada),
+      variedad: variedadNormalizada,
+      ...(sistemaRiegoNormalizado ? { sistema_riego: sistemaRiegoNormalizado } : {}),
+      ...(manejoCultivo ? { sistema_productivo: manejoCultivo } : {}),
+      ...(sistemaConduccionNormalizado ? { sistema_conduccion: sistemaConduccionNormalizado } : {}),
     },
   });
 

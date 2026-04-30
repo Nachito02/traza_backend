@@ -2,14 +2,16 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+function createPrismaClient() {
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
+}
 
 const t = (campo, type, required, extra = {}) => ({ campo, type, required, ...extra });
 const plantilla = (campos) => ({ version: 1, campos });
 
-const etapas = [
+export const etapas = [
   {
     nombre: "CAPÍTULO 0 · ORIGEN",
     orden: 0,
@@ -433,7 +435,7 @@ const etapas = [
   },
 ];
 
-async function seed() {
+export async function seedProtocol(prisma) {
   await prisma.protocolo.updateMany({
     where: {
       NOT: {
@@ -487,11 +489,15 @@ async function seed() {
   console.log(`Protocolo seed OK. Etapas: ${etapas.length}`);
 }
 
-seed()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const prisma = createPrismaClient();
+
+  seedProtocol(prisma)
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

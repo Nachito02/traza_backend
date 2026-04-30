@@ -25,6 +25,8 @@ type UpdateTareaAsignacionEstadoInput = {
   observaciones?: string;
 };
 
+type TareaEntradaDraft = Record<string, unknown>;
+
 export class TareaError extends Error {
   status: number;
 
@@ -33,6 +35,20 @@ export class TareaError extends Error {
     this.status = status;
   }
 }
+
+const FINCA_PRODUCCION_EVENT_TYPES = new Set([
+  "riego",
+  "cosecha",
+  "fenologia",
+  "fertilizacion",
+  "labor_suelo",
+  "canopia",
+  "aplicacion_fitosanitaria",
+  "monitoreo_enfermedad",
+  "monitoreo_plaga",
+  "analisis_suelo",
+  "precipitacion",
+]);
 
 async function ensureCanManageBodega(userId: string, bodegaId: string) {
   const ok = await canManageBodega(userId, bodegaId);
@@ -72,6 +88,127 @@ async function ensureUsersBelongToBodega(userIds: string[], bodegaId: string) {
   }
 }
 
+async function ensureValidFincaTarget(input: {
+  bodegaId: string;
+  fincaId?: string | undefined;
+  cuartelId?: string | undefined;
+  requiresTarget: boolean;
+}) {
+  if (input.requiresTarget && (!input.fincaId || !input.cuartelId)) {
+    throw new TareaError("Las tareas de finca requieren fincaId y cuartelId", 400);
+  }
+  if (!input.fincaId && !input.cuartelId) return;
+  if (!input.fincaId || !input.cuartelId) {
+    throw new TareaError("Para indicar destino de finca se requiere fincaId y cuartelId", 400);
+  }
+
+  const cuartel = await prisma.cuartel.findFirst({
+    where: {
+      cuartel_id: input.cuartelId,
+      finca_id: input.fincaId,
+      finca: { bodega_id: input.bodegaId },
+    },
+    select: { cuartel_id: true },
+  });
+  if (!cuartel) {
+    throw new TareaError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+  }
+}
+
+function parseRequiredDate(value: unknown, label: string) {
+  const date = new Date(String(value ?? "").trim());
+  if (Number.isNaN(date.getTime())) {
+    throw new TareaError(`${label} inválida`, 400);
+  }
+  return date;
+}
+
+function parsePositiveNumber(value: unknown, label: string) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    throw new TareaError(`${label} debe ser mayor a cero`, 400);
+  }
+  return numberValue;
+}
+
+function parseRequiredString(value: unknown, label: string) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    throw new TareaError(`${label} requerido`, 400);
+  }
+  return text;
+}
+
+async function createCosechaFromTarea(input: {
+  tareaId: string;
+  userId: string;
+  draft: TareaEntradaDraft;
+}) {
+  const tarea = await prisma.tarea.findUnique({
+    where: { tarea_id: input.tareaId },
+    select: {
+      tarea_id: true,
+      bodega_id: true,
+      finca_id: true,
+      cuartel_id: true,
+      protocolo_proceso: { select: { evento_tipo: true } },
+    },
+  });
+  if (!tarea) throw new TareaError("Tarea no encontrada", 404);
+  if (String(tarea.protocolo_proceso.evento_tipo ?? "").toLowerCase().trim() !== "cosecha") {
+    return null;
+  }
+  if (!tarea.finca_id || !tarea.cuartel_id) {
+    throw new TareaError("La orden de cosecha requiere finca y cuartel para generar el lote", 400);
+  }
+
+  const campaniaId = parseRequiredString(input.draft.campaniaId, "Campaña");
+  const campania = await prisma.campania.findFirst({
+    where: { campania_id: campaniaId, bodega_id: tarea.bodega_id },
+    select: { campania_id: true },
+  });
+  if (!campania) {
+    throw new TareaError("La campaña seleccionada no pertenece a la bodega de la orden", 400);
+  }
+
+  const cuartel = await prisma.cuartel.findFirst({
+    where: {
+      cuartel_id: tarea.cuartel_id,
+      finca_id: tarea.finca_id,
+      finca: { bodega_id: tarea.bodega_id },
+    },
+    select: { cuartel_id: true },
+  });
+  if (!cuartel) {
+    throw new TareaError("El cuartel de la orden no pertenece a la finca/bodega indicada", 400);
+  }
+
+  return prisma.eventoCosecha.create({
+    data: {
+      fecha_cosecha: parseRequiredDate(input.draft.fecha_cosecha, "Fecha de cosecha"),
+      cuartel_id: tarea.cuartel_id,
+      campania_id: campaniaId,
+      cantidad: parsePositiveNumber(input.draft.cantidad, "Cantidad"),
+      unidad: parseRequiredString(input.draft.unidad, "Unidad"),
+      destino: parseRequiredString(input.draft.destino, "Destino"),
+      responsable_user_id: input.userId,
+    },
+    select: {
+      lote_cosecha_id: true,
+      fecha_cosecha: true,
+      cantidad: true,
+      unidad: true,
+      destino: true,
+    },
+  });
+}
+
+const tareaInclude = {
+  finca: { select: { finca_id: true, nombre_finca: true } },
+  cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
+  tarea_asignacion: true,
+};
+
 export async function createTarea(input: CreateTareaInput, actorUserId: string) {
   if (!input.bodegaId || !input.procesoId) {
     throw new TareaError("bodegaId y procesoId son requeridos", 400);
@@ -80,11 +217,20 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
 
   const proceso = await prisma.protocoloProceso.findUnique({
     where: { proceso_id: input.procesoId },
-    select: { nombre: true },
+    select: { nombre: true, evento_tipo: true },
   });
   if (!proceso) {
     throw new TareaError("Proceso no encontrado", 404);
   }
+  const requiresFincaTarget = FINCA_PRODUCCION_EVENT_TYPES.has(
+    String(proceso.evento_tipo ?? "").toLowerCase().trim(),
+  );
+  await ensureValidFincaTarget({
+    bodegaId: input.bodegaId,
+    fincaId: input.fincaId,
+    cuartelId: input.cuartelId,
+    requiresTarget: requiresFincaTarget,
+  });
 
   const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
   await ensureUsersBelongToBodega(assigneeUserIds, input.bodegaId);
@@ -144,6 +290,8 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
   const tarea = await prisma.tarea.create({
     data,
     include: {
+      finca: { select: { finca_id: true, nombre_finca: true } },
+      cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
       tarea_asignacion: {
         include: { app_user: { select: { user_id: true, nombre: true, email: true, whatsapp_e164: true } } },
       },
@@ -171,7 +319,7 @@ export async function listTareas(
         ...(estadoFilter ? { estado: estadoFilter } : {}),
       },
       orderBy: [{ created_at: "desc" }],
-      include: { tarea_asignacion: true },
+      include: tareaInclude,
     });
   }
 
@@ -223,7 +371,7 @@ export async function listTareas(
         }),
   };
 
-  return prisma.tarea.findMany({ where, orderBy: [{ created_at: "desc" }], include: { tarea_asignacion: true } });
+  return prisma.tarea.findMany({ where, orderBy: [{ created_at: "desc" }], include: tareaInclude });
 }
 
 export async function addTareaAsignaciones(
@@ -316,7 +464,7 @@ export async function listMyTareaAsignaciones(userId: string) {
   return prisma.tareaAsignacion.findMany({
     where: { user_id: userId },
     include: {
-      tarea: true,
+      tarea: { include: tareaInclude },
     },
     orderBy: [{ assigned_at: "desc" }],
   });
@@ -332,7 +480,7 @@ export async function listMyPendientes(userId: string) {
       estado: { in: estados },
     },
     include: {
-      tarea: true,
+      tarea: { include: tareaInclude },
     },
     orderBy: [{ assigned_at: "desc" }],
   });
@@ -405,6 +553,7 @@ export async function addTareaEntrada(input: {
   userId: string;
   descripcion?: string;
   adjuntos?: unknown;
+  draft?: TareaEntradaDraft;
 }) {
   const asignacion = await prisma.tareaAsignacion.findUnique({
     where: { tarea_asignacion_id: input.tareaAsignacionId },
@@ -417,11 +566,24 @@ export async function addTareaEntrada(input: {
   if (asignacion.user_id !== input.userId && !canManage) {
     throw new TareaError("No autorizado", 403);
   }
+  const cosecha = input.draft
+    ? await createCosechaFromTarea({
+        tareaId: asignacion.tarea_id,
+        userId: input.userId,
+        draft: input.draft,
+      })
+    : null;
+
+  const descripcion =
+    cosecha && input.descripcion
+      ? `${input.descripcion}\nlote_cosecha_id: ${cosecha.lote_cosecha_id}`
+      : input.descripcion;
+
   const entry = await prisma.tareaEntrada.create({
     data: {
       tarea_id: asignacion.tarea_id,
       created_by: input.userId,
-      descripcion: input.descripcion ?? null,
+      descripcion: descripcion ?? null,
       adjuntos: input.adjuntos ?? [],
     },
     select: {
@@ -438,6 +600,8 @@ export async function addTareaEntrada(input: {
     descripcion: entry.descripcion,
     adjuntos: entry.adjuntos,
     creadoPor: entry.app_user,
+    eventoCosecha: cosecha,
+    loteCosechaId: cosecha?.lote_cosecha_id ?? null,
   };
 }
 

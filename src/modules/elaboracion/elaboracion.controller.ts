@@ -54,6 +54,7 @@ import {
   listCortes,
   listDespachos,
   listExistenciasVasija,
+  listLotesCosecha,
   listLotesFraccionamiento,
   listOperacionesVasija,
   listProductos,
@@ -381,6 +382,27 @@ export async function deleteCodigoEnvaseHandler(req: Request, res: Response) {
     const userId = requireUserId(req, res);
     if (!userId) return;
     return res.json(await deleteCodigoEnvase(String(req.params.id ?? ""), userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function listLotesCosechaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    const bodegaId =
+      typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
+    const fincaId =
+      typeof req.query.fincaId === "string" ? req.query.fincaId : undefined;
+    const cuartelId =
+      typeof req.query.cuartelId === "string" ? req.query.cuartelId : undefined;
+    const params: Parameters<typeof listLotesCosecha>[0] = { userId };
+    if (bodegaId !== undefined) params.bodegaId = bodegaId;
+    if (fincaId !== undefined) params.fincaId = fincaId;
+    if (cuartelId !== undefined) params.cuartelId = cuartelId;
+
+    return res.json(await listLotesCosecha(params));
   } catch (error) {
     return handleError(res, error);
   }

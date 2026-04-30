@@ -174,6 +174,17 @@ function buildFincasDetalleResponse(
   });
 }
 
+function buildPropiaVinculosFromFincas(fincas: FincaDetalleRow[]): VinculoRow[] {
+  return fincas.map((finca) => ({
+    bodega_id: finca.bodega_id,
+    finca_id: finca.finca_id,
+    tipo_vinculo: "propia",
+    activo: true,
+    created_at: finca.created_at,
+    updated_at: finca.updated_at,
+  }));
+}
+
 export async function listFincasConDetalles(userId: string, bodegaId?: string) {
   const normalizedBodegaId = bodegaId?.trim();
 
@@ -187,7 +198,7 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
 
     const fincas = isAdminSistema || canManage
       ? await prisma.$queryRaw<FincaDetalleRow[]>`
-          SELECT DISTINCT
+          SELECT
             f."finca_id",
             f."bodega_id",
             f."nombre_finca",
@@ -198,16 +209,12 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
             f."created_at",
             f."updated_at"
           FROM "finca" f
-          LEFT JOIN "bodega_finca_vinculo" v
-            ON v."finca_id" = f."finca_id"
-           AND v."bodega_id" = ${resolvedBodegaId}::uuid
           WHERE f."activo" = true
-            AND (f."bodega_id" = ${resolvedBodegaId}::uuid
-             OR v."bodega_id" IS NOT NULL)
+            AND f."bodega_id" = ${resolvedBodegaId}::uuid
           ORDER BY f."nombre_finca" ASC
         `
       : await prisma.$queryRaw<FincaDetalleRow[]>`
-          SELECT DISTINCT
+          SELECT
             f."finca_id",
             f."bodega_id",
             f."nombre_finca",
@@ -221,26 +228,12 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
           JOIN "user_finca_rol" ufr
             ON ufr."finca_id" = f."finca_id"
            AND ufr."user_id" = ${userId}::uuid
-          LEFT JOIN "bodega_finca_vinculo" v
-            ON v."finca_id" = f."finca_id"
-           AND v."bodega_id" = ${resolvedBodegaId}::uuid
           WHERE f."activo" = true
-            AND (f."bodega_id" = ${resolvedBodegaId}::uuid
-             OR v."bodega_id" IS NOT NULL)
+            AND f."bodega_id" = ${resolvedBodegaId}::uuid
           ORDER BY f."nombre_finca" ASC
         `;
 
-    const vinculos = await prisma.$queryRaw<VinculoRow[]>`
-      SELECT
-        "bodega_id",
-        "finca_id",
-        "tipo_vinculo",
-        "activo",
-        "created_at",
-        "updated_at"
-      FROM "bodega_finca_vinculo"
-      WHERE "bodega_id" = ${resolvedBodegaId}::uuid
-    `;
+    const vinculos = buildPropiaVinculosFromFincas(fincas);
 
     return buildFincasDetalleResponse(fincas, vinculos, resolvedBodegaId);
   }
@@ -291,40 +284,7 @@ export async function listFincasConDetalles(userId: string, bodegaId?: string) {
         ORDER BY f."nombre_finca" ASC
       `;
 
-  const vinculos = adminSistema
-    ? await prisma.$queryRaw<VinculoRow[]>`
-        SELECT
-          "bodega_id",
-          "finca_id",
-          "tipo_vinculo",
-          "activo",
-          "created_at",
-          "updated_at"
-        FROM "bodega_finca_vinculo"
-      `
-    : await prisma.$queryRaw<VinculoRow[]>`
-        SELECT
-          v."bodega_id",
-          v."finca_id",
-          v."tipo_vinculo",
-          v."activo",
-          v."created_at",
-          v."updated_at"
-        FROM "bodega_finca_vinculo" v
-        JOIN "finca" f ON f."finca_id" = v."finca_id"
-        WHERE f."bodega_id" IN (
-          SELECT ubr."bodega_id"
-          FROM "user_bodega_rol" ubr
-          WHERE ubr."user_id" = ${userId}::uuid
-            AND ubr."rol" IN ('admin_bodega', 'encargado_bodega')
-        )
-        OR EXISTS (
-          SELECT 1
-          FROM "user_finca_rol" ufr
-          WHERE ufr."user_id" = ${userId}::uuid
-            AND ufr."finca_id" = f."finca_id"
-        )
-      `;
+  const vinculos = buildPropiaVinculosFromFincas(fincas);
 
   return buildFincasDetalleResponse(fincas, vinculos);
 }

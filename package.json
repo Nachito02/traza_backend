@@ -11,6 +11,7 @@
     "lint": "eslint 'src/**/*.ts'",
     "prisma:generate": "prisma generate",
     "seed:protocol": "node scripts/seed-protocol-from-doc.mjs",
+    "init:bd": "node scripts/initBD.mjs",
     "postinstall": "prisma generate"
   },
   "keywords": [],

@@ -86,10 +86,15 @@ CREATE TABLE "cuartel" (
     "codigo_cuartel" TEXT NOT NULL,
     "superficie_ha" DECIMAL(10,2),
     "cultivo" TEXT,
+    "tipo_variedad" TEXT,
     "variedad" TEXT,
     "sistema_riego" TEXT,
     "sistema_productivo" TEXT,
     "sistema_conduccion" TEXT,
+    "cantidad_hileras" INTEGER,
+    "largo_hileras_m" DECIMAL(10,2),
+    "densidad_hileras" DECIMAL(10,2),
+    "distancia_plantacion" TEXT,
     "activo" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -195,6 +200,8 @@ CREATE TABLE "evento_cosecha" (
 CREATE TABLE "remito_uva" (
     "remito_uva_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bodega_id" UUID NOT NULL,
+    "finca_id" UUID NOT NULL,
+    "cuartel_id" UUID NOT NULL,
     "lote_cosecha_id" UUID NOT NULL,
     "salida_finca" TIMESTAMPTZ(6) NOT NULL,
     "llegada_bodega" TIMESTAMPTZ(6),
@@ -228,6 +235,7 @@ CREATE TABLE "analisis_recepcion" (
     "acidez" DECIMAL(8,3),
     "sanidad" TEXT,
     "temperatura_uva" DECIMAL(8,3),
+    "observaciones" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "analisis_recepcion_pkey" PRIMARY KEY ("analisis_recepcion_id")
@@ -1090,6 +1098,9 @@ CREATE INDEX "idx_cosecha_cuartel_campania_fecha" ON "evento_cosecha"("cuartel_i
 CREATE INDEX "idx_remito_uva_bodega_fecha" ON "remito_uva"("bodega_id", "salida_finca");
 
 -- CreateIndex
+CREATE INDEX "idx_remito_uva_origen" ON "remito_uva"("finca_id", "cuartel_id");
+
+-- CreateIndex
 CREATE INDEX "idx_remito_uva_lote" ON "remito_uva"("lote_cosecha_id");
 
 -- CreateIndex
@@ -1448,6 +1459,12 @@ ALTER TABLE "evento_cosecha" ADD CONSTRAINT "evento_cosecha_responsable_persona_
 
 -- AddForeignKey
 ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_cuartel_id_fkey" FOREIGN KEY ("cuartel_id") REFERENCES "cuartel"("cuartel_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "remito_uva" ADD CONSTRAINT "remito_uva_lote_cosecha_id_fkey" FOREIGN KEY ("lote_cosecha_id") REFERENCES "evento_cosecha"("lote_cosecha_id") ON DELETE RESTRICT ON UPDATE NO ACTION;

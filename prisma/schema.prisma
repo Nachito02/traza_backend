@@ -148,10 +148,15 @@ model Cuartel {
   codigo_cuartel                  String
   superficie_ha                   Decimal?                        @db.Decimal(10, 2)
   cultivo                         String?
+  tipo_variedad                   String?
   variedad                        String?
   sistema_riego                   String?
   sistema_productivo              String?
   sistema_conduccion              String?
+  cantidad_hileras                Int?
+  largo_hileras_m                 Decimal?                        @db.Decimal(10, 2)
+  densidad_hileras                Decimal?                        @db.Decimal(10, 2)
+  distancia_plantacion            String?
   activo                          Boolean                         @default(true)
   created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                        @default(now()) @db.Timestamptz(6)
@@ -170,6 +175,7 @@ model Cuartel {
   evento_riego                    EventoRiego[]
   evento_enmienda                 EventoEnmienda[]
   evento_cobertura_erosion        EventoCoberturaErosion[]
+  remito_uva                      RemitoUva[]
   trazabilidad                    Trazabilidad[]
   trazabilidad_origen             TrazabilidadOrigen[]
   tarea                           Tarea[]
@@ -302,6 +308,8 @@ model EventoCosecha {
 model RemitoUva {
   remito_uva_id    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id        String            @db.Uuid
+  finca_id         String            @db.Uuid
+  cuartel_id       String            @db.Uuid
   lote_cosecha_id  String            @db.Uuid
   salida_finca     DateTime          @db.Timestamptz(6)
   llegada_bodega   DateTime?         @db.Timestamptz(6)
@@ -310,10 +318,13 @@ model RemitoUva {
   kg_declarados    Decimal?          @db.Decimal(12, 3)
   created_at       DateTime          @default(now()) @db.Timestamptz(6)
   bodega           Bodega            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  finca            Finca             @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
+  cuartel          Cuartel           @relation(fields: [cuartel_id], references: [cuartel_id], onDelete: Restrict, onUpdate: NoAction)
   evento_cosecha   EventoCosecha     @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
   recepcion_bodega RecepcionBodega[]
 
   @@index([bodega_id, salida_finca], map: "idx_remito_uva_bodega_fecha")
+  @@index([finca_id, cuartel_id], map: "idx_remito_uva_origen")
   @@index([lote_cosecha_id], map: "idx_remito_uva_lote")
   @@map("remito_uva")
 }
@@ -345,6 +356,7 @@ model AnalisisRecepcion {
   acidez                Decimal?        @db.Decimal(8, 3)
   sanidad               String?
   temperatura_uva       Decimal?        @db.Decimal(8, 3)
+  observaciones         String?
   created_at            DateTime        @default(now()) @db.Timestamptz(6)
   recepcion_bodega      RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -992,6 +1004,7 @@ model Finca {
   updated_at           DateTime              @default(now()) @db.Timestamptz(6)
   cuartel              Cuartel[]
   evento_precipitacion EventoPrecipitacion[]
+  remito_uva           RemitoUva[]
   bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   trazabilidad         Trazabilidad[]
   trazabilidad_origen  TrazabilidadOrigen[]

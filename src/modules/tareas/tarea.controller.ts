@@ -186,6 +186,7 @@ export async function addTareaEntradaHandler(req: Request, res: Response) {
       userId: req.user.userId,
       descripcion,
       adjuntos,
+      draft: body.draft && typeof body.draft === "object" ? body.draft : undefined,
     });
     return res.status(201).json(entry);
   } catch (error) {

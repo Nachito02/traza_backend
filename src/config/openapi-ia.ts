@@ -419,6 +419,8 @@ const openapiIaSpec = {
         tags: ["Tareas"],
         summary: "Iniciar creación de tarea desde WhatsApp (con auto-delegación)",
         description:
+          "Nota de contrato: aunque el recurso tecnico sigue llamandose `tarea`, para producto representa una orden de trabajo. " +
+          "Si el `procesoId` pertenece a un evento de finca (`cosecha`, `riego`, `fenologia`, `fertilizacion`, `labor_suelo`, `canopia`, `aplicacion_fitosanitaria`, `monitoreo_enfermedad`, `monitoreo_plaga`, `analisis_suelo` o `precipitacion`), el cliente debe enviar `fincaId` y `cuartelId`.\n\n" +
           "Verifica si el bot tiene delegación activa con scope `tareas.crear` para el usuario identificado por su WhatsApp.\n\n" +
           "- **Con delegación activa** → crea la tarea y devuelve `HTTP 201` con `status: \"created\"`.\n" +
           "- **Sin delegación** → solicita delegación automáticamente y devuelve `HTTP 202` con `status: \"delegacion_requerida\"`, el código de confirmación y los datos de la tarea pendiente para reintentar tras confirmar.",
@@ -433,8 +435,8 @@ const openapiIaSpec = {
                   whatsapp: { type: "string", example: "+541134567890", description: "Número E.164 del usuario en WhatsApp" },
                   bodegaId: { type: "string", format: "uuid" },
                   procesoId: { type: "string", format: "uuid", description: "ID del proceso del protocolo — determina el tipo de tarea" },
-                  fincaId: { type: "string", format: "uuid" },
-                  cuartelId: { type: "string", format: "uuid" },
+                  fincaId: { type: "string", format: "uuid", description: "Obligatorio junto con cuartelId para procesos de finca/cosecha" },
+                  cuartelId: { type: "string", format: "uuid", description: "Obligatorio junto con fincaId para procesos de finca/cosecha" },
                   descripcion: { type: "string" },
                   prioridad: { type: "string", enum: ["baja", "media", "alta"] },
                   fechaFin: { type: "string", format: "date-time" },
@@ -555,7 +557,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Agregar nota/entrada a la tarea",
-        description: "Registra una entrada estructurada de iteración. Soporta notas, plantilla y documentos (cid/url). Mantiene compatibilidad con descripcion/adjuntos.",
+        description: "Registra una entrada estructurada de iteración. Soporta notas, plantilla y documentos (cid/url). Mantiene compatibilidad con descripcion/adjuntos. Para cosecha, el lote no se informa manualmente: se crea desde la orden de cosecha cuando se registra el draft completo en el flujo operativo.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: true,
@@ -624,7 +626,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Guardar progreso intermedio, validar y persistir entrada estructurada",
-        description: "Llamar N veces con datos parciales. Cada respuesta incluye `validation.missingRequired` (campos que faltan), `validation.canClose` (si se puede finalizar) y `nextAction` (`ask_missing_or_fix_invalid` | `ready_to_submit_result`). Cuando `canClose: true`, llamar a `/finalizar`.",
+        description: "Llamar N veces con datos parciales. Cada respuesta incluye `validation.missingRequired` (campos que faltan), `validation.canClose` (si se puede finalizar) y `nextAction` (`ask_missing_or_fix_invalid` | `ready_to_submit_result`). Cuando `canClose: true`, llamar a `/finalizar`. Guardar progreso no reemplaza el cierre de la asignación.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: false,
@@ -732,6 +734,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Finalizar tarea — cierra o actualiza el estado",
+        description: "Finaliza la asignación cuando los datos ya fueron confirmados. No usar este endpoint como reemplazo de una entrada operativa; para datos parciales usar `/guardar-progreso` o `/entradas`.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: true,
@@ -1219,6 +1222,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Crear tarea en nombre de un encargado",
+        description: "Endpoint legacy. Para nuevos desarrollos usar `/api/ia/tareas/iniciar`. Si el `procesoId` pertenece a un evento de finca, enviar `fincaId` y `cuartelId` para no crear ordenes incompletas.",
         requestBody: {
           required: true,
           content: {
@@ -1230,8 +1234,8 @@ const openapiIaSpec = {
                   onBehalfUserId: { type: "string", format: "uuid" },
                   bodegaId: { type: "string", format: "uuid" },
                   procesoId: { type: "string", format: "uuid" },
-                  fincaId: { type: "string", format: "uuid" },
-                  cuartelId: { type: "string", format: "uuid" },
+                  fincaId: { type: "string", format: "uuid", description: "Obligatorio junto con cuartelId para procesos de finca/cosecha" },
+                  cuartelId: { type: "string", format: "uuid", description: "Obligatorio junto con fincaId para procesos de finca/cosecha" },
                   descripcion: { type: "string" },
                   prioridad: { type: "string", enum: ["baja", "media", "alta"] },
                   fechaFin: { type: "string", format: "date-time" },
@@ -1251,6 +1255,7 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Iniciar creación de tarea desde WhatsApp",
+        description: "Endpoint legacy equivalente al flujo IA. Aunque el recurso tecnico se llama tarea, para producto representa una orden de trabajo. Para procesos de finca/cosecha enviar siempre `fincaId` y `cuartelId`.",
         requestBody: {
           required: true,
           content: {
@@ -1262,8 +1267,8 @@ const openapiIaSpec = {
                   whatsapp: { type: "string", example: "+541134567890" },
                   bodegaId: { type: "string", format: "uuid" },
                   procesoId: { type: "string", format: "uuid" },
-                  fincaId: { type: "string", format: "uuid" },
-                  cuartelId: { type: "string", format: "uuid" },
+                  fincaId: { type: "string", format: "uuid", description: "Obligatorio junto con cuartelId para procesos de finca/cosecha" },
+                  cuartelId: { type: "string", format: "uuid", description: "Obligatorio junto con fincaId para procesos de finca/cosecha" },
                   descripcion: { type: "string" },
                   prioridad: { type: "string", enum: ["baja", "media", "alta"] },
                   fechaFin: { type: "string", format: "date-time" },
@@ -1394,11 +1399,29 @@ const openapiIaSpec = {
                   onBehalfUserId: { type: "string", format: "uuid" },
                   codigo_cuartel: { type: "string", example: "C-03" },
                   superficie_ha: { type: "number", example: 4.5 },
-                  cultivo: { type: "string", example: "vid" },
-                  variedad: { type: "string", example: "Malbec" },
-                  sistema_riego: { type: "string", example: "goteo" },
-                  sistema_productivo: { type: "string", example: "espaldera" },
-                  sistema_conduccion: { type: "string", example: "doble cordón" },
+                  cultivo: { type: "string", enum: ["Vid"], example: "Vid" },
+                  tipo_variedad: { type: "string", enum: ["tinta", "blanca", "rosada"], example: "tinta" },
+                  variedad: { type: "string", enum: ["malbec", "bonarda", "cabernet_sauvignon", "syrah", "merlot", "tempranillo", "pinot_noir", "sangiovese", "aspiran_bouschet", "pedro_gimenez", "torrontes_riojano", "torrontes_sanjuanino", "chardonnay", "sauvignon_blanc", "chenin", "semillon", "viognier", "ugni_blanc", "cereza", "criolla_grande", "moscatel_rosado"], example: "malbec" },
+                  sistema_riego: {
+                    type: "string",
+                    enum: ["goteo", "surco", "aspersion", "microaspersion", "secano"],
+                    example: "goteo",
+                  },
+                  sistema_productivo: {
+                    type: "string",
+                    enum: ["convencional", "organico_ecologico", "regenerativo", "labranza_cero_cobertura_vegetal", "biodinamica"],
+                    example: "organico_ecologico",
+                    description: "Manejo de cultivo",
+                  },
+                  sistema_conduccion: {
+                    type: "string",
+                    enum: ["espaldera", "parral", "vaso", "guyot", "cordon_bilateral_doble_cordon", "cordon_unilateral"],
+                    example: "cordon_bilateral_doble_cordon",
+                  },
+                  cantidad_hileras: { type: "integer", example: 42 },
+                  largo_hileras_m: { type: "number", example: 120 },
+                  densidad_hileras: { type: "number", example: 2.5 },
+                  distancia_plantacion: { type: "string", example: "2.5 x 1.2 m" },
                 },
               },
             },

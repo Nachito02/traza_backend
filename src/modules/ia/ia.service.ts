@@ -6,6 +6,23 @@ import {
   botAyudarCarga,
   botContactarAsignacion,
 } from "../bot/bot.service.js";
+import {
+  getTipoVariedadForVariedad,
+  isValidCultivo,
+  isValidManejoCultivo,
+  isValidSistemaRiego,
+  isValidSistemaConduccion,
+  isValidVariedad,
+  normalizeCultivo,
+  normalizeManejoCultivo,
+  normalizeSistemaRiego,
+  normalizeSistemaConduccion,
+  normalizeVariedad,
+  MANEJO_CULTIVO_VALUES,
+  SISTEMA_RIEGO_VALUES,
+  SISTEMA_CONDUCCION_VALUES,
+  VARIEDAD_VALUES,
+} from "../cuarteles/cuartel.catalog.js";
 
 type FieldSchema = {
   type: "string" | "number" | "date" | "boolean";
@@ -151,11 +168,12 @@ const EVENTO_INPUT_SCHEMAS: Record<string, EventoInputSchema> = {
     provincia: { type: "string", required: true },
     codigo_cuartel: { type: "string", required: true },
     superficie_ha: { type: "number", required: true, unit: "ha" },
-    cultivo: { type: "string", required: true },
-    variedad: { type: "string", required: true },
-    sistema_productivo: { type: "string", required: false },
-    sistema_riego: { type: "string", required: false },
-    sistema_conduccion: { type: "string", required: false },
+    cultivo: { type: "string", required: true, enum: ["Vid"] },
+    tipo_variedad: { type: "string", required: false, enum: ["tinta", "blanca", "rosada"] },
+    variedad: { type: "string", required: true, enum: VARIEDAD_VALUES },
+    sistema_productivo: { type: "string", required: false, enum: [...MANEJO_CULTIVO_VALUES], description: "Manejo de cultivo" },
+    sistema_riego: { type: "string", required: false, enum: [...SISTEMA_RIEGO_VALUES] },
+    sistema_conduccion: { type: "string", required: false, enum: [...SISTEMA_CONDUCCION_VALUES] },
     coordenadas: { type: "string", required: false },
     responsable_user_id: { type: "string", required: false },
   },
@@ -1137,15 +1155,41 @@ export async function createIaCuartel({
   });
   if (existing) throw new IaError(`Ya existe un cuartel con código "${codigoCuartel}" en esta finca`, 409);
 
+  const cultivoNormalizado = normalizeCultivo(cultivo);
+  if (!isValidCultivo(cultivoNormalizado)) {
+    throw new IaError("Cultivo inválido. Actualmente solo se permite Vid.", 400);
+  }
+
+  const variedadNormalizada = normalizeVariedad(variedad);
+  if (!isValidVariedad(variedadNormalizada)) {
+    throw new IaError("Variedad inválida. Usá una variedad del catálogo.", 400);
+  }
+
+  const manejoCultivo = normalizeManejoCultivo(sistemaProductivo);
+  if (!isValidManejoCultivo(manejoCultivo)) {
+    throw new IaError("Manejo de cultivo inválido. Usá una opción del catálogo.", 400);
+  }
+
+  const sistemaRiegoNormalizado = normalizeSistemaRiego(sistemaRiego);
+  if (!isValidSistemaRiego(sistemaRiegoNormalizado)) {
+    throw new IaError("Sistema de riego inválido. Usá una opción del catálogo.", 400);
+  }
+
+  const sistemaConduccionNormalizado = normalizeSistemaConduccion(sistemaConduccion);
+  if (!isValidSistemaConduccion(sistemaConduccionNormalizado)) {
+    throw new IaError("Sistema de conducción inválido. Usá una opción del catálogo.", 400);
+  }
+
   const data: Prisma.CuartelCreateInput = {
     finca: { connect: { finca_id: fincaId } },
     codigo_cuartel: codigoCuartel.trim(),
     ...(superficieHa !== undefined ? { superficie_ha: superficieHa } : {}),
-    ...(cultivo ? { cultivo } : {}),
-    ...(variedad ? { variedad } : {}),
-    ...(sistemaRiego ? { sistema_riego: sistemaRiego } : {}),
-    ...(sistemaProductivo ? { sistema_productivo: sistemaProductivo } : {}),
-    ...(sistemaConduccion ? { sistema_conduccion: sistemaConduccion } : {}),
+    cultivo: cultivoNormalizado,
+    tipo_variedad: getTipoVariedadForVariedad(variedadNormalizada),
+    variedad: variedadNormalizada,
+    ...(sistemaRiegoNormalizado ? { sistema_riego: sistemaRiegoNormalizado } : {}),
+    ...(manejoCultivo ? { sistema_productivo: manejoCultivo } : {}),
+    ...(sistemaConduccionNormalizado ? { sistema_conduccion: sistemaConduccionNormalizado } : {}),
   };
 
   return prisma.cuartel.create({ data });

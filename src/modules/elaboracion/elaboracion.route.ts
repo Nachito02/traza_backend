@@ -54,6 +54,7 @@ import {
   listCortesHandler,
   listDespachosHandler,
   listExistenciasVasijaHandler,
+  listLotesCosechaHandler,
   listLotesFraccionamientoHandler,
   listOperacionesVasijaHandler,
   listProductosHandler,
@@ -137,6 +138,8 @@ elaboracionRoutes.delete(
   authMiddleware,
   deleteCodigoEnvaseHandler,
 );
+
+elaboracionRoutes.get("/lotes-cosecha", authMiddleware, listLotesCosechaHandler);
 
 elaboracionRoutes.get("/remitos-uva", authMiddleware, listRemitosUvaHandler);
 elaboracionRoutes.post("/remitos-uva", authMiddleware, createRemitoUvaHandler);
