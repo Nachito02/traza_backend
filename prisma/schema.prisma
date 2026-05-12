@@ -7,6 +7,24 @@ datasource db {
   provider = "postgresql"
 }
 
+enum VasijaEtapa {
+  ingreso
+  fermentacion
+  trasiego
+  descube
+  correccion
+  corte_parcial
+}
+
+enum VasijaTipo {
+  Hormigon
+  AceroInoxidable
+  Roble
+  FibraDeVidrio
+  Polietileno
+  Ceramica
+}
+
 model AppUser {
   user_id                             String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombre                              String
@@ -370,16 +388,19 @@ model AnalisisRecepcion {
 model Ciu {
   ciu_id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id     String         @db.Uuid
+  finca_id      String?        @db.Uuid
   codigo_ciu    String
   estado        String         @default("emitido")
   emitido_at    DateTime       @db.Timestamptz(6)
   observaciones String?
   created_at    DateTime       @default(now()) @db.Timestamptz(6)
   bodega        Bodega         @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  finca         Finca?         @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
   ciu_recepcion CiuRecepcion[]
 
-  @@unique([codigo_ciu], map: "ciu_codigo_ciu_key")
+  @@unique([finca_id, codigo_ciu], map: "ciu_finca_codigo_ciu_key")
   @@index([bodega_id, emitido_at], map: "idx_ciu_bodega_emitido_at")
+  @@index([finca_id, emitido_at], map: "idx_ciu_finca_emitido_at")
   @@map("ciu")
 }
 
@@ -420,9 +441,9 @@ model Vasija {
   vasija_id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id            String                @db.Uuid
   codigo               String
-  tipo                 String?
+  tipo                 VasijaTipo?
   capacidad_litros     Decimal?              @db.Decimal(12, 3)
-  estado               String?               @default("disponible")
+  etapa                VasijaEtapa?
   ubicacion            String?
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
   updated_at           DateTime              @default(now()) @db.Timestamptz(6)
@@ -1008,6 +1029,7 @@ model Finca {
   cuartel              Cuartel[]
   evento_precipitacion EventoPrecipitacion[]
   remito_uva           RemitoUva[]
+  ciu                  Ciu[]
   bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   bodega_finca_vinculo BodegaFincaVinculo[]
   trazabilidad         Trazabilidad[]

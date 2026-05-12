@@ -7,7 +7,7 @@ type CreateVasijaInput = {
   codigo: string;
   tipo?: string;
   capacidad_litros?: number;
-  estado?: string;
+  etapa?: string;
   ubicacion?: string;
 };
 
@@ -15,9 +15,12 @@ type UpdateVasijaInput = {
   codigo?: string;
   tipo?: string;
   capacidad_litros?: number;
-  estado?: string;
+  etapa?: string;
   ubicacion?: string;
 };
+
+// Enums espejados del schema para casteo seguro
+const VASIJA_TIPO_VALUES = ["Hormigon","AceroInoxidable","Roble","FibraDeVidrio","Polietileno","Ceramica"] as const;
 
 type CorteComponenteInput = {
   vasijaId?: string;
@@ -166,6 +169,7 @@ type CreateOperacionVasijaInput = {
   vasijaOrigenId?: string;
   vasijaDestinoId?: string;
   ordenEnologoId?: string;
+  enologoUserId?: string;
   recepcionBodegaId?: string;
   tipo: "ingreso" | "fermentacion" | "trasiego" | "descube" | "correccion" | "corte_parcial";
   fecha_hora: string;
@@ -178,6 +182,7 @@ type UpdateOperacionVasijaInput = {
   vasijaOrigenId?: string;
   vasijaDestinoId?: string;
   ordenEnologoId?: string;
+  enologoUserId?: string;
   recepcionBodegaId?: string;
   tipo?: "ingreso" | "fermentacion" | "trasiego" | "descube" | "correccion" | "corte_parcial";
   fecha_hora?: string;
@@ -205,6 +210,7 @@ type UpdateDespachoInput = {
 type CreateCiuInput = {
   userId: string;
   bodegaId: string;
+  fincaId: string;
   codigo_ciu: string;
   estado?: string;
   emitido_at: string;
@@ -212,6 +218,7 @@ type CreateCiuInput = {
 };
 
 type UpdateCiuInput = {
+  fincaId?: string;
   codigo_ciu?: string;
   estado?: string;
   emitido_at?: string;
@@ -323,6 +330,56 @@ async function ensureUserBodega(userId: string, bodegaId: string) {
   }
 }
 
+async function resolveOrdenEnologoId(params: {
+  bodegaId: string;
+  fechaHora: string;
+  ordenEnologoId: string | undefined;
+  enologoUserId: string | undefined;
+}) {
+  const { bodegaId, fechaHora, ordenEnologoId, enologoUserId } = params;
+
+  if (ordenEnologoId) {
+    const orden = await prisma.ordenEnologo.findUnique({
+      where: { orden_enologo_id: ordenEnologoId },
+      select: { bodega_id: true },
+    });
+    if (!orden || orden.bodega_id !== bodegaId) {
+      throw new ElaboracionError("ordenEnologoId invalida para la bodega", 400);
+    }
+    return ordenEnologoId;
+  }
+
+  if (!enologoUserId) return undefined;
+
+  const membership = await prisma.userBodega.findFirst({
+    where: {
+      user_id: enologoUserId,
+      bodega_id: bodegaId,
+      user_bodega_rol: {
+        some: { rol: "enologo" },
+      },
+    },
+    select: { user_id: true },
+  });
+
+  if (!membership) {
+    throw new ElaboracionError("enologoUserId invalido para la bodega", 400);
+  }
+
+  const parsedFechaHora = parseDate(fechaHora, "Fecha hora");
+  const orden = await prisma.ordenEnologo.create({
+    data: {
+      bodega_id: bodegaId,
+      enologo_user_id: enologoUserId,
+      fecha: parsedFechaHora,
+      estado: "activa",
+    },
+    select: { orden_enologo_id: true },
+  });
+
+  return orden.orden_enologo_id;
+}
+
 async function getUserBodegaIds(userId: string) {
   const rels = await prisma.userBodega.findMany({
     where: { user_id: userId },
@@ -405,12 +462,22 @@ async function validateRemitoOrigen(input: {
   }
 }
 
+async function ensureFincaBodega(fincaId: string, bodegaId: string) {
+  const finca = await prisma.finca.findFirst({
+    where: { finca_id: fincaId, bodega_id: bodegaId },
+    select: { finca_id: true },
+  });
+  if (!finca) {
+    throw new ElaboracionError("La finca seleccionada no pertenece a la bodega indicada", 400);
+  }
+}
+
 async function getRecepcionScoped(recepcionBodegaId: string, userId: string) {
   const recepcion = await prisma.recepcionBodega.findUnique({
     where: { recepcion_bodega_id: recepcionBodegaId },
     select: {
       recepcion_bodega_id: true,
-      remito_uva: { select: { bodega_id: true } },
+      remito_uva: { select: { bodega_id: true, finca_id: true } },
     },
   });
   if (!recepcion) throw new ElaboracionError("Recepcion de bodega no encontrada", 404);
@@ -436,7 +503,7 @@ async function getAnalisisScoped(analisisRecepcionId: string, userId: string) {
 async function getOperacionScoped(operacionVasijaId: string, userId: string) {
   const operacion = await prisma.operacionVasija.findUnique({
     where: { operacion_vasija_id: operacionVasijaId },
-    select: { operacion_vasija_id: true, bodega_id: true },
+    select: { operacion_vasija_id: true, bodega_id: true, fecha_hora: true },
   });
   if (!operacion) throw new ElaboracionError("Operacion de vasija no encontrada", 404);
   await ensureUserBodega(userId, operacion.bodega_id);
@@ -459,7 +526,7 @@ async function getDespachoScoped(despachoId: string, userId: string) {
 async function getCiuScoped(ciuId: string, userId: string) {
   const ciu = await prisma.ciu.findUnique({
     where: { ciu_id: ciuId },
-    select: { ciu_id: true, bodega_id: true },
+    select: { ciu_id: true, bodega_id: true, finca_id: true },
   });
   if (!ciu) throw new ElaboracionError("CIU no encontrado", 404);
   await ensureUserBodega(userId, ciu.bodega_id);
@@ -564,7 +631,7 @@ export async function getVasijaById(vasijaId: string, userId: string) {
 }
 
 export async function createVasija(input: CreateVasijaInput) {
-  const { userId, bodegaId, codigo, tipo, capacidad_litros, estado, ubicacion } = input;
+  const { userId, bodegaId, codigo, tipo, capacidad_litros, etapa, ubicacion } = input;
   if (!bodegaId || !codigo) {
     throw new ElaboracionError("bodegaId y codigo son requeridos", 400);
   }
@@ -574,9 +641,9 @@ export async function createVasija(input: CreateVasijaInput) {
     data: {
       bodega_id: bodegaId,
       codigo,
-      ...(tipo !== undefined ? { tipo } : {}),
+      ...(tipo !== undefined ? { tipo: tipo as import("../../generated/prisma/index.js").VasijaTipo } : {}),
       ...(capacidad_litros !== undefined ? { capacidad_litros } : {}),
-      ...(estado !== undefined ? { estado } : {}),
+      ...(etapa !== undefined ? { etapa: etapa as import("../../generated/prisma/index.js").VasijaEtapa } : {}),
       ...(ubicacion !== undefined ? { ubicacion } : {}),
     },
   });
@@ -592,11 +659,11 @@ export async function updateVasija(
     where: { vasija_id: existing.vasija_id },
     data: {
       ...(input.codigo !== undefined ? { codigo: input.codigo } : {}),
-      ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.tipo !== undefined ? { tipo: input.tipo as import("../../generated/prisma/index.js").VasijaTipo } : {}),
       ...(input.capacidad_litros !== undefined
         ? { capacidad_litros: input.capacidad_litros }
         : {}),
-      ...(input.estado !== undefined ? { estado: input.estado } : {}),
+      ...(input.etapa !== undefined ? { etapa: input.etapa as import("../../generated/prisma/index.js").VasijaEtapa } : {}),
       ...(input.ubicacion !== undefined ? { ubicacion: input.ubicacion } : {}),
     },
   });
@@ -1328,10 +1395,21 @@ export async function deleteAnalisisRecepcion(
   return { deleted: true };
 }
 
+function decorateOperacionVasija<
+  T extends {
+    orden_enologo?: null | { enologo_user_id?: string | null };
+  },
+>(operacion: T) {
+  return {
+    ...operacion,
+    enologo_user_id: operacion.orden_enologo?.enologo_user_id ?? null,
+  };
+}
+
 export async function listOperacionesVasija(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
-    return prisma.operacionVasija.findMany({
+    const operaciones = await prisma.operacionVasija.findMany({
       where: { bodega_id: bodegaId },
       include: {
         vasija_origen: true,
@@ -1341,10 +1419,11 @@ export async function listOperacionesVasija(userId: string, bodegaId?: string) {
       },
       orderBy: [{ fecha_hora: "desc" }],
     });
+    return operaciones.map(decorateOperacionVasija);
   }
   const bodegaIds = await getUserBodegaIds(userId);
   if (bodegaIds.length === 0) return [];
-  return prisma.operacionVasija.findMany({
+  const operaciones = await prisma.operacionVasija.findMany({
     where: { bodega_id: { in: bodegaIds } },
     include: {
       vasija_origen: true,
@@ -1354,11 +1433,12 @@ export async function listOperacionesVasija(userId: string, bodegaId?: string) {
     },
     orderBy: [{ fecha_hora: "desc" }],
   });
+  return operaciones.map(decorateOperacionVasija);
 }
 
 export async function getOperacionVasijaById(operacionVasijaId: string, userId: string) {
   await getOperacionScoped(operacionVasijaId, userId);
-  return prisma.operacionVasija.findUnique({
+  const operacion = await prisma.operacionVasija.findUnique({
     where: { operacion_vasija_id: operacionVasijaId },
     include: {
       vasija_origen: true,
@@ -1367,6 +1447,7 @@ export async function getOperacionVasijaById(operacionVasijaId: string, userId: 
       recepcion_bodega: true,
     },
   });
+  return operacion ? decorateOperacionVasija(operacion) : operacion;
 }
 
 export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
@@ -1376,6 +1457,7 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
     vasijaOrigenId,
     vasijaDestinoId,
     ordenEnologoId,
+    enologoUserId,
     recepcionBodegaId,
     tipo,
     fecha_hora,
@@ -1406,15 +1488,12 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
       throw new ElaboracionError("vasijaDestinoId invalida para la bodega", 400);
     }
   }
-  if (ordenEnologoId) {
-    const orden = await prisma.ordenEnologo.findUnique({
-      where: { orden_enologo_id: ordenEnologoId },
-      select: { bodega_id: true },
-    });
-    if (!orden || orden.bodega_id !== bodegaId) {
-      throw new ElaboracionError("ordenEnologoId invalida para la bodega", 400);
-    }
-  }
+  const resolvedOrdenEnologoId = await resolveOrdenEnologoId({
+    bodegaId,
+    fechaHora: fecha_hora,
+    ordenEnologoId,
+    enologoUserId,
+  });
   if (recepcionBodegaId) {
     const recepcion = await prisma.recepcionBodega.findUnique({
       where: { recepcion_bodega_id: recepcionBodegaId },
@@ -1430,7 +1509,7 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
       bodega_id: bodegaId,
       ...(vasijaOrigenId !== undefined ? { vasija_origen_id: vasijaOrigenId } : {}),
       ...(vasijaDestinoId !== undefined ? { vasija_destino_id: vasijaDestinoId } : {}),
-      ...(ordenEnologoId !== undefined ? { orden_enologo_id: ordenEnologoId } : {}),
+      ...(resolvedOrdenEnologoId !== undefined ? { orden_enologo_id: resolvedOrdenEnologoId } : {}),
       ...(recepcionBodegaId !== undefined
         ? { recepcion_bodega_id: recepcionBodegaId }
         : {}),
@@ -1449,6 +1528,16 @@ export async function updateOperacionVasija(
   input: UpdateOperacionVasijaInput,
 ) {
   const operacion = await getOperacionScoped(operacionVasijaId, userId);
+  const nextFechaHora = input.fecha_hora ?? operacion.fecha_hora.toISOString();
+  const resolvedOrdenEnologoId = input.ordenEnologoId !== undefined || input.enologoUserId !== undefined
+    ? await resolveOrdenEnologoId({
+        bodegaId: operacion.bodega_id,
+        fechaHora: nextFechaHora,
+        ordenEnologoId: input.ordenEnologoId,
+        enologoUserId: input.enologoUserId,
+      })
+    : undefined;
+
   return prisma.operacionVasija.update({
     where: { operacion_vasija_id: operacionVasijaId },
     data: {
@@ -1458,8 +1547,8 @@ export async function updateOperacionVasija(
       ...(input.vasijaDestinoId !== undefined
         ? { vasija_destino_id: input.vasijaDestinoId }
         : {}),
-      ...(input.ordenEnologoId !== undefined
-        ? { orden_enologo_id: input.ordenEnologoId }
+      ...(input.ordenEnologoId !== undefined || input.enologoUserId !== undefined
+        ? { orden_enologo_id: resolvedOrdenEnologoId ?? null }
         : {}),
       ...(input.recepcionBodegaId !== undefined
         ? { recepcion_bodega_id: input.recepcionBodegaId }
@@ -1550,7 +1639,7 @@ export async function listCius(userId: string, bodegaId?: string) {
     await ensureUserBodega(userId, bodegaId);
     return prisma.ciu.findMany({
       where: { bodega_id: bodegaId },
-      include: { ciu_recepcion: true },
+      include: { finca: true, ciu_recepcion: true },
       orderBy: [{ emitido_at: "desc" }],
     });
   }
@@ -1558,7 +1647,7 @@ export async function listCius(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.ciu.findMany({
     where: { bodega_id: { in: bodegaIds } },
-    include: { ciu_recepcion: true },
+    include: { finca: true, ciu_recepcion: true },
     orderBy: [{ emitido_at: "desc" }],
   });
 }
@@ -1567,19 +1656,21 @@ export async function getCiuById(ciuId: string, userId: string) {
   await getCiuScoped(ciuId, userId);
   return prisma.ciu.findUnique({
     where: { ciu_id: ciuId },
-    include: { ciu_recepcion: { include: { recepcion_bodega: true } } },
+    include: { finca: true, ciu_recepcion: { include: { recepcion_bodega: true } } },
   });
 }
 
 export async function createCiu(input: CreateCiuInput) {
-  const { userId, bodegaId, codigo_ciu, estado, emitido_at, observaciones } = input;
-  if (!bodegaId || !codigo_ciu || !emitido_at) {
-    throw new ElaboracionError("bodegaId, codigo_ciu y emitido_at son requeridos", 400);
+  const { userId, bodegaId, fincaId, codigo_ciu, estado, emitido_at, observaciones } = input;
+  if (!bodegaId || !fincaId || !codigo_ciu || !emitido_at) {
+    throw new ElaboracionError("bodegaId, fincaId, codigo_ciu y emitido_at son requeridos", 400);
   }
   await ensureUserBodega(userId, bodegaId);
+  await ensureFincaBodega(fincaId, bodegaId);
   return prisma.ciu.create({
     data: {
       bodega_id: bodegaId,
+      finca_id: fincaId,
       codigo_ciu,
       emitido_at: parseDate(emitido_at, "Emitido at"),
       ...(estado !== undefined ? { estado } : {}),
@@ -1589,10 +1680,14 @@ export async function createCiu(input: CreateCiuInput) {
 }
 
 export async function updateCiu(ciuId: string, userId: string, input: UpdateCiuInput) {
-  await getCiuScoped(ciuId, userId);
+  const current = await getCiuScoped(ciuId, userId);
+  if (input.fincaId !== undefined) {
+    await ensureFincaBodega(input.fincaId, current.bodega_id);
+  }
   return prisma.ciu.update({
     where: { ciu_id: ciuId },
     data: {
+      ...(input.fincaId !== undefined ? { finca_id: input.fincaId } : {}),
       ...(input.codigo_ciu !== undefined ? { codigo_ciu: input.codigo_ciu } : {}),
       ...(input.estado !== undefined ? { estado: input.estado } : {}),
       ...(input.emitido_at !== undefined
@@ -1622,7 +1717,10 @@ export async function listCiuRecepciones(
       ...(opts?.ciuId ? { ciu_id: opts.ciuId } : {}),
       ...(opts?.recepcionBodegaId ? { recepcion_bodega_id: opts.recepcionBodegaId } : {}),
     },
-    include: { ciu: true, recepcion_bodega: true },
+    include: {
+      ciu: { include: { finca: true } },
+      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
+    },
     orderBy: [{ created_at: "desc" }],
   });
 }
@@ -1640,7 +1738,10 @@ export async function getCiuRecepcionById(
         recepcion_bodega_id: recepcionBodegaId,
       },
     },
-    include: { ciu: true, recepcion_bodega: true },
+    include: {
+      ciu: { include: { finca: true } },
+      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
+    },
   });
 }
 
@@ -1655,6 +1756,9 @@ export async function createCiuRecepcion(input: CreateCiuRecepcionInput) {
   ]);
   if (ciu.bodega_id !== recepcion.remito_uva.bodega_id) {
     throw new ElaboracionError("CIU y recepcion no pertenecen a la misma bodega", 400);
+  }
+  if (ciu.finca_id && ciu.finca_id !== recepcion.remito_uva.finca_id) {
+    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma finca", 400);
   }
   return prisma.ciuRecepcion.create({
     data: {
@@ -1679,6 +1783,9 @@ export async function updateCiuRecepcion(
   ]);
   if (ciu.bodega_id !== recepcion.remito_uva.bodega_id) {
     throw new ElaboracionError("CIU y recepcion no pertenecen a la misma bodega", 400);
+  }
+  if (ciu.finca_id && ciu.finca_id !== recepcion.remito_uva.finca_id) {
+    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma finca", 400);
   }
   return prisma.$transaction(async (tx) => {
     await tx.ciuRecepcion.delete({

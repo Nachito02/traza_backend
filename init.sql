@@ -245,6 +245,7 @@ CREATE TABLE "analisis_recepcion" (
 CREATE TABLE "ciu" (
     "ciu_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bodega_id" UUID NOT NULL,
+    "finca_id" UUID,
     "codigo_ciu" TEXT NOT NULL,
     "estado" TEXT NOT NULL DEFAULT 'emitido',
     "emitido_at" TIMESTAMPTZ(6) NOT NULL,
@@ -1116,7 +1117,10 @@ CREATE INDEX "idx_analisis_recepcion_recepcion" ON "analisis_recepcion"("recepci
 CREATE INDEX "idx_ciu_bodega_emitido_at" ON "ciu"("bodega_id", "emitido_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ciu_codigo_ciu_key" ON "ciu"("codigo_ciu");
+CREATE INDEX "idx_ciu_finca_emitido_at" ON "ciu"("finca_id", "emitido_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ciu_finca_codigo_ciu_key" ON "ciu"("finca_id", "codigo_ciu");
 
 -- CreateIndex
 CREATE INDEX "idx_ciu_recepcion_recepcion" ON "ciu_recepcion"("recepcion_bodega_id");
@@ -1477,6 +1481,9 @@ ALTER TABLE "analisis_recepcion" ADD CONSTRAINT "analisis_recepcion_recepcion_bo
 
 -- AddForeignKey
 ALTER TABLE "ciu" ADD CONSTRAINT "ciu_bodega_id_fkey" FOREIGN KEY ("bodega_id") REFERENCES "bodega"("bodega_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "ciu" ADD CONSTRAINT "ciu_finca_id_fkey" FOREIGN KEY ("finca_id") REFERENCES "finca"("finca_id") ON DELETE RESTRICT ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "ciu_recepcion" ADD CONSTRAINT "ciu_recepcion_ciu_id_fkey" FOREIGN KEY ("ciu_id") REFERENCES "ciu"("ciu_id") ON DELETE CASCADE ON UPDATE NO ACTION;

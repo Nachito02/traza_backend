@@ -5,6 +5,7 @@
 Table app_user {
   user_id String [pk]
   nombre String [not null]
+  username String [unique]
   email String [unique]
   whatsapp_e164 String [unique]
   whatsapp_verified_at DateTime
@@ -337,13 +338,19 @@ Table analisis_recepcion {
 Table ciu {
   ciu_id String [pk]
   bodega_id String [not null]
-  codigo_ciu String [unique, not null]
+  finca_id String
+  codigo_ciu String [not null]
   estado String [not null, default: 'emitido']
   emitido_at DateTime [not null]
   observaciones String
   created_at DateTime [default: `now()`, not null]
   bodega bodega [not null]
+  finca finca
   ciu_recepcion ciu_recepcion [not null]
+
+  indexes {
+    (finca_id, codigo_ciu) [unique]
+  }
 }
 
 Table ciu_recepcion {
@@ -379,9 +386,9 @@ Table vasija {
   vasija_id String [pk]
   bodega_id String [not null]
   codigo String [not null]
-  tipo String
+  tipo VasijaTipo
   capacidad_litros Decimal
-  estado String [default: 'disponible']
+  etapa VasijaEtapa
   ubicacion String
   created_at DateTime [default: `now()`, not null]
   updated_at DateTime [default: `now()`, not null]
@@ -871,6 +878,7 @@ Table finca {
   cuartel cuartel [not null]
   evento_precipitacion evento_precipitacion [not null]
   remito_uva remito_uva [not null]
+  ciu ciu [not null]
   bodega bodega [not null]
   bodega_finca_vinculo bodega_finca_vinculo [not null]
   trazabilidad trazabilidad [not null]
@@ -1286,6 +1294,24 @@ Table validacion_milestone {
   milestone milestone [not null]
 }
 
+Enum VasijaEtapa {
+  ingreso
+  fermentacion
+  trasiego
+  descube
+  correccion
+  corte_parcial
+}
+
+Enum VasijaTipo {
+  Hormigon
+  AceroInoxidable
+  Roble
+  FibraDeVidrio
+  Polietileno
+  Ceramica
+}
+
 Enum EvidenciaTipo {
   imagen
   pdf
@@ -1409,6 +1435,8 @@ Ref: recepcion_bodega.remito_uva_id > remito_uva.remito_uva_id [delete: Restrict
 Ref: analisis_recepcion.recepcion_bodega_id > recepcion_bodega.recepcion_bodega_id [delete: Cascade]
 
 Ref: ciu.bodega_id > bodega.bodega_id [delete: Restrict]
+
+Ref: ciu.finca_id > finca.finca_id [delete: Restrict]
 
 Ref: ciu_recepcion.ciu_id > ciu.ciu_id [delete: Cascade]
 
