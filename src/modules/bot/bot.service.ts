@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prismaClient.js";
+import { VasijaTipo } from "../../generated/prisma/index.js";
 import { login, loginByNombre } from "../auth/auth.service.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 import {
@@ -1095,7 +1096,7 @@ export async function botCrearVasija(
     data: {
       bodega_id: input.bodegaId,
       codigo: input.codigo,
-      ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.tipo !== undefined ? { tipo: input.tipo as VasijaTipo } : {}),
       ...(input.capacidad_litros !== undefined ? { capacidad_litros: input.capacidad_litros } : {}),
       ...(input.estado !== undefined ? { estado: input.estado } : {}),
       ...(input.ubicacion !== undefined ? { ubicacion: input.ubicacion } : {}),

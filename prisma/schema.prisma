@@ -1552,12 +1552,12 @@ enum TipoOperacionVasija {
   corte_parcial
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-  output   = "../erDiagram.svg"
-}
+// generator erd {
+//   provider = "prisma-erd-generator"
+//   output   = "../erDiagram.svg"
+// }
 
-generator dbml {
-  provider = "prisma-dbml-generator"
-  output   = "../schema.dbml"
-}
+// generator dbml {
+//   provider = "prisma-dbml-generator"
+//   output   = "../schema.dbml"
+// }
