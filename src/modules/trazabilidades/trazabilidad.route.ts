@@ -7,7 +7,6 @@ import {
   getTrazabilidadHandler,
   listTrazabilidadesHandler,
 } from "./trazabilidad.controller.js";
-import { listMilestonesByTrazabilidadHandler } from "../milestones/milestone.controller.js";
 
 export const trazabilidadRoutes = Router();
 
@@ -20,8 +19,3 @@ trazabilidadRoutes.get(
 );
 trazabilidadRoutes.get("/:id", authMiddleware, getTrazabilidadHandler);
 trazabilidadRoutes.post("/:id/origenes", authMiddleware, addTrazabilidadOrigenHandler);
-trazabilidadRoutes.get(
-  "/:id/milestones",
-  authMiddleware,
-  listMilestonesByTrazabilidadHandler,
-);

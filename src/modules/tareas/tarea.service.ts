@@ -139,13 +139,31 @@ function parseRequiredString(value: unknown, label: string) {
   return text;
 }
 
-async function createCosechaFromTarea(input: {
-  tareaId: string;
-  userId: string;
-  draft: TareaEntradaDraft;
-}) {
+function parseOptionalString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s || null;
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ── Contexto de tarea ────────────────────────────────────────────────────────
+
+type TareaContext = {
+  tarea_id: string;
+  bodega_id: string;
+  finca_id: string | null;
+  cuartel_id: string | null;
+  evento_tipo: string;
+};
+
+async function loadTareaContext(tareaId: string): Promise<TareaContext> {
   const tarea = await prisma.tarea.findUnique({
-    where: { tarea_id: input.tareaId },
+    where: { tarea_id: tareaId },
     select: {
       tarea_id: true,
       bodega_id: true,
@@ -155,52 +173,393 @@ async function createCosechaFromTarea(input: {
     },
   });
   if (!tarea) throw new TareaError("Tarea no encontrada", 404);
-  if (String(tarea.protocolo_proceso.evento_tipo ?? "").toLowerCase().trim() !== "cosecha") {
+  return {
+    tarea_id: tarea.tarea_id,
+    bodega_id: tarea.bodega_id,
+    finca_id: tarea.finca_id,
+    cuartel_id: tarea.cuartel_id,
+    evento_tipo: String(tarea.protocolo_proceso?.evento_tipo ?? "").toLowerCase().trim(),
+  };
+}
+
+// Resuelve y valida una campaniaId desde el draft contra la bodega de la tarea
+async function resolveCampania(
+  campaniaId: unknown,
+  bodegaId: string,
+  required: true,
+): Promise<string>;
+async function resolveCampania(
+  campaniaId: unknown,
+  bodegaId: string,
+  required?: false,
+): Promise<string | null>;
+async function resolveCampania(
+  campaniaId: unknown,
+  bodegaId: string,
+  required = false,
+): Promise<string | null> {
+  const id = parseOptionalString(campaniaId);
+  if (!id) {
+    if (required) throw new TareaError("campaniaId requerido para este tipo de evento", 400);
     return null;
   }
-  if (!tarea.finca_id || !tarea.cuartel_id) {
-    throw new TareaError("La orden de cosecha requiere finca y cuartel para generar el lote", 400);
-  }
-
-  const campaniaId = parseRequiredString(input.draft.campaniaId, "Campaña");
   const campania = await prisma.campania.findFirst({
-    where: { campania_id: campaniaId, bodega_id: tarea.bodega_id },
+    where: { campania_id: id, bodega_id: bodegaId },
     select: { campania_id: true },
   });
-  if (!campania) {
-    throw new TareaError("La campaña seleccionada no pertenece a la bodega de la orden", 400);
-  }
+  if (!campania) throw new TareaError("La campaña indicada no pertenece a la bodega de la orden", 400);
+  return campania.campania_id;
+}
 
+// Valida que el cuartel de la tarea pertenece a la finca/bodega correcta
+async function requireCuartelFinca(ctx: TareaContext): Promise<{ cuartel_id: string; finca_id: string }> {
+  if (!ctx.cuartel_id || !ctx.finca_id) {
+    throw new TareaError(`La orden de tipo "${ctx.evento_tipo}" requiere finca y cuartel asignados`, 400);
+  }
   const cuartel = await prisma.cuartel.findFirst({
     where: {
-      cuartel_id: tarea.cuartel_id,
-      finca_id: tarea.finca_id,
-      finca: { bodega_id: tarea.bodega_id },
+      cuartel_id: ctx.cuartel_id,
+      finca_id: ctx.finca_id,
+      finca: { bodega_id: ctx.bodega_id },
     },
     select: { cuartel_id: true },
   });
-  if (!cuartel) {
-    throw new TareaError("El cuartel de la orden no pertenece a la finca/bodega indicada", 400);
-  }
+  if (!cuartel) throw new TareaError("El cuartel de la orden no pertenece a la finca/bodega indicada", 400);
+  return { cuartel_id: ctx.cuartel_id, finca_id: ctx.finca_id };
+}
 
-  return prisma.eventoCosecha.create({
+// ── Tipo de retorno genérico ─────────────────────────────────────────────────
+
+type EventoMaterializado = {
+  tipo: string;
+  id: string;
+  [key: string]: unknown;
+};
+
+// ── Materializadores por tipo de evento ─────────────────────────────────────
+
+async function materializarCosecha(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoCosecha.create({
     data: {
-      fecha_cosecha: parseRequiredDate(input.draft.fecha_cosecha, "Fecha de cosecha"),
-      cuartel_id: tarea.cuartel_id,
-      campania_id: campaniaId,
-      cantidad: parsePositiveNumber(input.draft.cantidad, "Cantidad"),
-      unidad: parseRequiredString(input.draft.unidad, "Unidad"),
-      destino: parseRequiredString(input.draft.destino, "Destino"),
-      responsable_user_id: input.userId,
+      fecha_cosecha: parseRequiredDate(draft.fecha_cosecha, "Fecha de cosecha"),
+      cuartel_id,
+      campania_id,
+      cantidad: parsePositiveNumber(draft.cantidad, "Cantidad"),
+      unidad: parseRequiredString(draft.unidad, "Unidad"),
+      destino: parseRequiredString(draft.destino, "Destino"),
+      responsable_user_id: userId,
     },
-    select: {
-      lote_cosecha_id: true,
-      fecha_cosecha: true,
-      cantidad: true,
-      unidad: true,
-      destino: true,
-    },
+    select: { lote_cosecha_id: true, fecha_cosecha: true, cantidad: true, unidad: true, destino: true },
   });
+  return { tipo: "cosecha", id: result.lote_cosecha_id, ...result };
+}
+
+async function materializarRiego(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoRiego.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      volumen: parsePositiveNumber(draft.volumen, "Volumen"),
+      unidad: parseRequiredString(draft.unidad, "Unidad"),
+      tiempo_horas: parseOptionalNumber(draft.tiempo_horas),
+      sistema_riego: parseOptionalString(draft.sistema_riego),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_riego_id: true, fecha: true, volumen: true, unidad: true },
+  });
+  return { tipo: "riego", id: result.evento_riego_id, ...result };
+}
+
+async function materializarFenologia(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoFenologia.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      estado_fenologico: parseRequiredString(draft.estado_fenologico, "Estado fenológico"),
+      porcentaje_avance: parseOptionalNumber(draft.porcentaje_avance),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_fenologia_id: true, fecha: true, estado_fenologico: true },
+  });
+  return { tipo: "fenologia", id: result.evento_fenologia_id, ...result };
+}
+
+async function materializarFertilizacion(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoFertilizacion.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      dosis: parsePositiveNumber(draft.dosis, "Dosis"),
+      unidad: parseRequiredString(draft.unidad, "Unidad"),
+      metodo: parseOptionalString(draft.metodo),
+      cantidad_total: parseOptionalNumber(draft.cantidad_total),
+      insumo_id: parseOptionalString(draft.insumo_id),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_fertilizacion_id: true, fecha: true, dosis: true, unidad: true },
+  });
+  return { tipo: "fertilizacion", id: result.evento_fertilizacion_id, ...result };
+}
+
+async function materializarLaborSuelo(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoLaborSuelo.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      tipo_labor: parseRequiredString(draft.tipo_labor, "Tipo de labor"),
+      intensidad: parseOptionalString(draft.intensidad),
+      horas: parseOptionalNumber(draft.horas),
+      hs_por_ha: parseOptionalNumber(draft.hs_por_ha),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_labor_suelo_id: true, fecha: true, tipo_labor: true },
+  });
+  return { tipo: "labor_suelo", id: result.evento_labor_suelo_id, ...result };
+}
+
+async function materializarCanopia(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoCanopia.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      tipo_practica: parseRequiredString(draft.tipo_practica, "Tipo de práctica"),
+      intensidad: parseOptionalString(draft.intensidad),
+      jornales: parseOptionalNumber(draft.jornales),
+      observaciones: parseOptionalString(draft.observaciones),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_canopia_id: true, fecha: true, tipo_practica: true },
+  });
+  return { tipo: "canopia", id: result.evento_canopia_id, ...result };
+}
+
+async function materializarAplicacionFitosanitaria(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const carencia = parseOptionalNumber(draft.carencia_dias);
+  if (carencia === null) throw new TareaError("carencia_dias requerido", 400);
+
+  const result = await prisma.eventoAplicacionFitosanitaria.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      dosis: parsePositiveNumber(draft.dosis, "Dosis"),
+      unidad: parseRequiredString(draft.unidad, "Unidad"),
+      carencia_dias: carencia,
+      motivo: parseOptionalString(draft.motivo),
+      insumo_lote_id: parseOptionalString(draft.insumo_lote_id),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_fito_id: true, fecha: true, dosis: true, unidad: true, carencia_dias: true },
+  });
+  return { tipo: "aplicacion_fitosanitaria", id: result.evento_fito_id, ...result };
+}
+
+async function materializarMonitoreoEnfermedad(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoMonitoreoEnfermedad.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      enfermedad: parseRequiredString(draft.enfermedad, "Enfermedad"),
+      incidencia: parseOptionalString(draft.incidencia),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_monitoreo_enfermedad_id: true, fecha: true, enfermedad: true },
+  });
+  return { tipo: "monitoreo_enfermedad", id: result.evento_monitoreo_enfermedad_id, ...result };
+}
+
+async function materializarMonitoreoPlaga(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  const { cuartel_id } = await requireCuartelFinca(ctx);
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id, true);
+
+  const result = await prisma.eventoMonitoreoPlaga.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      cuartel_id,
+      campania_id,
+      plaga: parseRequiredString(draft.plaga, "Plaga"),
+      nivel: parseOptionalString(draft.nivel),
+      responsable_user_id: parseOptionalString(draft.responsable_user_id) ?? userId,
+    },
+    select: { evento_monitoreo_plaga_id: true, fecha: true, plaga: true },
+  });
+  return { tipo: "monitoreo_plaga", id: result.evento_monitoreo_plaga_id, ...result };
+}
+
+async function materializarAnalisisSuelo(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+): Promise<EventoMaterializado> {
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id);
+
+  const parametros =
+    draft.parametros && typeof draft.parametros === "object" && !Array.isArray(draft.parametros)
+      ? (draft.parametros as import("../../generated/prisma/index.js").Prisma.InputJsonObject)
+      : {};
+
+  const result = await prisma.eventoAnalisisDeSuelo.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      ...(ctx.cuartel_id ? { cuartel_id: ctx.cuartel_id } : {}),
+      ...(campania_id ? { campania_id } : {}),
+      unidad_muestreada: parseRequiredString(draft.unidad_muestreada, "Unidad muestreada"),
+      laboratorio: parseOptionalString(draft.laboratorio),
+      parametros,
+    },
+    select: { evento_analisis_suelo_id: true, fecha: true, unidad_muestreada: true },
+  });
+  return { tipo: "analisis_suelo", id: result.evento_analisis_suelo_id, ...result };
+}
+
+async function materializarPrecipitacion(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+): Promise<EventoMaterializado> {
+  if (!ctx.finca_id) {
+    throw new TareaError("La orden de precipitación requiere finca asignada", 400);
+  }
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id);
+
+  const result = await prisma.eventoPrecipitacion.create({
+    data: {
+      fecha: parseRequiredDate(draft.fecha, "Fecha"),
+      finca_id: ctx.finca_id,
+      ...(campania_id ? { campania_id } : {}),
+      milimetros: parsePositiveNumber(draft.milimetros, "Milímetros"),
+    },
+    select: { evento_precipitacion_id: true, fecha: true, milimetros: true },
+  });
+  return { tipo: "precipitacion", id: result.evento_precipitacion_id, ...result };
+}
+
+async function materializarEnergia(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+): Promise<EventoMaterializado> {
+  const campania_id = await resolveCampania(draft.campaniaId, ctx.bodega_id);
+
+  // El schema usa "tipo_energia" pero la columna en DB es "tipo"
+  const tipoEnergia = parseRequiredString(draft.tipo_energia ?? draft.tipo, "Tipo de energía");
+
+  const result = await prisma.eventoEnergia.create({
+    data: {
+      periodo: parseRequiredString(draft.periodo, "Período"),
+      tipo: tipoEnergia,
+      consumo: parsePositiveNumber(draft.consumo, "Consumo"),
+      unidad: parseRequiredString(draft.unidad, "Unidad"),
+      ...(ctx.cuartel_id ? { cuartel_id: ctx.cuartel_id } : {}),
+      ...(campania_id ? { campania_id } : {}),
+    },
+    select: { evento_energia_id: true, periodo: true, consumo: true, unidad: true },
+  });
+  return { tipo: "energia", id: result.evento_energia_id, tipo_energia: tipoEnergia, ...result };
+}
+
+// ── Dispatcher principal ─────────────────────────────────────────────────────
+
+async function materializarEvento(
+  tareaId: string,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado | null> {
+  const ctx = await loadTareaContext(tareaId);
+
+  switch (ctx.evento_tipo) {
+    case "cosecha":
+      return materializarCosecha(ctx, draft, userId);
+    case "riego":
+      return materializarRiego(ctx, draft, userId);
+    case "fenologia":
+      return materializarFenologia(ctx, draft, userId);
+    case "fertilizacion":
+      return materializarFertilizacion(ctx, draft, userId);
+    case "labor_suelo":
+      return materializarLaborSuelo(ctx, draft, userId);
+    case "canopia":
+      return materializarCanopia(ctx, draft, userId);
+    case "aplicacion_fitosanitaria":
+      return materializarAplicacionFitosanitaria(ctx, draft, userId);
+    case "monitoreo_enfermedad":
+      return materializarMonitoreoEnfermedad(ctx, draft, userId);
+    case "monitoreo_plaga":
+      return materializarMonitoreoPlaga(ctx, draft, userId);
+    case "analisis_suelo":
+      return materializarAnalisisSuelo(ctx, draft);
+    case "precipitacion":
+      return materializarPrecipitacion(ctx, draft);
+    case "energia":
+      return materializarEnergia(ctx, draft);
+    default:
+      // Tipos sin tabla tipada aún (accidente, capacitacion, etc.)
+      // el draft queda guardado en tareaEntrada.adjuntos como JSON
+      return null;
+  }
 }
 
 const tareaInclude = {
@@ -566,17 +925,17 @@ export async function addTareaEntrada(input: {
   if (asignacion.user_id !== input.userId && !canManage) {
     throw new TareaError("No autorizado", 403);
   }
-  const cosecha = input.draft
-    ? await createCosechaFromTarea({
-        tareaId: asignacion.tarea_id,
-        userId: input.userId,
-        draft: input.draft,
-      })
+
+  const evento = input.draft
+    ? await materializarEvento(asignacion.tarea_id, input.draft, input.userId)
     : null;
 
+  // Para cosecha mantenemos la referencia al lote en la descripción (compatibilidad)
+  const cosechaId =
+    evento?.tipo === "cosecha" ? (evento.lote_cosecha_id as string | undefined) ?? null : null;
   const descripcion =
-    cosecha && input.descripcion
-      ? `${input.descripcion}\nlote_cosecha_id: ${cosecha.lote_cosecha_id}`
+    cosechaId && input.descripcion
+      ? `${input.descripcion}\nlote_cosecha_id: ${cosechaId}`
       : input.descripcion;
 
   const entry = await prisma.tareaEntrada.create({
@@ -600,8 +959,10 @@ export async function addTareaEntrada(input: {
     descripcion: entry.descripcion,
     adjuntos: entry.adjuntos,
     creadoPor: entry.app_user,
-    eventoCosecha: cosecha,
-    loteCosechaId: cosecha?.lote_cosecha_id ?? null,
+    evento,
+    // Alias de compatibilidad para cosecha
+    eventoCosecha: evento?.tipo === "cosecha" ? evento : null,
+    loteCosechaId: cosechaId,
   };
 }
 

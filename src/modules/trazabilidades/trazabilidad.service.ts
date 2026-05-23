@@ -165,24 +165,6 @@ export async function createTrazabilidad({
     });
   }
 
-  // Crea milestones automáticamente según el protocolo
-  const procesos = await prisma.protocoloProceso.findMany({
-    where: { protocolo_etapa: { protocolo_id: protocoloId } },
-    select: { proceso_id: true },
-    orderBy: { orden: "asc" },
-  });
-
-  if (procesos.length > 0) {
-    await prisma.milestone.createMany({
-      data: procesos.map((p) => ({
-        trazabilidad_id: trazabilidad.trazabilidad_id,
-        proceso_id: p.proceso_id,
-        created_by: userId,
-        event_date: new Date(),
-      })),
-    });
-  }
-
   return trazabilidad;
 }
 

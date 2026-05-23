@@ -515,9 +515,8 @@ const openapiIaSpec = {
                   type: "object",
                   properties: {
                     tarea: { type: "object", description: "Resumen de la tarea" },
-                    eventoTipo: { type: "string", nullable: true, description: "Tipo de evento inferido del título/descripción de la tarea (o del milestone si existe)" },
+                    eventoTipo: { type: "string", nullable: true, description: "Tipo de evento inferido del título/descripción de la tarea" },
                     inputSchema: { type: "object", nullable: true, description: "Schema de campos requeridos/opcionales para registrar el evento inferido. Null si no se pudo inferir el tipo." },
-                    milestone: { type: "object", nullable: true },
                     trazabilidad: { type: "object", nullable: true },
                     hallazgosAbiertos: { type: "array" },
                     historialBot: { type: "array" },

@@ -651,13 +651,6 @@ async function getVisibleHallazgo(botUserId: string, hallazgoId: string) {
           campania: { select: { campania_id: true, nombre: true } },
         },
       },
-      milestone: {
-        include: {
-          protocolo_proceso: {
-            include: { protocolo_etapa: true },
-          },
-        },
-      },
     },
   });
   if (!hallazgo) {
@@ -1411,17 +1404,6 @@ export async function getIaTrazabilidadContext(trazabilidadId: string, botUserId
           cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
         },
       },
-      milestone: {
-        orderBy: [{ created_at: "asc" }],
-        include: {
-          protocolo_proceso: {
-            include: { protocolo_etapa: true },
-          },
-          evidencia: { orderBy: [{ created_at: "desc" }] },
-          milestone_evento: { orderBy: [{ created_at: "desc" }] },
-          validacion_milestone: { orderBy: [{ created_at: "desc" }] },
-        },
-      },
       hallazgo_cumplimiento: {
         orderBy: [{ created_at: "desc" }],
       },
@@ -1471,13 +1453,6 @@ export async function listIaHallazgos(params: {
           campania_id: true,
           nombre_producto: true,
           estado: true,
-        },
-      },
-      milestone: {
-        include: {
-          protocolo_proceso: {
-            include: { protocolo_etapa: true },
-          },
         },
       },
     },
