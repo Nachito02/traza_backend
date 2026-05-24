@@ -565,7 +565,11 @@ async function materializarEvento(
 const tareaInclude = {
   finca: { select: { finca_id: true, nombre_finca: true } },
   cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
-  tarea_asignacion: true,
+  tarea_asignacion: {
+    include: {
+      app_user: { select: { user_id: true, nombre: true, email: true } },
+    },
+  },
 };
 
 export async function createTarea(input: CreateTareaInput, actorUserId: string) {
@@ -994,6 +998,47 @@ export async function listTareaEntradas(tareaAsignacionId: string, userId: strin
     adjuntos: e.adjuntos,
     creadoPor: e.app_user,
   }));
+}
+
+type AdjuntoRecord = {
+  cid: string;
+  url: string;
+  nombre: string;
+  tipo: string;
+  size: number;
+};
+
+/**
+ * Appends an already-uploaded IPFS adjunto to a tarea_entrada's adjuntos JSON array.
+ * The file upload itself is done by the controller (IPFS call) before this runs.
+ */
+export async function addAdjuntoToEntrada(
+  entradaId: string,
+  userId: string,
+  adjunto: AdjuntoRecord,
+) {
+  const entrada = await prisma.tareaEntrada.findUnique({
+    where: { entrada_id: entradaId },
+    select: { entrada_id: true, created_by: true, adjuntos: true },
+  });
+  if (!entrada) throw new TareaError("Entrada no encontrada", 404);
+
+  const canManage = await canUserManageTareas(userId);
+  if (entrada.created_by !== userId && !canManage) {
+    throw new TareaError("No autorizado para modificar esta entrada", 403);
+  }
+
+  const current: AdjuntoRecord[] = Array.isArray(entrada.adjuntos)
+    ? (entrada.adjuntos as AdjuntoRecord[])
+    : [];
+
+  const updated = await prisma.tareaEntrada.update({
+    where: { entrada_id: entradaId },
+    data: { adjuntos: [...current, adjunto] },
+    select: { entrada_id: true, adjuntos: true },
+  });
+
+  return updated;
 }
 
 export async function finalizarTareaAsignacion(tareaAsignacionId: string, userId: string) {

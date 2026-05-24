@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { prisma } from '../../config/prismaClient.js';
 import {
   AuthError,
   changePassword,
@@ -101,10 +102,29 @@ export async function meHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: 'unauthorized' });
     }
-    const [user, roles] = await Promise.all([
-      getUserById(req.user.userId),
-      getUserRoles(req.user.userId),
+    const userId = req.user.userId;
+    const [user, roles, fincaRows] = await Promise.all([
+      getUserById(userId),
+      getUserRoles(userId),
+      prisma.$queryRaw<Array<{ finca_id: string; nombre_finca: string; bodega_id: string; rol: string }>>`
+        SELECT ufr."finca_id", f."nombre_finca", f."bodega_id", ufr."rol"
+        FROM "user_finca_rol" ufr
+        JOIN "finca" f ON f."finca_id" = ufr."finca_id"
+        WHERE ufr."user_id" = ${userId}::uuid
+        ORDER BY f."nombre_finca" ASC
+      `.catch(() => [] as Array<{ finca_id: string; nombre_finca: string; bodega_id: string; rol: string }>),
     ]);
+
+    const fincasById = new Map<string, { finca_id: string; nombre_finca: string; bodega_id: string; roles_en_finca: string[] }>();
+    for (const row of fincaRows) {
+      const current = fincasById.get(row.finca_id);
+      if (!current) {
+        fincasById.set(row.finca_id, { finca_id: row.finca_id, nombre_finca: row.nombre_finca, bodega_id: row.bodega_id, roles_en_finca: [row.rol] });
+      } else {
+        current.roles_en_finca.push(row.rol);
+      }
+    }
+
     return res.json({
       id: user.user_id,
       email: user.email,
@@ -116,7 +136,9 @@ export async function meHandler(req: Request, res: Response) {
         bodega_id: ub.bodega?.bodega_id,
         nombre: ub.bodega?.nombre,
         roles: ub.user_bodega_rol.map((r) => r.rol).sort(),
+        roles_en_bodega: ub.user_bodega_rol.map((r) => r.rol).sort(),
       })),
+      fincas: Array.from(fincasById.values()),
     });
   } catch (error) {
     return handleError(res, error);

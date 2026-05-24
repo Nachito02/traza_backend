@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  addAdjuntoToEntrada,
   addTareaAsignaciones,
   addTareaEntrada,
   canUserManageTareas,
@@ -14,6 +15,11 @@ import {
   listPendientesByBodega,
   updateMyTareaAsignacionEstado,
 } from "./tarea.service.js";
+import {
+  uploadToIpfs,
+  IpfsNotConfiguredError,
+  IpfsUploadError,
+} from "../../lib/ipfs.js";
 
 function handleError(res: Response, error: unknown) {
   if (error instanceof TareaError) {
@@ -253,5 +259,33 @@ export async function listBodegaPendientesHandler(req: Request, res: Response) {
     return res.json(rows);
   } catch (error) {
     return handleError(res, error);
+  }
+}
+
+export async function uploadEntradaAdjuntoHandler(req: Request, res: Response) {
+  try {
+    const { entradaId } = req.params;
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No se recibió ningún archivo." });
+    }
+
+    const adjunto = await uploadToIpfs(file.buffer, file.originalname, file.mimetype);
+    const updated = await addAdjuntoToEntrada(String(entradaId), req.user!.userId, adjunto);
+
+    return res.status(201).json({ adjunto, adjuntos: updated.adjuntos });
+  } catch (error) {
+    if (error instanceof IpfsNotConfiguredError) {
+      return res.status(503).json({ error: error.message });
+    }
+    if (error instanceof IpfsUploadError) {
+      return res.status(502).json({ error: error.message });
+    }
+    if (error instanceof TareaError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error("[uploadEntradaAdjunto]", error);
+    return res.status(500).json({ error: "Error interno al subir el archivo." });
   }
 }
