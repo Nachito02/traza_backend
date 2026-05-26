@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "prisma generate && tsc && cp -r src/generated dist/generated",
+    "build": "prisma generate && tsc && rm -rf dist/generated/prisma && cp -r src/generated/prisma dist/generated/prisma",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint 'src/**/*.ts'",

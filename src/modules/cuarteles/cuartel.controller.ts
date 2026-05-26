@@ -12,6 +12,15 @@ function handleError(res: Response, error: unknown) {
   if (error instanceof CuartelError) {
     return res.status(error.status).json({ error: error.message });
   }
+  // Unique constraint: codigo_cuartel duplicado en la misma finca
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  ) {
+    return res.status(409).json({ error: "Ya existe un cuartel con ese código en esta finca." });
+  }
   console.error("[cuartel]", error);
   return res.status(500).json({ error: "Error interno" });
 }
