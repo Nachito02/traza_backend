@@ -178,6 +178,8 @@ model Cuartel {
   largo_hileras_m                 Decimal?                        @db.Decimal(10, 2)
   densidad_hileras                Decimal?                        @db.Decimal(10, 2)
   distancia_plantacion            String?
+  poligono                        Json?
+  centroide                       Json?
   activo                          Boolean                         @default(true)
   created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                        @default(now()) @db.Timestamptz(6)

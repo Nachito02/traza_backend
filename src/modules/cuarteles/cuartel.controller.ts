@@ -35,6 +35,8 @@ export async function createCuartelHandler(req: Request, res: Response) {
       largo_hileras_m,
       densidad_hileras,
       distancia_plantacion,
+      poligono,
+      centroide,
     } = req.body ?? {};
     const cuartel = await createCuartel({
       fincaId,
@@ -50,6 +52,8 @@ export async function createCuartelHandler(req: Request, res: Response) {
       largo_hileras_m,
       densidad_hileras,
       distancia_plantacion,
+      poligono: poligono ?? null,
+      centroide: centroide ?? null,
       userId: req.user.userId,
     });
     return res.status(201).json(cuartel);
@@ -109,6 +113,8 @@ export async function updateCuartelHandler(req: Request, res: Response) {
       largo_hileras_m,
       densidad_hileras,
       distancia_plantacion,
+      poligono,
+      centroide,
     } = req.body ?? {};
     const cuartel = await updateCuartel(cuartelId, {
       codigo_cuartel,
@@ -123,6 +129,8 @@ export async function updateCuartelHandler(req: Request, res: Response) {
       largo_hileras_m,
       densidad_hileras,
       distancia_plantacion,
+      poligono: poligono !== undefined ? (poligono ?? null) : undefined,
+      centroide: centroide !== undefined ? (centroide ?? null) : undefined,
       userId: req.user.userId,
     });
     return res.json(cuartel);

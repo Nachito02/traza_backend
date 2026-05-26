@@ -106,6 +106,8 @@ export async function getPublicTrazabilidadCuartel(cuartelId: string) {
       sistema_riego: cuartel.sistema_riego,
       sistema_productivo: cuartel.sistema_productivo,
       sistema_conduccion: cuartel.sistema_conduccion,
+      poligono: cuartel.poligono ?? null,
+      centroide: cuartel.centroide ?? null,
       finca: cuartel.finca,
     },
     tareas: tareas.map((t) => ({

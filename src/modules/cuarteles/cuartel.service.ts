@@ -15,6 +15,9 @@ import {
   normalizeVariedad,
 } from "./cuartel.catalog.js";
 
+type GeoJSONPolygon = { type: "Polygon"; coordinates: [number, number][][] };
+type Centroide = { lat: number; lng: number };
+
 type CreateCuartelInput = {
   fincaId: string;
   codigo_cuartel: string;
@@ -29,6 +32,8 @@ type CreateCuartelInput = {
   largo_hileras_m?: number | null;
   densidad_hileras?: number | null;
   distancia_plantacion?: string | null;
+  poligono?: GeoJSONPolygon | null;
+  centroide?: Centroide | null;
   userId: string;
 };
 
@@ -45,6 +50,8 @@ type UpdateCuartelInput = {
   largo_hileras_m?: number | null;
   densidad_hileras?: number | null;
   distancia_plantacion?: string | null;
+  poligono?: GeoJSONPolygon | null;
+  centroide?: Centroide | null;
   userId: string;
 };
 
@@ -157,6 +164,8 @@ export async function createCuartel({
   largo_hileras_m,
   densidad_hileras,
   distancia_plantacion,
+  poligono,
+  centroide,
   userId,
 }: CreateCuartelInput) {
   if (!fincaId || !codigo_cuartel) {
@@ -183,6 +192,10 @@ export async function createCuartel({
     largo_hileras_m?: number | null;
     densidad_hileras?: number | null;
     distancia_plantacion?: string | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    poligono?: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    centroide?: any;
   } = { finca_id: finca.finca_id, codigo_cuartel };
   const catalogFields = normalizeCuartelCatalogFields({ cultivo, tipo_variedad, variedad });
 
@@ -209,6 +222,8 @@ export async function createCuartel({
   if (distancia_plantacion !== undefined) {
     data.distancia_plantacion = distancia_plantacion?.trim() || null;
   }
+  if (poligono !== undefined) data.poligono = poligono ?? null;
+  if (centroide !== undefined) data.centroide = centroide ?? null;
 
   return prisma.cuartel.create({ data });
 }
@@ -244,6 +259,8 @@ export async function updateCuartel(
     largo_hileras_m,
     densidad_hileras,
     distancia_plantacion,
+    poligono,
+    centroide,
     userId,
   }: UpdateCuartelInput,
 ) {
@@ -266,6 +283,10 @@ export async function updateCuartel(
     largo_hileras_m?: number | null;
     densidad_hileras?: number | null;
     distancia_plantacion?: string | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    poligono?: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    centroide?: any;
   } = {};
 
   if (codigo_cuartel !== undefined) data.codigo_cuartel = codigo_cuartel;
@@ -299,6 +320,8 @@ export async function updateCuartel(
   if (distancia_plantacion !== undefined) {
     data.distancia_plantacion = distancia_plantacion?.trim() || null;
   }
+  if (poligono !== undefined) data.poligono = poligono ?? null;
+  if (centroide !== undefined) data.centroide = centroide ?? null;
 
   if (Object.keys(data).length === 0) {
     throw new CuartelError("No hay campos para actualizar", 400);
