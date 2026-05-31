@@ -15,6 +15,7 @@ import {
   listMyTareasHandler,
   listMyPendientesHandler,
   updateMyAsignacionEstadoHandler,
+  updateTareaEntradaHandler,
   uploadEntradaAdjuntoHandler,
 } from "./tarea.controller.js";
 
@@ -112,6 +113,13 @@ tareaRoutes.patch(
   "/:tareaId/cancelar",
   authMiddleware,
   cancelTareaHandler,
+);
+
+// Edit a tarea_entrada (date correction)
+tareaRoutes.patch(
+  "/entradas/:entradaId",
+  authMiddleware,
+  updateTareaEntradaHandler,
 );
 
 // Upload an image adjunto to a tarea_entrada → IPFS → store CID

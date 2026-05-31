@@ -570,6 +570,7 @@ const tareaInclude = {
       app_user: { select: { user_id: true, nombre: true, email: true } },
     },
   },
+  protocolo_proceso: { select: { evento_tipo: true } },
 };
 
 export async function createTarea(input: CreateTareaInput, actorUserId: string) {
@@ -1007,6 +1008,55 @@ type AdjuntoRecord = {
   tipo: string;
   size: number;
 };
+
+/**
+ * Updates the fecha (and optionally descripcion) of an existing tarea_entrada.
+ * Only the creator or a manager can edit.
+ */
+export async function updateTareaEntrada(
+  entradaId: string,
+  userId: string,
+  data: { fecha?: string; descripcion?: string },
+) {
+  const entrada = await prisma.tareaEntrada.findUnique({
+    where: { entrada_id: entradaId },
+    select: { entrada_id: true, created_by: true },
+  });
+  if (!entrada) throw new TareaError("Entrada no encontrada", 404);
+
+  const canManage = await canUserManageTareas(userId);
+  if (entrada.created_by !== userId && !canManage) {
+    throw new TareaError("No autorizado para modificar esta entrada", 403);
+  }
+
+  const updateData: { fecha?: Date; descripcion?: string } = {};
+  if (data.fecha) {
+    const parsed = new Date(data.fecha);
+    if (isNaN(parsed.getTime())) throw new TareaError("Fecha inválida", 400);
+    updateData.fecha = parsed;
+  }
+  if (data.descripcion !== undefined) updateData.descripcion = data.descripcion;
+
+  const updated = await prisma.tareaEntrada.update({
+    where: { entrada_id: entradaId },
+    data: updateData,
+    select: {
+      entrada_id: true,
+      fecha: true,
+      descripcion: true,
+      adjuntos: true,
+      app_user: { select: { user_id: true, nombre: true } },
+    },
+  });
+
+  return {
+    entradaId: updated.entrada_id,
+    fecha: updated.fecha,
+    descripcion: updated.descripcion,
+    adjuntos: updated.adjuntos,
+    creadoPor: updated.app_user,
+  };
+}
 
 /**
  * Appends an already-uploaded IPFS adjunto to a tarea_entrada's adjuntos JSON array.

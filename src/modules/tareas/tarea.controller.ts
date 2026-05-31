@@ -14,6 +14,7 @@ import {
   listMyPendientes,
   listPendientesByBodega,
   updateMyTareaAsignacionEstado,
+  updateTareaEntrada,
 } from "./tarea.service.js";
 import {
   uploadToIpfs,
@@ -257,6 +258,18 @@ export async function listBodegaPendientesHandler(req: Request, res: Response) {
     }
     const rows = await listPendientesByBodega(req.user.userId, bodegaId);
     return res.json(rows);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function updateTareaEntradaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    const { entradaId } = req.params;
+    const { fecha, descripcion } = req.body ?? {};
+    const updated = await updateTareaEntrada(String(entradaId), req.user.userId, { fecha, descripcion });
+    return res.json(updated);
   } catch (error) {
     return handleError(res, error);
   }
