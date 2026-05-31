@@ -333,7 +333,7 @@ model RemitoUva {
   bodega_id        String            @db.Uuid
   finca_id         String            @db.Uuid
   cuartel_id       String            @db.Uuid
-  lote_cosecha_id  String            @db.Uuid
+  lote_cosecha_id  String?           @db.Uuid
   salida_finca     DateTime          @db.Timestamptz(6)
   llegada_bodega   DateTime?         @db.Timestamptz(6)
   transportista    String?
@@ -343,7 +343,7 @@ model RemitoUva {
   bodega           Bodega            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
   finca            Finca             @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
   cuartel          Cuartel           @relation(fields: [cuartel_id], references: [cuartel_id], onDelete: Restrict, onUpdate: NoAction)
-  evento_cosecha   EventoCosecha     @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
+  evento_cosecha   EventoCosecha?    @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
   recepcion_bodega RecepcionBodega[]
 
   @@index([bodega_id, salida_finca], map: "idx_remito_uva_bodega_fecha")
@@ -362,7 +362,7 @@ model RecepcionBodega {
   created_at          DateTime            @default(now()) @db.Timestamptz(6)
   remito_uva          RemitoUva           @relation(fields: [remito_uva_id], references: [remito_uva_id], onDelete: Restrict, onUpdate: NoAction)
   analisis_recepcion  AnalisisRecepcion[]
-  ciu_recepcion       CiuRecepcion[]
+  ciu                 Ciu?
   qc_ingreso_uva      QcIngresoUva[]
   operacion_vasija    OperacionVasija[]
 
@@ -388,34 +388,23 @@ model AnalisisRecepcion {
 }
 
 model Ciu {
-  ciu_id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bodega_id     String         @db.Uuid
-  finca_id      String?        @db.Uuid
-  codigo_ciu    String
-  estado        String         @default("emitido")
-  emitido_at    DateTime       @db.Timestamptz(6)
-  observaciones String?
-  created_at    DateTime       @default(now()) @db.Timestamptz(6)
-  bodega        Bodega         @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
-  finca         Finca?         @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
-  ciu_recepcion CiuRecepcion[]
+  ciu_id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id           String          @db.Uuid
+  finca_id            String?         @db.Uuid
+  recepcion_bodega_id String          @unique @db.Uuid
+  codigo_ciu          String
+  estado              String          @default("emitido")
+  emitido_at          DateTime        @db.Timestamptz(6)
+  observaciones       String?
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  bodega              Bodega          @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  finca               Finca?          @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
+  recepcion_bodega    RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Restrict, onUpdate: NoAction)
 
   @@unique([finca_id, codigo_ciu], map: "ciu_finca_codigo_ciu_key")
   @@index([bodega_id, emitido_at], map: "idx_ciu_bodega_emitido_at")
   @@index([finca_id, emitido_at], map: "idx_ciu_finca_emitido_at")
   @@map("ciu")
-}
-
-model CiuRecepcion {
-  ciu_id              String          @db.Uuid
-  recepcion_bodega_id String          @db.Uuid
-  created_at          DateTime        @default(now()) @db.Timestamptz(6)
-  ciu                 Ciu             @relation(fields: [ciu_id], references: [ciu_id], onDelete: Cascade, onUpdate: NoAction)
-  recepcion_bodega    RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@id([ciu_id, recepcion_bodega_id])
-  @@index([recepcion_bodega_id], map: "idx_ciu_recepcion_recepcion")
-  @@map("ciu_recepcion")
 }
 
 model QcIngresoUva {

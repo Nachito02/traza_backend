@@ -3,7 +3,6 @@ import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import {
   createAnalisisRecepcionHandler,
   createCiuHandler,
-  createCiuRecepcionHandler,
   createControlFermentacionHandler,
   createCodigoEnvaseHandler,
   createCorteHandler,
@@ -18,7 +17,6 @@ import {
   createVasijaHandler,
   deleteAnalisisRecepcionHandler,
   deleteCiuHandler,
-  deleteCiuRecepcionHandler,
   deleteControlFermentacionHandler,
   deleteCodigoEnvaseHandler,
   deleteCorteHandler,
@@ -33,7 +31,6 @@ import {
   deleteVasijaHandler,
   getAnalisisRecepcionHandler,
   getCiuHandler,
-  getCiuRecepcionHandler,
   getControlFermentacionHandler,
   getCodigoEnvaseHandler,
   getCorteHandler,
@@ -48,7 +45,6 @@ import {
   getVasijaHandler,
   listAnalisisRecepcionHandler,
   listCiusHandler,
-  listCiuRecepcionesHandler,
   listControlesFermentacionHandler,
   listCodigosEnvaseHandler,
   listCortesHandler,
@@ -64,7 +60,6 @@ import {
   listVasijasHandler,
   updateAnalisisRecepcionHandler,
   updateCiuHandler,
-  updateCiuRecepcionHandler,
   updateControlFermentacionHandler,
   updateCodigoEnvaseHandler,
   updateCorteHandler,
@@ -200,24 +195,6 @@ elaboracionRoutes.post("/cius", authMiddleware, createCiuHandler);
 elaboracionRoutes.get("/cius/:id", authMiddleware, getCiuHandler);
 elaboracionRoutes.patch("/cius/:id", authMiddleware, updateCiuHandler);
 elaboracionRoutes.delete("/cius/:id", authMiddleware, deleteCiuHandler);
-
-elaboracionRoutes.get("/ciu-recepciones", authMiddleware, listCiuRecepcionesHandler);
-elaboracionRoutes.post("/ciu-recepciones", authMiddleware, createCiuRecepcionHandler);
-elaboracionRoutes.get(
-  "/ciu-recepciones/:ciuId/:recepcionBodegaId",
-  authMiddleware,
-  getCiuRecepcionHandler,
-);
-elaboracionRoutes.patch(
-  "/ciu-recepciones/:ciuId/:recepcionBodegaId",
-  authMiddleware,
-  updateCiuRecepcionHandler,
-);
-elaboracionRoutes.delete(
-  "/ciu-recepciones/:ciuId/:recepcionBodegaId",
-  authMiddleware,
-  deleteCiuRecepcionHandler,
-);
 
 elaboracionRoutes.get("/qc-ingreso-uva", authMiddleware, listQcIngresoUvaHandler);
 elaboracionRoutes.post("/qc-ingreso-uva", authMiddleware, createQcIngresoUvaHandler);

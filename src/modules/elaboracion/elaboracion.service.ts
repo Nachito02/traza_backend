@@ -101,7 +101,7 @@ type CreateRemitoUvaInput = {
   bodegaId: string;
   fincaId: string;
   cuartelId: string;
-  loteCosechaId: string;
+  loteCosechaId?: string;
   salida_finca: string;
   llegada_bodega?: string;
   transportista?: string;
@@ -210,7 +210,7 @@ type UpdateDespachoInput = {
 type CreateCiuInput = {
   userId: string;
   bodegaId: string;
-  fincaId: string;
+  recepcionBodegaId: string;
   codigo_ciu: string;
   estado?: string;
   emitido_at: string;
@@ -218,22 +218,11 @@ type CreateCiuInput = {
 };
 
 type UpdateCiuInput = {
-  fincaId?: string;
+  recepcionBodegaId?: string;
   codigo_ciu?: string;
   estado?: string;
   emitido_at?: string;
   observaciones?: string;
-};
-
-type CreateCiuRecepcionInput = {
-  userId: string;
-  ciuId: string;
-  recepcionBodegaId: string;
-};
-
-type UpdateCiuRecepcionInput = {
-  ciuId?: string;
-  recepcionBodegaId?: string;
 };
 
 type CreateQcIngresoUvaInput = {
@@ -438,7 +427,7 @@ async function validateRemitoOrigen(input: {
   bodegaId: string;
   fincaId: string;
   cuartelId: string;
-  loteCosechaId: string;
+  loteCosechaId?: string | null;
 }) {
   const cuartel = await prisma.cuartel.findFirst({
     where: {
@@ -452,6 +441,9 @@ async function validateRemitoOrigen(input: {
     throw new ElaboracionError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
   }
 
+  // El lote de cosecha es opcional: el remito puede crearse solo con el cuartel.
+  if (!input.loteCosechaId) return;
+
   const lote = await prisma.eventoCosecha.findUnique({
     where: { lote_cosecha_id: input.loteCosechaId },
     select: { lote_cosecha_id: true, cuartel_id: true },
@@ -459,16 +451,6 @@ async function validateRemitoOrigen(input: {
   if (!lote) throw new ElaboracionError("Lote de cosecha no encontrado", 404);
   if (lote.cuartel_id !== input.cuartelId) {
     throw new ElaboracionError("El lote de cosecha no corresponde al cuartel seleccionado", 400);
-  }
-}
-
-async function ensureFincaBodega(fincaId: string, bodegaId: string) {
-  const finca = await prisma.finca.findFirst({
-    where: { finca_id: fincaId, bodega_id: bodegaId },
-    select: { finca_id: true },
-  });
-  if (!finca) {
-    throw new ElaboracionError("La finca seleccionada no pertenece a la bodega indicada", 400);
   }
 }
 
@@ -531,25 +513,6 @@ async function getCiuScoped(ciuId: string, userId: string) {
   if (!ciu) throw new ElaboracionError("CIU no encontrado", 404);
   await ensureUserBodega(userId, ciu.bodega_id);
   return ciu;
-}
-
-async function getCiuRecepcionScoped(
-  ciuId: string,
-  recepcionBodegaId: string,
-  userId: string,
-) {
-  const rel = await prisma.ciuRecepcion.findUnique({
-    where: {
-      ciu_id_recepcion_bodega_id: {
-        ciu_id: ciuId,
-        recepcion_bodega_id: recepcionBodegaId,
-      },
-    },
-    select: { ciu_id: true, recepcion_bodega_id: true, ciu: { select: { bodega_id: true } } },
-  });
-  if (!rel) throw new ElaboracionError("Relacion CIU-Recepcion no encontrada", 404);
-  await ensureUserBodega(userId, rel.ciu.bodega_id);
-  return rel;
 }
 
 async function getQcIngresoUvaScoped(qcIngresoUvaId: string, userId: string) {
@@ -1171,21 +1134,21 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
     patente,
     kg_declarados,
   } = input;
-  if (!bodegaId || !fincaId || !cuartelId || !loteCosechaId || !salida_finca) {
+  if (!bodegaId || !fincaId || !cuartelId || !salida_finca) {
     throw new ElaboracionError(
-      "bodegaId, fincaId, cuartelId, loteCosechaId y salida_finca son requeridos",
+      "bodegaId, fincaId, cuartelId y salida_finca son requeridos",
       400,
     );
   }
   await ensureUserBodega(userId, bodegaId);
-  await validateRemitoOrigen({ bodegaId, fincaId, cuartelId, loteCosechaId });
+  await validateRemitoOrigen({ bodegaId, fincaId, cuartelId, loteCosechaId: loteCosechaId ?? null });
 
   return prisma.remitoUva.create({
     data: {
       bodega_id: bodegaId,
       finca_id: fincaId,
       cuartel_id: cuartelId,
-      lote_cosecha_id: loteCosechaId,
+      ...(loteCosechaId ? { lote_cosecha_id: loteCosechaId } : {}),
       salida_finca: parseDate(salida_finca, "Salida finca"),
       ...(llegada_bodega !== undefined
         ? { llegada_bodega: parseDate(llegada_bodega, "Llegada bodega") }
@@ -1468,6 +1431,9 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
   if (!bodegaId || !tipo || !fecha_hora) {
     throw new ElaboracionError("bodegaId, tipo y fecha_hora son requeridos", 400);
   }
+  if (!vasijaOrigenId && !vasijaDestinoId) {
+    throw new ElaboracionError("Se requiere al menos una vasija (origen o destino)", 400);
+  }
   await ensureUserBodega(userId, bodegaId);
 
   if (vasijaOrigenId) {
@@ -1639,7 +1605,10 @@ export async function listCius(userId: string, bodegaId?: string) {
     await ensureUserBodega(userId, bodegaId);
     return prisma.ciu.findMany({
       where: { bodega_id: bodegaId },
-      include: { finca: true, ciu_recepcion: true },
+      include: {
+        finca: true,
+        recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
+      },
       orderBy: [{ emitido_at: "desc" }],
     });
   }
@@ -1647,7 +1616,10 @@ export async function listCius(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.ciu.findMany({
     where: { bodega_id: { in: bodegaIds } },
-    include: { finca: true, ciu_recepcion: true },
+    include: {
+      finca: true,
+      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
+    },
     orderBy: [{ emitido_at: "desc" }],
   });
 }
@@ -1656,21 +1628,53 @@ export async function getCiuById(ciuId: string, userId: string) {
   await getCiuScoped(ciuId, userId);
   return prisma.ciu.findUnique({
     where: { ciu_id: ciuId },
-    include: { finca: true, ciu_recepcion: { include: { recepcion_bodega: true } } },
+    include: {
+      finca: true,
+      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
+    },
   });
 }
 
+/**
+ * Valida que la recepción exista, pertenezca a la bodega del usuario y a la
+ * bodega indicada, y devuelve la finca del ingreso (la finca del CIU "sigue"
+ * al ingreso, no se ingresa por separado).
+ */
+async function resolveRecepcionForCiu(
+  recepcionBodegaId: string,
+  userId: string,
+  bodegaId: string,
+) {
+  const recepcion = await getRecepcionScoped(recepcionBodegaId, userId);
+  if (recepcion.remito_uva.bodega_id !== bodegaId) {
+    throw new ElaboracionError("El ingreso (recepción) no pertenece a la bodega indicada", 400);
+  }
+  return { fincaId: recepcion.remito_uva.finca_id };
+}
+
 export async function createCiu(input: CreateCiuInput) {
-  const { userId, bodegaId, fincaId, codigo_ciu, estado, emitido_at, observaciones } = input;
-  if (!bodegaId || !fincaId || !codigo_ciu || !emitido_at) {
-    throw new ElaboracionError("bodegaId, fincaId, codigo_ciu y emitido_at son requeridos", 400);
+  const { userId, bodegaId, recepcionBodegaId, codigo_ciu, estado, emitido_at, observaciones } =
+    input;
+  if (!bodegaId || !recepcionBodegaId || !codigo_ciu || !emitido_at) {
+    throw new ElaboracionError(
+      "bodegaId, recepcionBodegaId, codigo_ciu y emitido_at son requeridos",
+      400,
+    );
   }
   await ensureUserBodega(userId, bodegaId);
-  await ensureFincaBodega(fincaId, bodegaId);
+  const { fincaId } = await resolveRecepcionForCiu(recepcionBodegaId, userId, bodegaId);
+  const existing = await prisma.ciu.findUnique({
+    where: { recepcion_bodega_id: recepcionBodegaId },
+    select: { ciu_id: true },
+  });
+  if (existing) {
+    throw new ElaboracionError("Ese ingreso ya tiene un CIU emitido", 409);
+  }
   return prisma.ciu.create({
     data: {
       bodega_id: bodegaId,
       finca_id: fincaId,
+      recepcion_bodega_id: recepcionBodegaId,
       codigo_ciu,
       emitido_at: parseDate(emitido_at, "Emitido at"),
       ...(estado !== undefined ? { estado } : {}),
@@ -1681,13 +1685,28 @@ export async function createCiu(input: CreateCiuInput) {
 
 export async function updateCiu(ciuId: string, userId: string, input: UpdateCiuInput) {
   const current = await getCiuScoped(ciuId, userId);
-  if (input.fincaId !== undefined) {
-    await ensureFincaBodega(input.fincaId, current.bodega_id);
+  // Si se reasigna el ingreso, la finca del CIU se deriva del nuevo ingreso.
+  let nextFincaId: string | null | undefined;
+  if (input.recepcionBodegaId !== undefined) {
+    const existing = await prisma.ciu.findUnique({
+      where: { recepcion_bodega_id: input.recepcionBodegaId },
+      select: { ciu_id: true },
+    });
+    if (existing && existing.ciu_id !== ciuId) {
+      throw new ElaboracionError("Ese ingreso ya tiene un CIU emitido", 409);
+    }
+    ({ fincaId: nextFincaId } = await resolveRecepcionForCiu(
+      input.recepcionBodegaId,
+      userId,
+      current.bodega_id,
+    ));
   }
   return prisma.ciu.update({
     where: { ciu_id: ciuId },
     data: {
-      ...(input.fincaId !== undefined ? { finca_id: input.fincaId } : {}),
+      ...(input.recepcionBodegaId !== undefined
+        ? { recepcion_bodega_id: input.recepcionBodegaId, finca_id: nextFincaId ?? null }
+        : {}),
       ...(input.codigo_ciu !== undefined ? { codigo_ciu: input.codigo_ciu } : {}),
       ...(input.estado !== undefined ? { estado: input.estado } : {}),
       ...(input.emitido_at !== undefined
@@ -1701,124 +1720,6 @@ export async function updateCiu(ciuId: string, userId: string, input: UpdateCiuI
 export async function deleteCiu(ciuId: string, userId: string) {
   await getCiuScoped(ciuId, userId);
   await prisma.ciu.delete({ where: { ciu_id: ciuId } });
-  return { deleted: true };
-}
-
-export async function listCiuRecepciones(
-  userId: string,
-  opts?: { bodegaId?: string; ciuId?: string; recepcionBodegaId?: string },
-) {
-  if (opts?.bodegaId) await ensureUserBodega(userId, opts.bodegaId);
-  const bodegaIds = opts?.bodegaId ? [opts.bodegaId] : await getUserBodegaIds(userId);
-  if (bodegaIds.length === 0) return [];
-  return prisma.ciuRecepcion.findMany({
-    where: {
-      ciu: { bodega_id: { in: bodegaIds } },
-      ...(opts?.ciuId ? { ciu_id: opts.ciuId } : {}),
-      ...(opts?.recepcionBodegaId ? { recepcion_bodega_id: opts.recepcionBodegaId } : {}),
-    },
-    include: {
-      ciu: { include: { finca: true } },
-      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
-    },
-    orderBy: [{ created_at: "desc" }],
-  });
-}
-
-export async function getCiuRecepcionById(
-  ciuId: string,
-  recepcionBodegaId: string,
-  userId: string,
-) {
-  await getCiuRecepcionScoped(ciuId, recepcionBodegaId, userId);
-  return prisma.ciuRecepcion.findUnique({
-    where: {
-      ciu_id_recepcion_bodega_id: {
-        ciu_id: ciuId,
-        recepcion_bodega_id: recepcionBodegaId,
-      },
-    },
-    include: {
-      ciu: { include: { finca: true } },
-      recepcion_bodega: { include: { remito_uva: { include: { finca: true, cuartel: true } } } },
-    },
-  });
-}
-
-export async function createCiuRecepcion(input: CreateCiuRecepcionInput) {
-  const { userId, ciuId, recepcionBodegaId } = input;
-  if (!ciuId || !recepcionBodegaId) {
-    throw new ElaboracionError("ciuId y recepcionBodegaId son requeridos", 400);
-  }
-  const [ciu, recepcion] = await Promise.all([
-    getCiuScoped(ciuId, userId),
-    getRecepcionScoped(recepcionBodegaId, userId),
-  ]);
-  if (ciu.bodega_id !== recepcion.remito_uva.bodega_id) {
-    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma bodega", 400);
-  }
-  if (ciu.finca_id && ciu.finca_id !== recepcion.remito_uva.finca_id) {
-    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma finca", 400);
-  }
-  return prisma.ciuRecepcion.create({
-    data: {
-      ciu_id: ciuId,
-      recepcion_bodega_id: recepcionBodegaId,
-    },
-  });
-}
-
-export async function updateCiuRecepcion(
-  ciuId: string,
-  recepcionBodegaId: string,
-  userId: string,
-  input: UpdateCiuRecepcionInput,
-) {
-  await getCiuRecepcionScoped(ciuId, recepcionBodegaId, userId);
-  const nextCiuId = input.ciuId ?? ciuId;
-  const nextRecepcionId = input.recepcionBodegaId ?? recepcionBodegaId;
-  const [ciu, recepcion] = await Promise.all([
-    getCiuScoped(nextCiuId, userId),
-    getRecepcionScoped(nextRecepcionId, userId),
-  ]);
-  if (ciu.bodega_id !== recepcion.remito_uva.bodega_id) {
-    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma bodega", 400);
-  }
-  if (ciu.finca_id && ciu.finca_id !== recepcion.remito_uva.finca_id) {
-    throw new ElaboracionError("CIU y recepcion no pertenecen a la misma finca", 400);
-  }
-  return prisma.$transaction(async (tx) => {
-    await tx.ciuRecepcion.delete({
-      where: {
-        ciu_id_recepcion_bodega_id: {
-          ciu_id: ciuId,
-          recepcion_bodega_id: recepcionBodegaId,
-        },
-      },
-    });
-    return tx.ciuRecepcion.create({
-      data: {
-        ciu_id: nextCiuId,
-        recepcion_bodega_id: nextRecepcionId,
-      },
-    });
-  });
-}
-
-export async function deleteCiuRecepcion(
-  ciuId: string,
-  recepcionBodegaId: string,
-  userId: string,
-) {
-  await getCiuRecepcionScoped(ciuId, recepcionBodegaId, userId);
-  await prisma.ciuRecepcion.delete({
-    where: {
-      ciu_id_recepcion_bodega_id: {
-        ciu_id: ciuId,
-        recepcion_bodega_id: recepcionBodegaId,
-      },
-    },
-  });
   return { deleted: true };
 }
 

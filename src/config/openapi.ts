@@ -1412,32 +1412,6 @@ const openapiSpec = {
     "/elaboracion/despachos/{id}": createCrudItemPath("Elaboración", "despacho"),
     "/elaboracion/cius": createCrudCollectionPath("Elaboración", "CIU", "CIU"),
     "/elaboracion/cius/{id}": createCrudItemPath("Elaboración", "CIU"),
-    "/elaboracion/ciu-recepciones": createCrudCollectionPath(
-      "Elaboración",
-      "vínculos CIU-recepción",
-      "vínculo CIU-recepción",
-    ),
-    "/elaboracion/ciu-recepciones/{ciuId}/{recepcionBodegaId}": {
-      get: {
-        summary: "Obtener vínculo CIU-recepción",
-        tags: ["Elaboración"],
-        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
-        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
-      },
-      patch: {
-        summary: "Actualizar vínculo CIU-recepción",
-        tags: ["Elaboración"],
-        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
-        requestBody: genericJsonBody,
-        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
-      },
-      delete: {
-        summary: "Eliminar vínculo CIU-recepción",
-        tags: ["Elaboración"],
-        parameters: [uuidParam("ciuId"), uuidParam("recepcionBodegaId")],
-        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
-      },
-    },
     "/elaboracion/qc-ingreso-uva": createCrudCollectionPath(
       "Elaboración",
       "controles QC de ingreso de uva",

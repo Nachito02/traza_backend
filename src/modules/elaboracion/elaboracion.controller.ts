@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import {
   createAnalisisRecepcion,
   createCiu,
-  createCiuRecepcion,
   createControlFermentacion,
   createCodigoEnvase,
   createCorte,
@@ -17,7 +16,6 @@ import {
   createVasija,
   deleteAnalisisRecepcion,
   deleteCiu,
-  deleteCiuRecepcion,
   deleteControlFermentacion,
   deleteCodigoEnvase,
   deleteCorte,
@@ -33,7 +31,6 @@ import {
   ElaboracionError,
   getAnalisisRecepcionById,
   getCiuById,
-  getCiuRecepcionById,
   getControlFermentacionById,
   getCodigoEnvaseById,
   getCorteById,
@@ -48,7 +45,6 @@ import {
   getVasijaById,
   listAnalisisRecepcion,
   listCius,
-  listCiuRecepciones,
   listControlesFermentacion,
   listCodigosEnvase,
   listCortes,
@@ -64,7 +60,6 @@ import {
   listVasijas,
   updateAnalisisRecepcion,
   updateCiu,
-  updateCiuRecepcion,
   updateControlFermentacion,
   updateCodigoEnvase,
   updateCorte,
@@ -755,93 +750,6 @@ export async function deleteCiuHandler(req: Request, res: Response) {
     const userId = requireUserId(req, res);
     if (!userId) return;
     return res.json(await deleteCiu(String(req.params.id ?? ""), userId));
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function listCiuRecepcionesHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const bodegaId =
-      typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
-    const ciuId = typeof req.query.ciuId === "string" ? req.query.ciuId : undefined;
-    const recepcionBodegaId =
-      typeof req.query.recepcionBodegaId === "string"
-        ? req.query.recepcionBodegaId
-        : undefined;
-    const opts: {
-      bodegaId?: string;
-      ciuId?: string;
-      recepcionBodegaId?: string;
-    } = {};
-    if (bodegaId !== undefined) opts.bodegaId = bodegaId;
-    if (ciuId !== undefined) opts.ciuId = ciuId;
-    if (recepcionBodegaId !== undefined) {
-      opts.recepcionBodegaId = recepcionBodegaId;
-    }
-    return res.json(await listCiuRecepciones(userId, opts));
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function getCiuRecepcionHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    return res.json(
-      await getCiuRecepcionById(
-        String(req.params.ciuId ?? ""),
-        String(req.params.recepcionBodegaId ?? ""),
-        userId,
-      ),
-    );
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function createCiuRecepcionHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const created = await createCiuRecepcion({ userId, ...(req.body ?? {}) });
-    return res.status(201).json(created);
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function updateCiuRecepcionHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    return res.json(
-      await updateCiuRecepcion(
-        String(req.params.ciuId ?? ""),
-        String(req.params.recepcionBodegaId ?? ""),
-        userId,
-        req.body ?? {},
-      ),
-    );
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function deleteCiuRecepcionHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    return res.json(
-      await deleteCiuRecepcion(
-        String(req.params.ciuId ?? ""),
-        String(req.params.recepcionBodegaId ?? ""),
-        userId,
-      ),
-    );
   } catch (error) {
     return handleError(res, error);
   }
