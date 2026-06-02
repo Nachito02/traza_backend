@@ -7,6 +7,7 @@ import {
   assignTareaCompatHandler,
   canManageTareasHandler,
   cancelTareaHandler,
+  completarTareaHandler,
   createTareaHandler,
   finalizarTareaAsignacionHandler,
   listBodegaPendientesHandler,
@@ -113,6 +114,11 @@ tareaRoutes.patch(
   "/:tareaId/cancelar",
   authMiddleware,
   cancelTareaHandler,
+);
+tareaRoutes.patch(
+  "/:tareaId/completar",
+  authMiddleware,
+  completarTareaHandler,
 );
 
 // Edit a tarea_entrada (date correction)

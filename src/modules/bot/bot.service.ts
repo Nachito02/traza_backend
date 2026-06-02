@@ -64,6 +64,7 @@ export class BotError extends Error {
   }
 }
 
+// Tipos que exigen finca + cuartel (actividad puntual sobre un cuartel concreto).
 const FINCA_PRODUCCION_EVENT_TYPES = new Set([
   "riego",
   "cosecha",
@@ -77,6 +78,34 @@ const FINCA_PRODUCCION_EVENT_TYPES = new Set([
   "analisis_suelo",
   "precipitacion",
 ]);
+
+// Tipos que exigen al menos una finca (el cuartel es opcional).
+const FINCA_REQUERIDA_EVENT_TYPES = new Set([
+  "enmienda",
+  "inventario_insumos",
+  "energia",
+  "cobertura_erosion",
+  "limpieza_cosecha",
+  "mantenimiento",
+  "residuo",
+  "sanitizacion_banos",
+  "sobrante_lavado",
+  "origen_unidad_productiva",
+  "entrega_epp",
+  "accidente",
+  "capacitacion",
+  "no_conforme",
+  "reclamo",
+]);
+
+type FincaRequirement = "finca_cuartel" | "finca" | "none";
+
+function resolveFincaRequirement(eventoTipo: string | null | undefined): FincaRequirement {
+  const tipo = String(eventoTipo ?? "").toLowerCase().trim();
+  if (FINCA_PRODUCCION_EVENT_TYPES.has(tipo)) return "finca_cuartel";
+  if (FINCA_REQUERIDA_EVENT_TYPES.has(tipo)) return "finca";
+  return "none";
+}
 
 function normalizeScopes(scopes: string[]) {
   return Array.from(new Set(scopes.filter((s) => typeof s === "string" && s.trim().length > 0)));
@@ -122,27 +151,42 @@ async function ensureValidFincaTargetForTask(input: {
   cuartelId?: string | undefined;
   eventoTipo?: string | null;
 }) {
-  const normalizedEventoTipo = String(input.eventoTipo ?? "").toLowerCase().trim();
-  const requiresTarget = FINCA_PRODUCCION_EVENT_TYPES.has(normalizedEventoTipo);
+  const requirement = resolveFincaRequirement(input.eventoTipo);
 
-  if (requiresTarget && (!input.fincaId || !input.cuartelId)) {
+  // 1. Exigencia mínima según el tipo de evento.
+  if (requirement === "finca_cuartel" && (!input.fincaId || !input.cuartelId)) {
     throw new BotError("Las ordenes de finca requieren fincaId y cuartelId", 400);
   }
-  if (!input.fincaId && !input.cuartelId) return;
-  if (!input.fincaId || !input.cuartelId) {
-    throw new BotError("Para indicar destino de finca se requiere fincaId y cuartelId", 400);
+  if (requirement === "finca" && !input.fincaId) {
+    throw new BotError("Esta orden requiere al menos una finca", 400);
   }
 
-  const cuartel = await prisma.cuartel.findFirst({
-    where: {
-      cuartel_id: input.cuartelId,
-      finca_id: input.fincaId,
-      finca: { bodega_id: input.bodegaId },
-    },
-    select: { cuartel_id: true },
-  });
-  if (!cuartel) {
-    throw new BotError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+  // 2. No se puede indicar un cuartel sin su finca.
+  if (input.cuartelId && !input.fincaId) {
+    throw new BotError("Para indicar un cuartel se requiere también la finca", 400);
+  }
+
+  // 3. Coherencia con la bodega.
+  if (input.fincaId && input.cuartelId) {
+    const cuartel = await prisma.cuartel.findFirst({
+      where: {
+        cuartel_id: input.cuartelId,
+        finca_id: input.fincaId,
+        finca: { bodega_id: input.bodegaId },
+      },
+      select: { cuartel_id: true },
+    });
+    if (!cuartel) {
+      throw new BotError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+    }
+  } else if (input.fincaId) {
+    const finca = await prisma.finca.findFirst({
+      where: { finca_id: input.fincaId, bodega_id: input.bodegaId },
+      select: { finca_id: true },
+    });
+    if (!finca) {
+      throw new BotError("La finca seleccionada no pertenece a la bodega indicada", 400);
+    }
   }
 }
 

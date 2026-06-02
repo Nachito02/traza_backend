@@ -36,6 +36,7 @@ export class TareaError extends Error {
   }
 }
 
+// Tipos que exigen finca + cuartel (actividad puntual sobre un cuartel concreto).
 const FINCA_PRODUCCION_EVENT_TYPES = new Set([
   "riego",
   "cosecha",
@@ -49,6 +50,34 @@ const FINCA_PRODUCCION_EVENT_TYPES = new Set([
   "analisis_suelo",
   "precipitacion",
 ]);
+
+// Tipos que exigen al menos una finca (el cuartel es opcional).
+const FINCA_REQUERIDA_EVENT_TYPES = new Set([
+  "enmienda",
+  "inventario_insumos",
+  "energia",
+  "cobertura_erosion",
+  "limpieza_cosecha",
+  "mantenimiento",
+  "residuo",
+  "sanitizacion_banos",
+  "sobrante_lavado",
+  "origen_unidad_productiva",
+  "entrega_epp",
+  "accidente",
+  "capacitacion",
+  "no_conforme",
+  "reclamo",
+]);
+
+type FincaRequirement = "finca_cuartel" | "finca" | "none";
+
+function resolveFincaRequirement(eventoTipo: string | null | undefined): FincaRequirement {
+  const tipo = String(eventoTipo ?? "").toLowerCase().trim();
+  if (FINCA_PRODUCCION_EVENT_TYPES.has(tipo)) return "finca_cuartel";
+  if (FINCA_REQUERIDA_EVENT_TYPES.has(tipo)) return "finca";
+  return "none";
+}
 
 async function ensureCanManageBodega(userId: string, bodegaId: string) {
   const ok = await canManageBodega(userId, bodegaId);
@@ -92,26 +121,42 @@ async function ensureValidFincaTarget(input: {
   bodegaId: string;
   fincaId?: string | undefined;
   cuartelId?: string | undefined;
-  requiresTarget: boolean;
+  requirement: FincaRequirement;
 }) {
-  if (input.requiresTarget && (!input.fincaId || !input.cuartelId)) {
-    throw new TareaError("Las tareas de finca requieren fincaId y cuartelId", 400);
+  // 1. Exigencia mínima según el tipo de evento.
+  if (input.requirement === "finca_cuartel" && (!input.fincaId || !input.cuartelId)) {
+    throw new TareaError("Esta tarea requiere finca y cuartel", 400);
   }
-  if (!input.fincaId && !input.cuartelId) return;
-  if (!input.fincaId || !input.cuartelId) {
-    throw new TareaError("Para indicar destino de finca se requiere fincaId y cuartelId", 400);
+  if (input.requirement === "finca" && !input.fincaId) {
+    throw new TareaError("Esta tarea requiere al menos una finca", 400);
   }
 
-  const cuartel = await prisma.cuartel.findFirst({
-    where: {
-      cuartel_id: input.cuartelId,
-      finca_id: input.fincaId,
-      finca: { bodega_id: input.bodegaId },
-    },
-    select: { cuartel_id: true },
-  });
-  if (!cuartel) {
-    throw new TareaError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+  // 2. No se puede indicar un cuartel sin su finca.
+  if (input.cuartelId && !input.fincaId) {
+    throw new TareaError("Para indicar un cuartel se requiere también la finca", 400);
+  }
+
+  // 3. Coherencia con la bodega.
+  if (input.fincaId && input.cuartelId) {
+    const cuartel = await prisma.cuartel.findFirst({
+      where: {
+        cuartel_id: input.cuartelId,
+        finca_id: input.fincaId,
+        finca: { bodega_id: input.bodegaId },
+      },
+      select: { cuartel_id: true },
+    });
+    if (!cuartel) {
+      throw new TareaError("El cuartel seleccionado no pertenece a la finca/bodega indicada", 400);
+    }
+  } else if (input.fincaId) {
+    const finca = await prisma.finca.findFirst({
+      where: { finca_id: input.fincaId, bodega_id: input.bodegaId },
+      select: { finca_id: true },
+    });
+    if (!finca) {
+      throw new TareaError("La finca seleccionada no pertenece a la bodega indicada", 400);
+    }
   }
 }
 
@@ -586,14 +631,12 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
   if (!proceso) {
     throw new TareaError("Proceso no encontrado", 404);
   }
-  const requiresFincaTarget = FINCA_PRODUCCION_EVENT_TYPES.has(
-    String(proceso.evento_tipo ?? "").toLowerCase().trim(),
-  );
+  const fincaRequirement = resolveFincaRequirement(proceso.evento_tipo);
   await ensureValidFincaTarget({
     bodegaId: input.bodegaId,
     fincaId: input.fincaId,
     cuartelId: input.cuartelId,
-    requiresTarget: requiresFincaTarget,
+    requirement: fincaRequirement,
   });
 
   const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
@@ -821,6 +864,46 @@ export async function cancelTarea(tareaId: string, actorUserId: string) {
   return prisma.tarea.findUnique({
     where: { tarea_id: tareaId },
     include: { tarea_asignacion: true },
+  });
+}
+
+export async function completarTarea(tareaId: string, actorUserId: string) {
+  if (!tareaId) {
+    throw new TareaError("tareaId requerido", 400);
+  }
+
+  const tarea = await prisma.tarea.findUnique({
+    where: { tarea_id: tareaId },
+    select: { tarea_id: true, bodega_id: true, estado: true },
+  });
+  if (!tarea) {
+    throw new TareaError("Tarea no encontrada", 404);
+  }
+
+  await ensureCanManageBodega(actorUserId, tarea.bodega_id);
+
+  if (tarea.estado === "completado") {
+    return prisma.tarea.findUnique({
+      where: { tarea_id: tareaId },
+      include: tareaInclude,
+    });
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.tarea.update({
+      where: { tarea_id: tareaId },
+      data: { estado: "completado", updated_at: now },
+    }),
+    prisma.tareaAsignacion.updateMany({
+      where: { tarea_id: tareaId, estado: { in: ["pendiente", "en_progreso"] } },
+      data: { estado: "completado", updated_at: now, completed_at: now },
+    }),
+  ]);
+
+  return prisma.tarea.findUnique({
+    where: { tarea_id: tareaId },
+    include: tareaInclude,
   });
 }
 

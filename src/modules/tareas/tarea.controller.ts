@@ -5,6 +5,7 @@ import {
   addTareaEntrada,
   canUserManageTareas,
   cancelTarea,
+  completarTarea,
   createTarea,
   finalizarTareaAsignacion,
   listTareaEntradas,
@@ -107,6 +108,19 @@ export async function cancelTareaHandler(req: Request, res: Response) {
     }
     const tareaId = String(req.params.tareaId ?? "");
     const row = await cancelTarea(tareaId, req.user.userId);
+    return res.json(row);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function completarTareaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const tareaId = String(req.params.tareaId ?? "");
+    const row = await completarTarea(tareaId, req.user.userId);
     return res.json(row);
   } catch (error) {
     return handleError(res, error);
