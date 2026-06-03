@@ -107,6 +107,14 @@ type CreateRemitoUvaInput = {
   transportista?: string;
   patente?: string;
   kg_declarados?: number;
+  kg_bruto?: number;
+  kg_tara?: number;
+  variedad_pureza?: "pura" | "mezclada";
+  variedad_pureza_pct?: number;
+  sanidad_escala?: number;
+  presencia_hojas_escala?: number;
+  tipo_cosecha?: "manual" | "mecanica";
+  observaciones?: string;
 };
 
 type UpdateRemitoUvaInput = {
@@ -118,6 +126,14 @@ type UpdateRemitoUvaInput = {
   transportista?: string;
   patente?: string;
   kg_declarados?: number;
+  kg_bruto?: number;
+  kg_tara?: number;
+  variedad_pureza?: "pura" | "mezclada";
+  variedad_pureza_pct?: number;
+  sanidad_escala?: number;
+  presencia_hojas_escala?: number;
+  tipo_cosecha?: "manual" | "mecanica";
+  observaciones?: string;
 };
 
 type ListLotesCosechaInput = {
@@ -1121,6 +1137,20 @@ export async function getRemitoUvaById(remitoUvaId: string, userId: string) {
   });
 }
 
+// Valida una escala entera 1..10 (sanidad, presencia de hojas). Acepta undefined.
+function validateEscala1a10(value: number | undefined, label: string) {
+  if (value === undefined) return;
+  if (!Number.isInteger(value) || value < 1 || value > 10) {
+    throw new ElaboracionError(`${label} debe ser un entero entre 1 y 10`, 400);
+  }
+}
+
+// Kg neto = bruto - tara cuando ambos están presentes; si no, no se calcula.
+function computeKgNeto(kgBruto?: number, kgTara?: number) {
+  if (kgBruto === undefined || kgTara === undefined) return undefined;
+  return kgBruto - kgTara;
+}
+
 export async function createRemitoUva(input: CreateRemitoUvaInput) {
   const {
     userId,
@@ -1133,6 +1163,14 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
     transportista,
     patente,
     kg_declarados,
+    kg_bruto,
+    kg_tara,
+    variedad_pureza,
+    variedad_pureza_pct,
+    sanidad_escala,
+    presencia_hojas_escala,
+    tipo_cosecha,
+    observaciones,
   } = input;
   if (!bodegaId || !fincaId || !cuartelId || !salida_finca) {
     throw new ElaboracionError(
@@ -1140,8 +1178,12 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
       400,
     );
   }
+  validateEscala1a10(sanidad_escala, "Sanidad");
+  validateEscala1a10(presencia_hojas_escala, "Presencia de hojas");
   await ensureUserBodega(userId, bodegaId);
   await validateRemitoOrigen({ bodegaId, fincaId, cuartelId, loteCosechaId: loteCosechaId ?? null });
+
+  const kg_neto = computeKgNeto(kg_bruto, kg_tara);
 
   return prisma.remitoUva.create({
     data: {
@@ -1156,6 +1198,15 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
       ...(transportista !== undefined ? { transportista } : {}),
       ...(patente !== undefined ? { patente } : {}),
       ...(kg_declarados !== undefined ? { kg_declarados } : {}),
+      ...(kg_bruto !== undefined ? { kg_bruto } : {}),
+      ...(kg_tara !== undefined ? { kg_tara } : {}),
+      ...(kg_neto !== undefined ? { kg_neto } : {}),
+      ...(variedad_pureza !== undefined ? { variedad_pureza } : {}),
+      ...(variedad_pureza_pct !== undefined ? { variedad_pureza_pct } : {}),
+      ...(sanidad_escala !== undefined ? { sanidad_escala } : {}),
+      ...(presencia_hojas_escala !== undefined ? { presencia_hojas_escala } : {}),
+      ...(tipo_cosecha !== undefined ? { tipo_cosecha } : {}),
+      ...(observaciones !== undefined ? { observaciones } : {}),
     },
   });
 }
@@ -1171,6 +1222,9 @@ export async function updateRemitoUva(
   const nextCuartelId = input.cuartelId;
   const nextLoteCosechaId = input.loteCosechaId;
 
+  validateEscala1a10(input.sanidad_escala, "Sanidad");
+  validateEscala1a10(input.presencia_hojas_escala, "Presencia de hojas");
+
   if (nextFincaId || nextCuartelId || nextLoteCosechaId) {
     const existing = await prisma.remitoUva.findUnique({
       where: { remito_uva_id: remitoUvaId },
@@ -1183,6 +1237,24 @@ export async function updateRemitoUva(
       cuartelId: nextCuartelId ?? existing.cuartel_id,
       loteCosechaId: nextLoteCosechaId ?? existing.lote_cosecha_id,
     });
+  }
+
+  // Recalcular kg_neto si cambió bruto o tara, usando los valores existentes
+  // como base cuando uno de los dos no viene en el update.
+  let kg_neto: number | undefined;
+  if (input.kg_bruto !== undefined || input.kg_tara !== undefined) {
+    const pesos = await prisma.remitoUva.findUnique({
+      where: { remito_uva_id: remitoUvaId },
+      select: { kg_bruto: true, kg_tara: true },
+    });
+    const nextBruto =
+      input.kg_bruto !== undefined ? input.kg_bruto : Number(pesos?.kg_bruto ?? undefined);
+    const nextTara =
+      input.kg_tara !== undefined ? input.kg_tara : Number(pesos?.kg_tara ?? undefined);
+    kg_neto = computeKgNeto(
+      Number.isNaN(nextBruto) ? undefined : nextBruto,
+      Number.isNaN(nextTara) ? undefined : nextTara,
+    );
   }
 
   return prisma.remitoUva.update({
@@ -1200,6 +1272,19 @@ export async function updateRemitoUva(
       ...(input.transportista !== undefined ? { transportista: input.transportista } : {}),
       ...(input.patente !== undefined ? { patente: input.patente } : {}),
       ...(input.kg_declarados !== undefined ? { kg_declarados: input.kg_declarados } : {}),
+      ...(input.kg_bruto !== undefined ? { kg_bruto: input.kg_bruto } : {}),
+      ...(input.kg_tara !== undefined ? { kg_tara: input.kg_tara } : {}),
+      ...(kg_neto !== undefined ? { kg_neto } : {}),
+      ...(input.variedad_pureza !== undefined ? { variedad_pureza: input.variedad_pureza } : {}),
+      ...(input.variedad_pureza_pct !== undefined
+        ? { variedad_pureza_pct: input.variedad_pureza_pct }
+        : {}),
+      ...(input.sanidad_escala !== undefined ? { sanidad_escala: input.sanidad_escala } : {}),
+      ...(input.presencia_hojas_escala !== undefined
+        ? { presencia_hojas_escala: input.presencia_hojas_escala }
+        : {}),
+      ...(input.tipo_cosecha !== undefined ? { tipo_cosecha: input.tipo_cosecha } : {}),
+      ...(input.observaciones !== undefined ? { observaciones: input.observaciones } : {}),
     },
   });
 }
@@ -1360,12 +1445,22 @@ export async function deleteAnalisisRecepcion(
 
 function decorateOperacionVasija<
   T extends {
-    orden_enologo?: null | { enologo_user_id?: string | null };
+    orden_enologo?:
+      | null
+      | {
+          enologo_user_id?: string | null;
+          enologo?: null | { nombre?: string | null; email?: string | null };
+        };
+    app_user?: null | { nombre?: string | null; email?: string | null };
   },
 >(operacion: T) {
+  const enologo = operacion.orden_enologo?.enologo ?? null;
+  const actor = operacion.app_user ?? null;
   return {
     ...operacion,
     enologo_user_id: operacion.orden_enologo?.enologo_user_id ?? null,
+    enologo_nombre: enologo?.nombre ?? enologo?.email ?? null,
+    actor_nombre: actor?.nombre ?? actor?.email ?? null,
   };
 }
 
@@ -1377,7 +1472,8 @@ export async function listOperacionesVasija(userId: string, bodegaId?: string) {
       include: {
         vasija_origen: true,
         vasija_destino: true,
-        orden_enologo: true,
+        orden_enologo: { include: { enologo: { select: { nombre: true, email: true } } } },
+        app_user: { select: { nombre: true, email: true } },
         recepcion_bodega: true,
       },
       orderBy: [{ fecha_hora: "desc" }],
@@ -1391,7 +1487,8 @@ export async function listOperacionesVasija(userId: string, bodegaId?: string) {
     include: {
       vasija_origen: true,
       vasija_destino: true,
-      orden_enologo: true,
+      orden_enologo: { include: { enologo: { select: { nombre: true, email: true } } } },
+        app_user: { select: { nombre: true, email: true } },
       recepcion_bodega: true,
     },
     orderBy: [{ fecha_hora: "desc" }],
@@ -1406,7 +1503,8 @@ export async function getOperacionVasijaById(operacionVasijaId: string, userId: 
     include: {
       vasija_origen: true,
       vasija_destino: true,
-      orden_enologo: true,
+      orden_enologo: { include: { enologo: { select: { nombre: true, email: true } } } },
+        app_user: { select: { nombre: true, email: true } },
       recepcion_bodega: true,
     },
   });
