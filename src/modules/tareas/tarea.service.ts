@@ -4,6 +4,19 @@ import {
   hasAnyFincaRole,
   isSystemAdmin,
 } from "../auth/scope-permissions.service.js";
+import { recalcularCostosTarea } from "../costos/costos.service.js";
+
+/**
+ * Recalcula los costos de una tarea sin romper el flujo si algo falla
+ * (el módulo de costos es complementario al cierre de la tarea).
+ */
+async function recalcularCostosSafe(tareaId: string) {
+  try {
+    await recalcularCostosTarea(tareaId);
+  } catch (error) {
+    console.error("[tareas] recalcular costos falló para", tareaId, error);
+  }
+}
 
 type CreateTareaInput = {
   bodegaId: string;
@@ -901,6 +914,8 @@ export async function completarTarea(tareaId: string, actorUserId: string) {
     }),
   ]);
 
+  await recalcularCostosSafe(tareaId);
+
   return prisma.tarea.findUnique({
     where: { tarea_id: tareaId },
     include: tareaInclude,
@@ -1192,6 +1207,7 @@ export async function finalizarTareaAsignacion(tareaAsignacionId: string, userId
     where: { tarea_id: asignacion.tarea_id },
     data: { estado: "completado", updated_at: new Date() },
   });
+  await recalcularCostosSafe(asignacion.tarea_id);
   return updated;
 }
 
