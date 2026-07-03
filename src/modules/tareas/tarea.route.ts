@@ -9,6 +9,9 @@ import {
   cancelTareaHandler,
   completarTareaHandler,
   createTareaHandler,
+  registrarActividadHandler,
+  validarTareaHandler,
+  eliminarTareaHandler,
   finalizarTareaAsignacionHandler,
   listBodegaPendientesHandler,
   listTareaEntradasHandler,
@@ -96,6 +99,11 @@ tareaRoutes.post(
   createTareaHandler,
 );
 tareaRoutes.post(
+  "/registro",
+  authMiddleware,
+  registrarActividadHandler,
+);
+tareaRoutes.post(
   "/:tareaId/asignaciones",
   authMiddleware,
   addTareaAsignacionesHandler,
@@ -119,6 +127,16 @@ tareaRoutes.patch(
   "/:tareaId/completar",
   authMiddleware,
   completarTareaHandler,
+);
+tareaRoutes.patch(
+  "/:tareaId/validar",
+  authMiddleware,
+  validarTareaHandler,
+);
+tareaRoutes.delete(
+  "/:tareaId",
+  authMiddleware,
+  eliminarTareaHandler,
 );
 
 // Edit a tarea_entrada (date correction)

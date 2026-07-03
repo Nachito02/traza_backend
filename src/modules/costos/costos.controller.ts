@@ -18,12 +18,17 @@ import {
   deleteActividadMaquina,
   addActividadInsumo,
   deleteActividadInsumo,
+  addActividadContratista,
+  deleteActividadContratista,
   recalcularCostosTarea,
   getCostosTarea,
   getResumenPorCuartel,
   getResumenPorCampania,
+  getResumenPorBodega,
   listActividadesConCostoPorCuartel,
   listInsumosCatalogo,
+  listActividadesSugerencias,
+  getActividadSugerencia,
 } from "./costos.service.js";
 
 function handleError(res: Response, error: unknown) {
@@ -221,6 +226,25 @@ export async function deleteTarifaCombustibleHandler(req: Request, res: Response
 
 // ── Catálogo de insumos ──────────────────────────────────────────────────────
 
+export async function listSugerenciasHandler(req: Request, res: Response) {
+  try {
+    if (!requireUser(req, res)) return;
+    return res.json(await listActividadesSugerencias());
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getSugerenciaHandler(req: Request, res: Response) {
+  try {
+    if (!requireUser(req, res)) return;
+    const row = await getActividadSugerencia(String(req.params.clave ?? ""));
+    return res.json(row ?? null);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function listInsumosCatalogoHandler(req: Request, res: Response) {
   try {
     const userId = requireUser(req, res);
@@ -297,6 +321,27 @@ export async function deleteActividadInsumoHandler(req: Request, res: Response) 
   }
 }
 
+export async function addActividadContratistaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const row = await addActividadContratista(String(req.params.tareaId), userId, req.body ?? {});
+    return res.status(201).json(row);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function deleteActividadContratistaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    return res.json(await deleteActividadContratista(String(req.params.id), userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function recalcularCostosTareaHandler(req: Request, res: Response) {
   try {
     const userId = requireUser(req, res);
@@ -310,6 +355,18 @@ export async function recalcularCostosTareaHandler(req: Request, res: Response) 
 }
 
 // ── Indicadores ──────────────────────────────────────────────────────────────
+
+export async function resumenPorBodegaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const bodegaId = requireBodegaId(req, res);
+    if (!bodegaId) return;
+    return res.json(await getResumenPorBodega(userId, bodegaId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
 
 export async function resumenPorCuartelHandler(req: Request, res: Response) {
   try {

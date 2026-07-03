@@ -14,13 +14,18 @@ import {
   updateTarifaCombustibleHandler,
   deleteTarifaCombustibleHandler,
   listInsumosCatalogoHandler,
+  listSugerenciasHandler,
+  getSugerenciaHandler,
   getCostosTareaHandler,
   upsertEjecucionHandler,
   addActividadMaquinaHandler,
   deleteActividadMaquinaHandler,
   addActividadInsumoHandler,
   deleteActividadInsumoHandler,
+  addActividadContratistaHandler,
+  deleteActividadContratistaHandler,
   recalcularCostosTareaHandler,
+  resumenPorBodegaHandler,
   resumenPorCuartelHandler,
   actividadesPorCuartelHandler,
   resumenPorCampaniaHandler,
@@ -49,6 +54,10 @@ costosRoutes.delete("/tarifas/combustible/:id", authMiddleware, deleteTarifaComb
 // ── Catálogo de insumos ──
 costosRoutes.get("/insumos", authMiddleware, listInsumosCatalogoHandler);
 
+// ── Matriz de sugerencias por actividad (UI + bot) ──
+costosRoutes.get("/actividades/sugerencias", authMiddleware, listSugerenciasHandler);
+costosRoutes.get("/actividades/:clave/sugerencias", authMiddleware, getSugerenciaHandler);
+
 // ── Captura por actividad (tarea) ──
 costosRoutes.get("/tareas/:tareaId", authMiddleware, getCostosTareaHandler);
 costosRoutes.put("/tareas/:tareaId/ejecucion", authMiddleware, upsertEjecucionHandler);
@@ -56,9 +65,12 @@ costosRoutes.post("/tareas/:tareaId/maquinas", authMiddleware, addActividadMaqui
 costosRoutes.delete("/maquinas/:id", authMiddleware, deleteActividadMaquinaHandler);
 costosRoutes.post("/tareas/:tareaId/insumos", authMiddleware, addActividadInsumoHandler);
 costosRoutes.delete("/insumos/:id", authMiddleware, deleteActividadInsumoHandler);
+costosRoutes.post("/tareas/:tareaId/contratistas", authMiddleware, addActividadContratistaHandler);
+costosRoutes.delete("/contratistas/:id", authMiddleware, deleteActividadContratistaHandler);
 costosRoutes.post("/tareas/:tareaId/recalcular", authMiddleware, recalcularCostosTareaHandler);
 
 // ── Indicadores ──
+costosRoutes.get("/resumen/bodega", authMiddleware, resumenPorBodegaHandler);
 costosRoutes.get("/resumen/cuartel/:cuartelId", authMiddleware, resumenPorCuartelHandler);
 costosRoutes.get("/resumen/cuartel/:cuartelId/actividades", authMiddleware, actividadesPorCuartelHandler);
 costosRoutes.get("/resumen/campania/:campaniaId", authMiddleware, resumenPorCampaniaHandler);

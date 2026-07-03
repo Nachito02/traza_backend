@@ -4,7 +4,13 @@ import {
   hasAnyFincaRole,
   isSystemAdmin,
 } from "../auth/scope-permissions.service.js";
-import { recalcularCostosTarea } from "../costos/costos.service.js";
+import {
+  recalcularCostosTarea,
+  upsertEjecucion,
+  addActividadMaquina,
+  addActividadInsumo,
+  addActividadContratista,
+} from "../costos/costos.service.js";
 
 /**
  * Recalcula los costos de una tarea sin romper el flujo si algo falla
@@ -721,6 +727,83 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
   return tarea;
 }
 
+type RegistrarActividadInput = {
+  bodegaId: string;
+  procesoId: string;
+  fincaId?: string;
+  cuartelId?: string;
+  /** Campos de la actividad serializados (mismo formato que CampoPage). */
+  descripcion?: string;
+  /** Costos opcionales para crear todo en un solo paso. */
+  ejecucion?: Record<string, unknown>;
+  maquinas?: Record<string, unknown>[];
+  insumos?: Record<string, unknown>[];
+  contratistas?: Record<string, unknown>[];
+};
+
+/**
+ * Carga rápida: registra una actividad ya ejecutada por el encargado, sin el
+ * flujo de orden → asignar → tomar → finalizar. Orquesta los servicios
+ * existentes: crea la tarea auto-asignada al actor, le carga la entrada con los
+ * datos y la finaliza (lo que dispara el recálculo de costos).
+ *
+ * Igual que CampoPage, manda `descripcion` (no `draft`): registra los datos sin
+ * materializar el evento tipado, evitando requisitos extra (p. ej. campaña).
+ */
+export async function registrarActividadDirecta(
+  input: RegistrarActividadInput,
+  actorUserId: string,
+) {
+  // 1) Crear la tarea auto-asignada al encargado (valida scope + regla de finca).
+  const tarea = await createTarea(
+    {
+      bodegaId: input.bodegaId,
+      procesoId: input.procesoId,
+      ...(input.fincaId !== undefined ? { fincaId: input.fincaId } : {}),
+      ...(input.cuartelId !== undefined ? { cuartelId: input.cuartelId } : {}),
+      assigneeUserIds: [actorUserId],
+    },
+    actorUserId,
+  );
+
+  // 2) Ubicar la asignación propia recién creada.
+  const asignacion = tarea.tarea_asignacion.find((a) => a.user_id === actorUserId);
+  if (!asignacion) {
+    throw new TareaError("No se pudo crear la asignación de la actividad", 500);
+  }
+
+  // 3) Cargar la entrada con los datos de la actividad.
+  const entrada = await addTareaEntrada({
+    tareaAsignacionId: asignacion.tarea_asignacion_id,
+    userId: actorUserId,
+    ...(input.descripcion !== undefined ? { descripcion: input.descripcion } : {}),
+  });
+
+  // 4) Finalizar (marca completado + dispara recalcularCostosSafe).
+  await finalizarTareaAsignacion(asignacion.tarea_asignacion_id, actorUserId);
+
+  // 5) Costos en el mismo paso (opcional): ejecución + líneas.
+  if (input.ejecucion && typeof input.ejecucion === "object") {
+    await upsertEjecucion(tarea.tarea_id, actorUserId, input.ejecucion as Parameters<typeof upsertEjecucion>[2]);
+  }
+  for (const m of input.maquinas ?? []) {
+    await addActividadMaquina(tarea.tarea_id, actorUserId, m as Parameters<typeof addActividadMaquina>[2]);
+  }
+  for (const ins of input.insumos ?? []) {
+    await addActividadInsumo(tarea.tarea_id, actorUserId, ins as Parameters<typeof addActividadInsumo>[2]);
+  }
+  for (const c of input.contratistas ?? []) {
+    await addActividadContratista(tarea.tarea_id, actorUserId, c as Parameters<typeof addActividadContratista>[2]);
+  }
+
+  return {
+    tareaId: tarea.tarea_id,
+    asignacionId: asignacion.tarea_asignacion_id,
+    entradaId: entrada.entradaId,
+    evento: entrada.evento,
+  };
+}
+
 export async function listTareas(
   actorUserId: string,
   bodegaId?: string,
@@ -915,6 +998,67 @@ export async function completarTarea(tareaId: string, actorUserId: string) {
   ]);
 
   await recalcularCostosSafe(tareaId);
+
+  return prisma.tarea.findUnique({
+    where: { tarea_id: tareaId },
+    include: tareaInclude,
+  });
+}
+
+/** Borrado definitivo de una orden cancelada (cascadea costos/entradas/asignaciones). */
+export async function eliminarTarea(tareaId: string, actorUserId: string) {
+  if (!tareaId) throw new TareaError("tareaId requerido", 400);
+  const tarea = await prisma.tarea.findUnique({
+    where: { tarea_id: tareaId },
+    select: { tarea_id: true, bodega_id: true, estado: true },
+  });
+  if (!tarea) throw new TareaError("Tarea no encontrada", 404);
+  await ensureCanManageBodega(actorUserId, tarea.bodega_id);
+  // Solo se borran definitivamente las órdenes canceladas (para no perder
+  // costos/trazabilidad de órdenes activas o completadas por accidente).
+  if (tarea.estado !== "cancelado") {
+    throw new TareaError("Solo se pueden eliminar órdenes canceladas", 400);
+  }
+  // Revertir los egresos de stock generados por los insumos de esta orden
+  // (el movimiento de stock no cascadea por FK, hay que limpiarlo a mano).
+  const lineasInsumo = await prisma.actividadInsumo.findMany({
+    where: { tarea_id: tareaId },
+    select: { actividad_insumo_id: true },
+  });
+  if (lineasInsumo.length > 0) {
+    await prisma.movimientoStock.deleteMany({
+      where: { actividad_insumo_id: { in: lineasInsumo.map((l) => l.actividad_insumo_id) } },
+    });
+  }
+  await prisma.tarea.delete({ where: { tarea_id: tareaId } });
+  return { deleted: true };
+}
+
+export async function validarTarea(tareaId: string, actorUserId: string) {
+  if (!tareaId) {
+    throw new TareaError("tareaId requerido", 400);
+  }
+  const tarea = await prisma.tarea.findUnique({
+    where: { tarea_id: tareaId },
+    select: { tarea_id: true, bodega_id: true, estado: true },
+  });
+  if (!tarea) {
+    throw new TareaError("Tarea no encontrada", 404);
+  }
+  await ensureCanManageBodega(actorUserId, tarea.bodega_id);
+
+  if (tarea.estado === "validada") {
+    return prisma.tarea.findUnique({ where: { tarea_id: tareaId }, include: tareaInclude });
+  }
+  // Solo se valida una actividad ya completada.
+  if (tarea.estado !== "completado") {
+    throw new TareaError("Solo se puede validar una tarea completada", 400);
+  }
+
+  await prisma.tarea.update({
+    where: { tarea_id: tareaId },
+    data: { estado: "validada", updated_at: new Date() },
+  });
 
   return prisma.tarea.findUnique({
     where: { tarea_id: tareaId },

@@ -7,6 +7,9 @@ import {
   cancelTarea,
   completarTarea,
   createTarea,
+  registrarActividadDirecta,
+  validarTarea,
+  eliminarTarea,
   finalizarTareaAsignacion,
   listTareaEntradas,
   TareaError,
@@ -70,6 +73,23 @@ export async function createTareaHandler(req: Request, res: Response) {
   }
 }
 
+export async function registrarActividadHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const { bodegaId, procesoId, fincaId, cuartelId, descripcion, ejecucion, maquinas, insumos, contratistas } =
+      req.body ?? {};
+    const result = await registrarActividadDirecta(
+      { bodegaId, procesoId, fincaId, cuartelId, descripcion, ejecucion, maquinas, insumos, contratistas },
+      req.user.userId,
+    );
+    return res.status(201).json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function listTareasHandler(req: Request, res: Response) {
   try {
     if (!req.user?.userId) {
@@ -121,6 +141,31 @@ export async function completarTareaHandler(req: Request, res: Response) {
     }
     const tareaId = String(req.params.tareaId ?? "");
     const row = await completarTarea(tareaId, req.user.userId);
+    return res.json(row);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function eliminarTareaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const tareaId = String(req.params.tareaId ?? "");
+    return res.json(await eliminarTarea(tareaId, req.user.userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function validarTareaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const tareaId = String(req.params.tareaId ?? "");
+    const row = await validarTarea(tareaId, req.user.userId);
     return res.json(row);
   } catch (error) {
     return handleError(res, error);

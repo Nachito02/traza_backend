@@ -1,0 +1,165 @@
+---------------------------------------------------------------------------
+RESUMEN DEL FLUJO (3 pasos)
+---------------------------------------------------------------------------
+1) Autenticarse           -> obtener access_token (JWT)
+2) Crear una "entrada"    -> obtener entradaId
+3) Subir el archivo       -> POST multipart a la ruta de adjuntos (sube a IPFS)
+
+El archivo se guarda en IPFS y queda registrado en la entrada con su CID y
+una URL pública de gateway.
+
+Base URL de la API:  https://traza.ideal.org.ar/api
+
+---------------------------------------------------------------------------
+PASO 1 — AUTENTICACIÓN
+---------------------------------------------------------------------------
+POST /api/ia/auth/login
+Content-Type: application/json
+
+  { "username": "<usuario o email>", "password": "<password>" }
+
+Respuesta:
+  {
+    "access_token": "<JWT>",
+    "refresh_token": "<JWT>",
+    "user": { "id": "...", "email": "...", "nombre": "..." }
+  }
+
+-> Guardar access_token. Dura 4 horas. Se envía en TODAS las llamadas
+   siguientes como header:
+
+       Authorization: Bearer <access_token>
+
+
+---------------------------------------------------------------------------
+PASO 2 — CREAR LA ENTRADA (a la que se adjunta el archivo)
+---------------------------------------------------------------------------
+Los adjuntos NO cuelgan de la tarea directamente, sino de una "entrada"
+(un registro de avance). Primero se crea la entrada y se obtiene su id.
+
+POST /api/ia/tareas/:tareaAsignacionId/entradas
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+  { "descripcion": "Foto de la aplicación", "notas": "opcional" }
+
+Respuesta (campo importante):
+  { "entradaId": "8f3c...uuid", ... }
+
+-> Guardar entradaId para el paso 3.
+
+(`tareaAsignacionId` es la asignación de la tarea al operario; se obtiene del
+ listado de tareas del asistente: GET /api/ia/tareas)
+
+
+---------------------------------------------------------------------------
+PASO 3 — SUBIR EL ARCHIVO A IPFS  (la ruta clave)
+---------------------------------------------------------------------------
+POST /api/tareas/entradas/:entradaId/adjuntos
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+
+  Campo del archivo (form-data):  "imagen"   <-- OBLIGATORIO ese nombre
+  (sirve para imágenes y también para PDFs/otros documentos)
+
+Reglas:
+  - Tamaño máximo: 50 MB por archivo.
+  - Un archivo por request.
+  - Tipos permitidos:
+      * Cualquier image/*  (jpg, png, webp, etc.)
+      * Cualquier video/*
+      * application/pdf
+      * Word (.doc, .docx)
+      * Excel (.xls, .xlsx)
+      * PowerPoint (.ppt, .pptx)
+      * text/plain, text/csv
+
+Respuesta 201:
+  {
+    "adjunto": {
+      "cid":    "QmXx...",                       // CID en IPFS
+      "url":    "https://<gateway>/ipfs/QmXx...",// URL pública para abrir/descargar
+      "nombre": "foto.jpg",
+      "tipo":   "image/jpeg",
+      "size":   123456
+    },
+    "adjuntos": [ ...lista completa de adjuntos de esa entrada... ]
+  }
+
+
+---------------------------------------------------------------------------
+EJEMPLOS
+---------------------------------------------------------------------------
+# 1) Login
+curl -X POST https://<host>/api/ia/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"bot@tudominio.com","password":"secreto"}'
+
+# 2) Crear entrada
+curl -X POST https://<host>/api/ia/tareas/<tareaAsignacionId>/entradas \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"descripcion":"Foto de la aplicación"}'
+
+# 3) Subir el archivo (campo "imagen")
+curl -X POST https://<host>/api/tareas/entradas/<entradaId>/adjuntos \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "imagen=@/ruta/local/foto.jpg"
+
+Node (FormData):
+  const fd = new FormData();
+  fd.append("imagen", fileBlob, "foto.jpg");
+  await fetch(`${BASE}/tareas/entradas/${entradaId}/adjuntos`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }, // NO setear Content-Type a mano
+    body: fd,
+  });
+
+
+---------------------------------------------------------------------------
+CÓDIGOS DE ERROR
+---------------------------------------------------------------------------
+400  No se recibió ningún archivo  -> falta el campo "imagen" en el form-data.
+400  Tipo de archivo no permitido  -> mimetype fuera de la lista permitida.
+401  unauthorized                  -> token ausente, inválido o vencido (renovar).
+403  No autorizado                 -> el usuario del token no tiene acceso a esa tarea.
+404  Entrada no encontrada         -> entradaId inexistente.
+413  (límite multer)               -> archivo > 50 MB.
+502  Error al subir a IPFS         -> el nodo IPFS respondió error.
+503  IPFS no está configurado      -> falta IPFS_API_URL en el server (ver abajo).
+
+
+---------------------------------------------------------------------------
+CONFIGURACIÓN DEL SERVIDOR (lo necesita quien levanta el backend)
+---------------------------------------------------------------------------
+Variables de entorno:
+  IPFS_API_URL      RPC del nodo Kubo (go-ipfs). Ej: http://localhost:5001
+                    (NO es el gateway). Si falta -> el endpoint responde 503.
+  IPFS_GATEWAY_URL  Gateway HTTP público para construir la URL de lectura.
+                    Ej: https://ipfs.tudominio.com  (default: https://ipfs.io)
+
+Internamente el backend hace POST a:
+  ${IPFS_API_URL}/api/v0/add?pin=true&quieter=true
+y arma la url como ${IPFS_GATEWAY_URL}/ipfs/<CID>.
+
+
+---------------------------------------------------------------------------
+NOTAS / ACLARACIONES PARA EL EQUIPO
+---------------------------------------------------------------------------
+- El endpoint de SUBIDA vive en el módulo "tareas" (/api/tareas/...), NO en
+  /api/ia. Pero el token del asistente (sacado de /api/ia/auth/login) es un
+  JWT estándar y FUNCIONA igual en esa ruta (mismo Authorization: Bearer).
+
+- Alternativa (si el asistente sube a IPFS por su cuenta): la entrada del
+  módulo IA acepta un array "adjuntos" ya subido. Es decir, podés mandar en
+  el body de POST /api/ia/tareas/:id/entradas:
+      { "descripcion": "...", "adjuntos": [
+          { "cid":"Qm...", "url":"https://.../ipfs/Qm...",
+            "nombre":"foto.jpg", "tipo":"image/jpeg", "size":123456 } ] }
+  En ese caso el backend NO sube nada: confía en el CID/URL que le pasás.
+  Usar el Paso 3 (multipart) es lo recomendado para que el backend haga el
+  pin en el nodo propio.
+
+- El campo del form-data se llama "imagen" por razones históricas, pero
+  acepta cualquier tipo permitido (no sólo imágenes).
+===========================================================================

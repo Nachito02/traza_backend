@@ -85,6 +85,8 @@ model AppUser {
   capacitacion_asistente              CapacitacionAsistente[]
   operaciones_vasija                  OperacionVasija[]
   cortes_responsable                  Corte[]                         @relation("CorteResponsable")
+  ejecuciones_responsable             TareaEjecucion[]                @relation("EjecucionResponsable")
+  personal_bodega                     PersonalBodega[]
 
   @@map("app_user")
 }
@@ -128,6 +130,8 @@ model Bodega {
   tarifa_maquinaria         TarifaMaquinaria[]
   tarifa_combustible        TarifaCombustible[]
   insumo_catalogo           InsumoCatalogo[]
+  movimiento_stock          MovimientoStock[]
+  personal_bodega           PersonalBodega[]
 
   @@index([productor_id], map: "idx_bodega_productor")
   @@map("bodega")
@@ -1065,15 +1069,46 @@ model InsumoCatalogo {
   unidad_base          String
   costo_unitario       Decimal?              @db.Decimal(14, 4)
   moneda               String                @default("ARS")
+  stock_minimo         Decimal?              @db.Decimal(14, 3)
+  activo               Boolean               @default(true)
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
   bodega               Bodega?               @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
   evento_fertilizacion EventoFertilizacion[]
   insumo_lote          InsumoLote[]
   actividad_insumo     ActividadInsumo[]
+  movimiento_stock     MovimientoStock[]
 
-  @@unique([tipo, nombre_comercial])
+  @@unique([bodega_id, tipo, nombre_comercial])
   @@index([bodega_id], map: "idx_insumo_catalogo_bodega")
   @@map("insumo_catalogo")
+}
+
+enum TipoMovimientoStock {
+  ingreso
+  egreso
+  ajuste
+}
+
+// Movimientos de stock por insumo y bodega. La existencia es Σ cantidad (signo
+// incluido: ingreso +, egreso −, ajuste con signo).
+model MovimientoStock {
+  movimiento_stock_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumo_id           String              @db.Uuid
+  bodega_id           String              @db.Uuid
+  tipo                TipoMovimientoStock
+  cantidad            Decimal             @db.Decimal(14, 3)
+  unidad              String
+  costo_unitario      Decimal?            @db.Decimal(14, 4)
+  motivo              String?
+  actividad_insumo_id String?             @unique @db.Uuid
+  created_by          String?             @db.Uuid
+  fecha               DateTime            @default(now()) @db.Timestamptz(6)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  insumo_catalogo     InsumoCatalogo      @relation(fields: [insumo_id], references: [insumo_id], onDelete: Cascade, onUpdate: NoAction)
+  bodega              Bodega              @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([insumo_id, bodega_id], map: "idx_movimiento_stock_insumo_bodega")
+  @@map("movimiento_stock")
 }
 
 model InsumoLote {
@@ -1368,17 +1403,18 @@ model Tarea {
   created_at  DateTime    @default(now()) @db.Timestamptz(6)
   updated_at  DateTime    @default(now()) @db.Timestamptz(6)
 
-  bodega            Bodega             @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
-  finca             Finca?             @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
-  cuartel           Cuartel?           @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  protocolo_proceso ProtocoloProceso   @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
-  app_user          AppUser            @relation("TareaCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
-  tarea_asignacion  TareaAsignacion[]
-  entradas          TareaEntrada[]
-  tarea_ejecucion   TareaEjecucion?
-  actividad_maquina ActividadMaquina[]
-  actividad_insumo  ActividadInsumo[]
-  actividad_costo   ActividadCosto[]
+  bodega                Bodega                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
+  finca                 Finca?                 @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
+  cuartel               Cuartel?               @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  protocolo_proceso     ProtocoloProceso       @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
+  app_user              AppUser                @relation("TareaCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
+  tarea_asignacion      TareaAsignacion[]
+  entradas              TareaEntrada[]
+  tarea_ejecucion       TareaEjecucion?
+  actividad_maquina     ActividadMaquina[]
+  actividad_insumo      ActividadInsumo[]
+  actividad_contratista ActividadContratista[]
+  actividad_costo       ActividadCosto[]
 
   @@index([bodega_id, estado], map: "idx_tarea_bodega_estado")
   @@index([finca_id, estado], map: "idx_tarea_finca_estado")
@@ -1440,6 +1476,29 @@ model TarifaManoObra {
   @@map("tarifa_mano_obra")
 }
 
+// Legajo de costos del personal por bodega. La misma persona puede tener
+// distinto costo/modalidad en cada bodega.
+model PersonalBodega {
+  personal_bodega_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id          String        @db.Uuid
+  nombre             String
+  user_id            String?       @db.Uuid
+  tipo               TipoPersonal  @default(interno)
+  modalidad          ModalidadPago @default(por_hora)
+  rol                RolManoObra?
+  sueldo_mensual     Decimal?      @db.Decimal(14, 2)
+  costo_hora         Decimal?      @db.Decimal(14, 2)
+  dias_mes           Int           @default(25)
+  activo             Boolean       @default(true)
+  created_at         DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime      @default(now()) @db.Timestamptz(6)
+  bodega             Bodega        @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user           AppUser?      @relation(fields: [user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([bodega_id], map: "idx_personal_bodega_bodega")
+  @@map("personal_bodega")
+}
+
 model TarifaMaquinaria {
   tarifa_maquinaria_id String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id            String             @db.Uuid
@@ -1480,9 +1539,14 @@ model TareaEjecucion {
   tarea_ejecucion_id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tarea_id               String             @unique @db.Uuid
   modalidad              ModalidadEjecucion
+  fecha_inicio           DateTime?          @db.Date
+  fecha_fin              DateTime?          @db.Date
   superficie_intervenida Decimal            @db.Decimal(10, 2)
   unidad_superficie      String             @default("ha")
   pct_intervenido        Decimal?           @db.Decimal(5, 2)
+  cantidad_ejecutada     Decimal?           @db.Decimal(14, 2)
+  unidad_ejecutada       String?
+  cantidad_operarios     Int?
   jornales_generales     Decimal?           @db.Decimal(10, 2)
   horas_generales        Decimal?           @db.Decimal(10, 2)
   jornales_tractorista   Decimal?           @db.Decimal(10, 2)
@@ -1490,11 +1554,15 @@ model TareaEjecucion {
   horas_tecnico          Decimal?           @db.Decimal(10, 2)
   contratista            String?
   monto_contratista      Decimal?           @db.Decimal(14, 2)
+  responsable_user_id    String?            @db.Uuid
+  personal_asignado      Json               @default("[]")
   observaciones          String?
   created_at             DateTime           @default(now()) @db.Timestamptz(6)
   updated_at             DateTime           @default(now()) @db.Timestamptz(6)
   tarea                  Tarea              @relation(fields: [tarea_id], references: [tarea_id], onDelete: Cascade, onUpdate: NoAction)
+  responsable            AppUser?           @relation("EjecucionResponsable", fields: [responsable_user_id], references: [user_id], onUpdate: NoAction)
 
+  @@index([responsable_user_id], map: "idx_tarea_ejecucion_responsable")
   @@map("tarea_ejecucion")
 }
 
@@ -1505,6 +1573,7 @@ model ActividadMaquina {
   nombre                  String
   clase                   ClaseMaquinaria
   propia                  Boolean           @default(true)
+  cantidad                Int?
   horas                   Decimal           @db.Decimal(10, 2)
   consumo_combustible_lts Decimal?          @db.Decimal(10, 3)
   costo_hora_snapshot     Decimal?          @db.Decimal(14, 2)
@@ -1536,6 +1605,21 @@ model ActividadInsumo {
   @@map("actividad_insumo")
 }
 
+model ActividadContratista {
+  actividad_contratista_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tarea_id                 String   @db.Uuid
+  cuadrilla                String
+  cantidad_operarios       Int?
+  horas                    Decimal? @db.Decimal(10, 2)
+  jornales                 Decimal? @db.Decimal(10, 2)
+  monto                    Decimal  @db.Decimal(14, 2)
+  created_at               DateTime @default(now()) @db.Timestamptz(6)
+  tarea                    Tarea    @relation(fields: [tarea_id], references: [tarea_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tarea_id], map: "idx_actividad_contratista_tarea")
+  @@map("actividad_contratista")
+}
+
 model ActividadCosto {
   actividad_costo_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tarea_id           String         @db.Uuid
@@ -1548,6 +1632,21 @@ model ActividadCosto {
   @@unique([tarea_id, categoria], map: "uq_actividad_costo_tarea_categoria")
   @@index([tarea_id], map: "idx_actividad_costo_tarea")
   @@map("actividad_costo")
+}
+
+// Matriz de configuración por actividad (consumida por la UI y el bot):
+// qué preguntar de productividad y qué equipos/insumos sugerir.
+model ActividadSugerencia {
+  actividad_sugerencia_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clave                   String   @unique
+  nombre                  String
+  productividad_unidad    String?
+  productividad_label     String?
+  equipos_sugeridos       Json     @default("[]")
+  insumos_sugeridos       Json     @default("[]")
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("actividad_sugerencia")
 }
 
 model TrazabilidadOrigen {
@@ -1686,6 +1785,7 @@ enum TareaEstado {
   en_progreso
   completado
   cancelado
+  validada
 }
 
 enum TareaAsignacionEstado {
@@ -1712,6 +1812,16 @@ enum ModalidadEjecucion {
   mixta
 }
 
+enum TipoPersonal {
+  interno
+  externo
+}
+
+enum ModalidadPago {
+  mensual
+  por_hora
+}
+
 enum RolManoObra {
   operario
   tractorista
@@ -1724,6 +1834,7 @@ enum RolManoObra {
 enum ClaseMaquinaria {
   motriz
   implemento
+  herramienta
 }
 
 enum TipoCombustible {

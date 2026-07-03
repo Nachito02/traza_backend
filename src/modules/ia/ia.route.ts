@@ -32,6 +32,7 @@ import {
   listIaFincasHandler,
   listIaHallazgosHandler,
   listIaInsumosHandler,
+  listIaActividadSugerenciasHandler,
   listIaJobsHandler,
   listIaTrabajadoresHandler,
   createIaTrabajadorHandler,
@@ -64,6 +65,7 @@ iaRoutes.post("/catalogos/trabajadores", createIaTrabajadorHandler);
 iaRoutes.get("/catalogos/protocolos", listIaProtocolosHandler);
 iaRoutes.get("/catalogos/protocolos/:protocoloId/procesos", listIaProcesosHandler);
 iaRoutes.get("/catalogos/insumos", listIaInsumosHandler);
+iaRoutes.get("/catalogos/actividades-sugerencias", listIaActividadSugerenciasHandler);
 iaRoutes.get("/catalogos/eventos", listIaEventoTiposHandler);
 iaRoutes.get("/catalogos/eventos/:tipo/schema", getIaEventoSchemaHandler);
 iaRoutes.get("/tareas", listIaJobsHandler);

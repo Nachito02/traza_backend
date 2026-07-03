@@ -32,6 +32,7 @@ import {
   listIaEventoTipos,
 } from "./ia.service.js";
 import { BotError } from "../bot/bot.service.js";
+import { listActividadesSugerencias } from "../costos/costos.service.js";
 
 function handleError(res: Response, error: unknown) {
   if (error instanceof IaError) {
@@ -258,6 +259,17 @@ export async function listIaInsumosHandler(req: Request, res: Response) {
     if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
     const tipo = typeof req.query.tipo === "string" ? req.query.tipo : undefined;
     return res.json(await listIaInsumos(req.user.userId, tipo));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function listIaActividadSugerenciasHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: "unauthorized" });
+    // Matriz de configuración para el flujo conversacional del bot
+    // (sección 18 del manual): por actividad, qué preguntar y qué sugerir.
+    return res.json(await listActividadesSugerencias());
   } catch (error) {
     return handleError(res, error);
   }

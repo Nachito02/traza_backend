@@ -1,26 +1,10 @@
--- Seed del módulo de costos: tarifas (por bodega) + insumos de referencia (globales).
+-- Seed del módulo de costos: tarifas por bodega.
 -- Idempotente: se puede correr varias veces sin duplicar.
 -- ⚠️ Precios PLACEHOLDER (ARS) — ajustar a valores reales de la bodega.
+-- NOTA: los insumos NO se seedean (inventario propio de cada bodega: cada una
+-- carga los suyos desde /admin/insumos).
 
--- ── 1) Insumos de referencia (catálogo global, bodega_id NULL) ───────────────
--- Hardcodeados para arrancar; luego se reemplazan por inventario real.
-INSERT INTO "insumo_catalogo" ("tipo", "nombre_comercial", "principio_activo", "unidad_base", "costo_unitario", "moneda")
-VALUES
-  ('Fitosanitario', 'Oxicloruro de cobre', 'Oxicloruro de cobre', 'kg', 8500.0000, 'ARS'),
-  ('Fitosanitario', 'Azufre mojable',      'Azufre',              'kg', 3200.0000, 'ARS'),
-  ('Fitosanitario', 'Mancozeb 80% WP',     'Mancozeb',            'kg', 9800.0000, 'ARS'),
-  ('Fitosanitario', 'Caldo bordelés',      'Sulfato de cobre + cal','kg', 7600.0000, 'ARS'),
-  ('Fertilizante',  'Urea granulada',      'Nitrógeno (46%)',     'kg',  950.0000, 'ARS'),
-  ('Fertilizante',  'Fosfato diamónico',   'DAP (18-46-0)',       'kg', 1300.0000, 'ARS'),
-  ('Enmienda',      'Sulfato de calcio',   'Yeso agrícola',       'kg',  420.0000, 'ARS')
-ON CONFLICT ("tipo", "nombre_comercial")
-DO UPDATE SET
-  "principio_activo" = EXCLUDED."principio_activo",
-  "unidad_base"      = EXCLUDED."unidad_base",
-  "costo_unitario"   = EXCLUDED."costo_unitario",
-  "moneda"           = EXCLUDED."moneda";
-
--- ── 2) Tarifas por bodega ────────────────────────────────────────────────────
+-- ── Tarifas por bodega ───────────────────────────────────────────────────────
 -- Se insertan para TODAS las bodegas existentes. Guardas NOT EXISTS para idempotencia
 -- (las tablas de tarifa no tienen unique natural).
 

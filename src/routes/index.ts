@@ -13,6 +13,8 @@ import { botRoutes } from "../modules/bot/bot.route.js";
 import { iaRoutes } from "../modules/ia/ia.route.js";
 import { elaboracionRoutes } from "../modules/elaboracion/elaboracion.route.js";
 import { costosRoutes } from "../modules/costos/costos.route.js";
+import { inventarioRoutes } from "../modules/inventario/inventario.route.js";
+import { personalRoutes } from "../modules/personal/personal.route.js";
 import { personaRoutes } from "../modules/personas/persona.route.js";
 import { publicRoutes } from "../modules/public/public.route.js";
 
@@ -32,5 +34,7 @@ routes.use("/bot", botRoutes);
 routes.use("/ia", iaRoutes);
 routes.use("/elaboracion", elaboracionRoutes);
 routes.use("/costos", costosRoutes);
+routes.use("/inventario", inventarioRoutes);
+routes.use("/personal", personalRoutes);
 routes.use("/operarios", personaRoutes);
 routes.use("/public", publicRoutes);
