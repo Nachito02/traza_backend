@@ -7,21 +7,8 @@
 -- ── Tarifas por bodega ───────────────────────────────────────────────────────
 -- Se insertan para TODAS las bodegas existentes. Guardas NOT EXISTS para idempotencia
 -- (las tablas de tarifa no tienen unique natural).
-
--- 2a) Mano de obra
-INSERT INTO "tarifa_mano_obra" ("bodega_id", "rol", "costo_jornal", "costo_hora", "moneda", "vigencia_desde", "activo")
-SELECT b."bodega_id", v.rol::"RolManoObra", v.costo_jornal, v.costo_hora, 'ARS', CURRENT_DATE, true
-FROM "bodega" b
-JOIN (
-  VALUES
-    ('operario',    25000.00, NULL::numeric),
-    ('tractorista', 32000.00, NULL::numeric),
-    ('tecnico',     60000.00, 7500.00)
-) AS v(rol, costo_jornal, costo_hora) ON true
-WHERE NOT EXISTS (
-  SELECT 1 FROM "tarifa_mano_obra" t
-  WHERE t."bodega_id" = b."bodega_id" AND t."rol" = v.rol::"RolManoObra"
-);
+-- NOTA: la mano de obra ya NO se seedea acá — cada bodega la carga desde
+-- Bodega → Personal (personal_bodega) + operarios transitorios.
 
 -- 2b) Maquinaria (motrices e implementos)
 INSERT INTO "tarifa_maquinaria" ("bodega_id", "nombre", "clase", "costo_hora", "consumo_lts_hora", "moneda", "vigencia_desde", "activo")
