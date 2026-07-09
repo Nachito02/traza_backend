@@ -1,10 +1,6 @@
 import type { Request, Response } from "express";
 import {
   CostoError,
-  listTarifasManoObra,
-  createTarifaManoObra,
-  updateTarifaManoObra,
-  deleteTarifaManoObra,
   listTarifasMaquinaria,
   createTarifaMaquinaria,
   updateTarifaMaquinaria,
@@ -59,60 +55,6 @@ function requireBodegaId(req: Request, res: Response): string | null {
     return null;
   }
   return bodegaId;
-}
-
-// ── Tarifas: mano de obra ────────────────────────────────────────────────────
-
-export async function listTarifasManoObraHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUser(req, res);
-    if (!userId) return;
-    const bodegaId = requireBodegaId(req, res);
-    if (!bodegaId) return;
-    return res.json(await listTarifasManoObra(userId, bodegaId));
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function createTarifaManoObraHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUser(req, res);
-    if (!userId) return;
-    const { bodegaId, rol, costo_jornal, costo_hora, vigencia_desde } = req.body ?? {};
-    const row = await createTarifaManoObra({
-      userId,
-      bodegaId,
-      rol,
-      costo_jornal,
-      costo_hora,
-      vigencia_desde,
-    });
-    return res.status(201).json(row);
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function updateTarifaManoObraHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUser(req, res);
-    if (!userId) return;
-    const row = await updateTarifaManoObra(String(req.params.id), userId, req.body ?? {});
-    return res.json(row);
-  } catch (error) {
-    return handleError(res, error);
-  }
-}
-
-export async function deleteTarifaManoObraHandler(req: Request, res: Response) {
-  try {
-    const userId = requireUser(req, res);
-    if (!userId) return;
-    return res.json(await deleteTarifaManoObra(String(req.params.id), userId));
-  } catch (error) {
-    return handleError(res, error);
-  }
 }
 
 // ── Tarifas: maquinaria ──────────────────────────────────────────────────────

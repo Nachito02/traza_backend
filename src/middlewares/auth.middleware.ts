@@ -1,8 +1,9 @@
 import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
+import { env } from "../config/env.js";
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const devApiKey = process.env.DEV_API_KEY;
+  const devApiKey = env.DEV_API_KEY;
   if (devApiKey) {
     const authHeader = req.headers.authorization;
     const bearerValue = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
@@ -26,13 +27,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   if (!token) {
     return res.status(401).json({ error: "unauthorized" });
   }
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    return res.status(500).json({ error: "JWT_SECRET no configurado" });
-  }
-
   try {
-    const payload = jwt.verify(token, secret);
+    const payload = jwt.verify(token, env.JWT_SECRET);
     if (typeof payload !== "object" || payload === null) {
       return res.status(401).json({ error: "unauthorized" });
     }

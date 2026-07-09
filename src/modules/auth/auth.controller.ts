@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../../config/prismaClient.js';
+import { env } from '../../config/env.js';
 import {
   AuthError,
   changePassword,
@@ -28,10 +29,10 @@ function handleError(res: Response, error: unknown) {
 }
 
 function cookieOptions(req: Request) {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProd = env.NODE_ENV === 'production';
   const forwardedProto = req.header('x-forwarded-proto');
   const isHttps = req.secure || forwardedProto?.includes('https') || false;
-  const configuredSameSite = (process.env.COOKIE_SAME_SITE ?? '').toLowerCase();
+  const configuredSameSite = (env.COOKIE_SAME_SITE ?? '').toLowerCase();
   const sameSite =
     configuredSameSite === 'none' ||
     configuredSameSite === 'lax' ||
@@ -40,8 +41,8 @@ function cookieOptions(req: Request) {
       : isProd || isHttps
       ? 'none'
       : 'lax';
-  const secure = process.env.COOKIE_SECURE
-    ? process.env.COOKIE_SECURE === 'true'
+  const secure = env.COOKIE_SECURE
+    ? env.COOKIE_SECURE === 'true'
     : sameSite === 'none' || isProd || isHttps;
 
   return {

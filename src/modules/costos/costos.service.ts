@@ -10,7 +10,6 @@ import {
 import { getCostosHoraPersonal } from "../personal/personal.service.js";
 import type {
   ModalidadEjecucion,
-  RolManoObra,
   ClaseMaquinaria,
   TipoCombustible,
   Prisma,
@@ -129,81 +128,84 @@ async function loadTareaScoped(tareaId: string, userId: string) {
   return tarea;
 }
 
-// ── Tarifas: Mano de obra ────────────────────────────────────────────────────
-
-const ROLES_MANO_OBRA = ["operario", "tractorista", "aplicador", "tecnico", "encargado", "contratista"];
 const CLASES_MAQUINARIA = ["motriz", "implemento", "herramienta"];
 const TIPOS_COMBUSTIBLE = ["gasoil", "nafta", "electricidad", "glp", "otro"];
 const MODALIDADES = ["propia", "contratada", "mixta"];
 
-export async function listTarifasManoObra(userId: string, bodegaId: string) {
-  await ensureBodegaAccess(userId, bodegaId);
-  return prisma.tarifaManoObra.findMany({
-    where: { bodega_id: bodegaId },
-    orderBy: [{ rol: "asc" }, { vigencia_desde: "desc" }],
-  });
-}
+// ── Personal asignado (mano de obra por persona) ─────────────────────────────
+// Cada entrada es de un legajo registrado (personal_id) o de un operario
+// "transitorio" cargado al vuelo, que trae su propio costo inline. Modalidad de
+// pago del transitorio: por_hora, mensual (deriva costo/hora) o al_tanto (monto fijo).
+const HORAS_POR_JORNAL = 8;
+type TipoPersonalAsignado = "interno" | "externo";
+type ModalidadTransitorio = "por_hora" | "mensual" | "al_tanto";
 
-export async function createTarifaManoObra(input: {
-  userId: string;
-  bodegaId: string;
-  rol: string;
-  costo_jornal: unknown;
-  costo_hora?: unknown;
-  vigencia_desde?: unknown;
-}) {
-  await ensureBodegaManage(input.userId, input.bodegaId);
-  if (!ROLES_MANO_OBRA.includes(input.rol)) {
-    throw new CostoError(`Rol inválido: ${input.rol}`, 400);
+type PersonalAsignadoEntry = {
+  personal_id: string | null;
+  nombre: string;
+  tipo: TipoPersonalAsignado;
+  transitorio: boolean;
+  modalidad: ModalidadTransitorio | null;
+  horas: number | null;
+  costo_hora: number | null;
+  sueldo_mensual: number | null;
+  dias_mes: number | null;
+  monto: number | null;
+};
+
+/** Normaliza el arreglo crudo de personal_asignado (registrados + transitorios). */
+function normalizePersonalAsignado(raw: unknown): PersonalAsignadoEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PersonalAsignadoEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const p = item as Record<string, unknown>;
+    const personalId = typeof p.personal_id === "string" && p.personal_id ? p.personal_id : null;
+    const nombre = typeof p.nombre === "string" ? p.nombre.trim() : "";
+    const tipo: TipoPersonalAsignado = p.tipo === "externo" ? "externo" : "interno";
+    const horasN = num(p.horas);
+    const horas = horasN > 0 ? horasN : null;
+
+    if (personalId) {
+      // Legajo registrado: el costo se resuelve desde Personal; horas por persona.
+      out.push({
+        personal_id: personalId, nombre, tipo, transitorio: false,
+        modalidad: null, horas, costo_hora: null, sueldo_mensual: null, dias_mes: null, monto: null,
+      });
+      continue;
+    }
+    // Transitorio: requiere nombre y su costo según modalidad.
+    if (!nombre) continue;
+    const modalidad: ModalidadTransitorio =
+      p.modalidad === "mensual" ? "mensual" : p.modalidad === "al_tanto" ? "al_tanto" : "por_hora";
+    if (modalidad === "al_tanto") {
+      const monto = num(p.monto);
+      if (monto <= 0) throw new CostoError(`Indicá el monto "al tanto" de ${nombre}`, 400);
+      out.push({ personal_id: null, nombre, tipo, transitorio: true, modalidad, horas: null, costo_hora: null, sueldo_mensual: null, dias_mes: null, monto: money(monto) });
+    } else if (modalidad === "mensual") {
+      const sueldo = num(p.sueldo_mensual);
+      if (sueldo <= 0) throw new CostoError(`Indicá el sueldo mensual de ${nombre}`, 400);
+      const dias = Number.isInteger(num(p.dias_mes)) && num(p.dias_mes) > 0 ? num(p.dias_mes) : 25;
+      out.push({ personal_id: null, nombre, tipo, transitorio: true, modalidad, horas, costo_hora: null, sueldo_mensual: money(sueldo), dias_mes: dias, monto: null });
+    } else {
+      const costoHora = num(p.costo_hora);
+      if (costoHora <= 0) throw new CostoError(`Indicá el costo por hora de ${nombre}`, 400);
+      out.push({ personal_id: null, nombre, tipo, transitorio: true, modalidad, horas, costo_hora: money(costoHora), sueldo_mensual: null, dias_mes: null, monto: null });
+    }
   }
-  return prisma.tarifaManoObra.create({
-    data: {
-      bodega_id: input.bodegaId,
-      rol: input.rol as RolManoObra,
-      costo_jornal: parseRequiredPositive(input.costo_jornal, "Costo jornal"),
-      costo_hora: parsePositiveOrNull(input.costo_hora, "Costo hora"),
-      vigencia_desde: parseDateOrToday(input.vigencia_desde),
-    },
-  });
+  return out;
 }
 
-export async function updateTarifaManoObra(
-  id: string,
-  userId: string,
-  input: { costo_jornal?: unknown; costo_hora?: unknown; vigencia_desde?: unknown; activo?: unknown },
-) {
-  const current = await prisma.tarifaManoObra.findUnique({
-    where: { tarifa_mano_obra_id: id },
-    select: { bodega_id: true },
-  });
-  if (!current) throw new CostoError("Tarifa no encontrada", 404);
-  await ensureBodegaManage(userId, current.bodega_id);
-  return prisma.tarifaManoObra.update({
-    where: { tarifa_mano_obra_id: id },
-    data: {
-      ...(input.costo_jornal !== undefined
-        ? { costo_jornal: parseRequiredPositive(input.costo_jornal, "Costo jornal") }
-        : {}),
-      ...(input.costo_hora !== undefined
-        ? { costo_hora: parsePositiveOrNull(input.costo_hora, "Costo hora") }
-        : {}),
-      ...(input.vigencia_desde !== undefined
-        ? { vigencia_desde: parseDateOrToday(input.vigencia_desde) }
-        : {}),
-      ...(typeof input.activo === "boolean" ? { activo: input.activo } : {}),
-    },
-  });
-}
-
-export async function deleteTarifaManoObra(id: string, userId: string) {
-  const current = await prisma.tarifaManoObra.findUnique({
-    where: { tarifa_mano_obra_id: id },
-    select: { bodega_id: true },
-  });
-  if (!current) throw new CostoError("Tarifa no encontrada", 404);
-  await ensureBodegaManage(userId, current.bodega_id);
-  await prisma.tarifaManoObra.delete({ where: { tarifa_mano_obra_id: id } });
-  return { deleted: true };
+/** Costo de un transitorio según su modalidad de pago. */
+function costoTransitorio(e: PersonalAsignadoEntry): number {
+  const horas = num(e.horas);
+  if (e.modalidad === "al_tanto") return num(e.monto);
+  if (e.modalidad === "mensual") {
+    const sueldo = num(e.sueldo_mensual);
+    const dias = num(e.dias_mes) > 0 ? num(e.dias_mes) : 25;
+    return sueldo > 0 ? (sueldo / dias / HORAS_POR_JORNAL) * horas : 0;
+  }
+  return num(e.costo_hora) * horas; // por_hora
 }
 
 // ── Tarifas: Maquinaria ──────────────────────────────────────────────────────
@@ -412,21 +414,8 @@ export async function upsertEjecucion(
     responsableUserId = input.responsable_user_id;
   }
 
-  // Personal asignado: lista de { personal_id, nombre, horas } (horas por persona).
-  const personalAsignado = Array.isArray(input.personal_asignado)
-    ? input.personal_asignado
-        .filter((p): p is { personal_id: string; nombre?: string; horas?: unknown } =>
-          Boolean(p && typeof p === "object" && typeof (p as { personal_id?: unknown }).personal_id === "string"),
-        )
-        .map((p) => {
-          const horas = Number(p.horas);
-          return {
-            personal_id: p.personal_id,
-            nombre: typeof p.nombre === "string" ? p.nombre : "",
-            horas: Number.isFinite(horas) && horas > 0 ? horas : null,
-          };
-        })
-    : [];
+  // Personal asignado: legajos registrados + operarios transitorios (costo inline).
+  const personalAsignado = normalizePersonalAsignado(input.personal_asignado);
 
   // Cálculo automático (doc): horas-hombre totales = Σ horas operarios;
   // jornales = HH / 8. Si hay horas por operario, sobreescriben los manuales.
@@ -760,21 +749,27 @@ export async function recalcularCostosTarea(tareaId: string) {
   let montoManoObra = 0;
   const detalleManoObra: Record<string, number> = {};
   if (ejecucion) {
-    const personal = Array.isArray(ejecucion.personal_asignado)
-      ? (ejecucion.personal_asignado as Array<{ personal_id?: string; horas?: number }>).filter(
-          (p) => p && typeof p.personal_id === "string" && num(p.horas) > 0,
-        )
-      : [];
-    if (personal.length > 0) {
+    const entries = normalizePersonalAsignado(ejecucion.personal_asignado);
+    // Legajos registrados: costo/hora desde Personal × horas.
+    const registrados = entries.filter((e) => e.personal_id && num(e.horas) > 0);
+    let montoRegistrados = 0;
+    if (registrados.length > 0) {
       const tarifaPersona = await getCostosHoraPersonal(
         bodegaId,
-        personal.map((p) => p.personal_id as string),
+        registrados.map((e) => e.personal_id as string),
       );
-      montoManoObra = money(
-        personal.reduce((acc, p) => acc + num(p.horas) * (tarifaPersona.get(p.personal_id as string) || 0), 0),
+      montoRegistrados = registrados.reduce(
+        (acc, e) => acc + num(e.horas) * (tarifaPersona.get(e.personal_id as string) || 0),
+        0,
       );
-      detalleManoObra.personas = personal.length;
     }
+    // Transitorios: costo inline (por hora / mensual / al tanto).
+    const transitorios = entries.filter((e) => e.transitorio);
+    const montoTransitorios = transitorios.reduce((acc, e) => acc + costoTransitorio(e), 0);
+
+    montoManoObra = money(montoRegistrados + montoTransitorios);
+    const personas = registrados.length + transitorios.length;
+    if (personas > 0) detalleManoObra.personas = personas;
   }
 
   // 2) Maquinaria + 3) Combustible (derivado de motrices)

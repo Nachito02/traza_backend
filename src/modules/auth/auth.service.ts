@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { prisma } from "../../config/prismaClient.js";
+import { env } from "../../config/env.js";
 import { userHasAnyRole } from "../../middlewares/roles.middleware.js";
 
 type LoginInput = {
@@ -186,25 +187,12 @@ export class AuthError extends Error {
   }
 }
 
-function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new AuthError("JWT_SECRET no configurado", 500);
-  }
-  return secret;
-}
-
 function signToken(payload: JwtPayload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "4h" });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "4h" });
 }
 
 function getRefreshTtlDays() {
-  const value = process.env.REFRESH_TOKEN_TTL_DAYS;
-  const days = value ? Number(value) : 30;
-  if (Number.isNaN(days) || days <= 0) {
-    throw new AuthError("REFRESH_TOKEN_TTL_DAYS inválido", 500);
-  }
-  return days;
+  return env.REFRESH_TOKEN_TTL_DAYS;
 }
 
 function hashToken(token: string) {

@@ -10,6 +10,8 @@
  * can return 503 instead of crashing.
  */
 
+import { env } from "../config/env.js";
+
 export type IpfsUploadResult = {
   cid: string;
   url: string;
@@ -44,8 +46,8 @@ export async function uploadToIpfs(
   filename: string,
   mimeType: string,
 ): Promise<IpfsUploadResult> {
-  const apiUrl = process.env.IPFS_API_URL?.replace(/\/$/, "");
-  const gatewayUrl = (process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io").replace(/\/$/, "");
+  const apiUrl = env.IPFS_API_URL?.replace(/\/$/, "");
+  const gatewayUrl = env.IPFS_GATEWAY_URL.replace(/\/$/, "");
 
   if (!apiUrl) {
     throw new IpfsNotConfiguredError();

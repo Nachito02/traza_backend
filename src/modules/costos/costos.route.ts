@@ -1,10 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import {
-  listTarifasManoObraHandler,
-  createTarifaManoObraHandler,
-  updateTarifaManoObraHandler,
-  deleteTarifaManoObraHandler,
   listTarifasMaquinariaHandler,
   createTarifaMaquinariaHandler,
   updateTarifaMaquinariaHandler,
@@ -32,12 +28,6 @@ import {
 } from "./costos.controller.js";
 
 export const costosRoutes = Router();
-
-// ── Tarifas: mano de obra ──
-costosRoutes.get("/tarifas/mano-obra", authMiddleware, listTarifasManoObraHandler);
-costosRoutes.post("/tarifas/mano-obra", authMiddleware, createTarifaManoObraHandler);
-costosRoutes.patch("/tarifas/mano-obra/:id", authMiddleware, updateTarifaManoObraHandler);
-costosRoutes.delete("/tarifas/mano-obra/:id", authMiddleware, deleteTarifaManoObraHandler);
 
 // ── Tarifas: maquinaria ──
 costosRoutes.get("/tarifas/maquinaria", authMiddleware, listTarifasMaquinariaHandler);

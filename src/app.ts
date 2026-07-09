@@ -4,6 +4,7 @@ import express from 'express';
 import cors from "cors";
 import cookieParser from 'cookie-parser';
 import { prisma } from './config/prismaClient.js';
+import { env } from './config/env.js';
 import { routes } from './routes/index.js';
 import swaggerUi from "swagger-ui-express";
 import openapiSpec from "./config/openapi.js";
@@ -12,7 +13,7 @@ import openapiIaSpec from "./config/openapi-ia.js";
 const app = express();
 app.set('trust proxy', 1);
 
-const allowedOrigins = (process.env.CORS_ORIGIN ?? '')
+const allowedOrigins = env.CORS_ORIGIN
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
