@@ -1,5 +1,8 @@
 import { prisma } from "../../config/prismaClient.js";
 import { canAccessBodega, canManageBodega } from "../auth/scope-permissions.service.js";
+import type { AmbitoInsumo } from "../../generated/prisma/index.js";
+
+const AMBITOS: AmbitoInsumo[] = ["finca", "bodega"];
 
 export class InventarioError extends Error {
   status: number;
@@ -47,6 +50,25 @@ function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function parseAmbito(value: unknown, fallback?: AmbitoInsumo): AmbitoInsumo | undefined {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (!AMBITOS.includes(value as AmbitoInsumo)) {
+    throw new InventarioError(`Ámbito inválido: ${value}`, 400);
+  }
+  return value as AmbitoInsumo;
+}
+
+function parseOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseFechaOrNull(value: unknown, label: string): Date | null {
+  if (value === undefined || value === null || value === "") return null;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) throw new InventarioError(`${label} inválida`, 400);
+  return d;
+}
+
 function round3(n: number): number {
   return Math.round((n + Number.EPSILON) * 1000) / 1000;
 }
@@ -73,13 +95,19 @@ async function getUserBodegaIds(userId: string): Promise<string[]> {
 
 // ── ABM de insumos ───────────────────────────────────────────────────────────
 
-export async function listInsumos(userId: string, bodegaId?: string, incluirInactivos = false) {
+export async function listInsumos(
+  userId: string,
+  bodegaId?: string,
+  incluirInactivos = false,
+  ambito?: AmbitoInsumo,
+) {
   // Inventario propio de cada bodega: sólo insumos de la(s) bodega(s), sin globales.
   const bodegaIds = bodegaId ? [bodegaId] : await getUserBodegaIds(userId);
   if (bodegaId) await ensureBodegaAccess(userId, bodegaId);
   return prisma.insumoCatalogo.findMany({
     where: {
       bodega_id: { in: bodegaIds },
+      ...(ambito ? { ambito } : {}),
       ...(incluirInactivos ? {} : { activo: true }),
     },
     orderBy: [{ tipo: "asc" }, { nombre_comercial: "asc" }],
@@ -89,27 +117,69 @@ export async function listInsumos(userId: string, bodegaId?: string, incluirInac
 export async function createInsumo(input: {
   userId: string;
   bodegaId: string;
+  ambito?: unknown;
   tipo: string;
+  familia?: unknown;
   nombre_comercial: string;
   principio_activo?: unknown;
   unidad_base: string;
+  dosis_min?: unknown;
+  dosis_max?: unknown;
+  unidad_dosis?: unknown;
+  proveedor?: unknown;
   costo_unitario?: unknown;
+  vigencia?: unknown;
   stock_minimo?: unknown;
+  marca?: unknown;
+  fabricante?: unknown;
+  presentacion?: unknown;
 }) {
   await ensureBodegaManage(input.userId, input.bodegaId);
   return prisma.insumoCatalogo.create({
     data: {
       bodega_id: input.bodegaId,
+      ambito: parseAmbito(input.ambito, "finca")!,
       tipo: parseRequiredString(input.tipo, "Tipo"),
+      familia: parseOptionalString(input.familia),
       nombre_comercial: parseRequiredString(input.nombre_comercial, "Nombre comercial"),
-      principio_activo:
-        typeof input.principio_activo === "string" && input.principio_activo.trim()
-          ? input.principio_activo.trim()
-          : null,
+      principio_activo: parseOptionalString(input.principio_activo),
       unidad_base: parseRequiredString(input.unidad_base, "Unidad base"),
+      dosis_min: parsePositiveOrNull(input.dosis_min, "Dosis mínima"),
+      dosis_max: parsePositiveOrNull(input.dosis_max, "Dosis máxima"),
+      unidad_dosis: parseOptionalString(input.unidad_dosis),
+      proveedor: parseOptionalString(input.proveedor),
       costo_unitario: parsePositiveOrNull(input.costo_unitario, "Costo unitario"),
+      vigencia: parseFechaOrNull(input.vigencia, "Vigencia"),
       stock_minimo: parsePositiveOrNull(input.stock_minimo, "Stock mínimo"),
+      marca: parseOptionalString(input.marca),
+      fabricante: parseOptionalString(input.fabricante),
+      presentacion: parseOptionalString(input.presentacion),
     },
+  });
+}
+
+// ── Catálogo maestro global (referencia para autocompletar) ──────────────────
+
+export async function listCategoriasMaestro(ambitoRaw: unknown): Promise<string[]> {
+  const ambito = parseAmbito(ambitoRaw);
+  const rows = await prisma.insumoMaestro.findMany({
+    where: { activo: true, ...(ambito ? { ambito } : {}) },
+    distinct: ["categoria"],
+    select: { categoria: true },
+    orderBy: { categoria: "asc" },
+  });
+  return rows.map((r) => r.categoria);
+}
+
+export async function listMaestro(ambitoRaw: unknown, categoria?: string) {
+  const ambito = parseAmbito(ambitoRaw);
+  return prisma.insumoMaestro.findMany({
+    where: {
+      activo: true,
+      ...(ambito ? { ambito } : {}),
+      ...(categoria && categoria.trim() ? { categoria: categoria.trim() } : {}),
+    },
+    orderBy: [{ categoria: "asc" }, { nombre_comercial: "asc" }],
   });
 }
 
@@ -131,12 +201,22 @@ export async function updateInsumo(
   insumoId: string,
   userId: string,
   input: {
+    ambito?: unknown;
     tipo?: unknown;
+    familia?: unknown;
     nombre_comercial?: unknown;
     principio_activo?: unknown;
     unidad_base?: unknown;
+    dosis_min?: unknown;
+    dosis_max?: unknown;
+    unidad_dosis?: unknown;
+    proveedor?: unknown;
     costo_unitario?: unknown;
+    vigencia?: unknown;
     stock_minimo?: unknown;
+    marca?: unknown;
+    fabricante?: unknown;
+    presentacion?: unknown;
     activo?: unknown;
   },
 ) {
@@ -144,27 +224,36 @@ export async function updateInsumo(
   return prisma.insumoCatalogo.update({
     where: { insumo_id: insumoId },
     data: {
+      ...(input.ambito !== undefined ? { ambito: parseAmbito(input.ambito, "finca")! } : {}),
       ...(input.tipo !== undefined ? { tipo: parseRequiredString(input.tipo, "Tipo") } : {}),
+      ...(input.familia !== undefined ? { familia: parseOptionalString(input.familia) } : {}),
       ...(input.nombre_comercial !== undefined
         ? { nombre_comercial: parseRequiredString(input.nombre_comercial, "Nombre comercial") }
         : {}),
       ...(input.principio_activo !== undefined
-        ? {
-            principio_activo:
-              typeof input.principio_activo === "string" && input.principio_activo.trim()
-                ? input.principio_activo.trim()
-                : null,
-          }
+        ? { principio_activo: parseOptionalString(input.principio_activo) }
         : {}),
       ...(input.unidad_base !== undefined
         ? { unidad_base: parseRequiredString(input.unidad_base, "Unidad base") }
         : {}),
+      ...(input.dosis_min !== undefined
+        ? { dosis_min: parsePositiveOrNull(input.dosis_min, "Dosis mínima") }
+        : {}),
+      ...(input.dosis_max !== undefined
+        ? { dosis_max: parsePositiveOrNull(input.dosis_max, "Dosis máxima") }
+        : {}),
+      ...(input.unidad_dosis !== undefined ? { unidad_dosis: parseOptionalString(input.unidad_dosis) } : {}),
+      ...(input.proveedor !== undefined ? { proveedor: parseOptionalString(input.proveedor) } : {}),
       ...(input.costo_unitario !== undefined
         ? { costo_unitario: parsePositiveOrNull(input.costo_unitario, "Costo unitario") }
         : {}),
+      ...(input.vigencia !== undefined ? { vigencia: parseFechaOrNull(input.vigencia, "Vigencia") } : {}),
       ...(input.stock_minimo !== undefined
         ? { stock_minimo: parsePositiveOrNull(input.stock_minimo, "Stock mínimo") }
         : {}),
+      ...(input.marca !== undefined ? { marca: parseOptionalString(input.marca) } : {}),
+      ...(input.fabricante !== undefined ? { fabricante: parseOptionalString(input.fabricante) } : {}),
+      ...(input.presentacion !== undefined ? { presentacion: parseOptionalString(input.presentacion) } : {}),
       ...(typeof input.activo === "boolean" ? { activo: input.activo } : {}),
     },
   });

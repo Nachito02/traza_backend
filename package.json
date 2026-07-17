@@ -14,7 +14,10 @@
     "seed:costos": "node scripts/seed-costos.mjs",
     "seed:labores": "node scripts/seed-labores.mjs",
     "seed:insumos": "node scripts/seed-insumos.mjs",
+    "seed:insumos-maestro": "node scripts/seed-insumos-maestro.mjs",
+    "seed:recursos-maestro": "node scripts/seed-recursos-maestro.mjs",
     "init:bd": "node scripts/initBD.mjs",
+    "init:all": "node scripts/init-all.mjs",
     "postinstall": "prisma generate"
   },
   "keywords": [],
@@ -29,6 +32,7 @@
     "dotenv": "^17.2.3",
     "eslint": "^9.39.2",
     "express": "^5.2.1",
+    "globals": "^17.7.0",
     "install": "^0.13.0",
     "nodemon": "^3.1.11",
     "npm": "^11.8.0",
@@ -36,7 +40,8 @@
     "prisma": "^7.3.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.64.0"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

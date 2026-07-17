@@ -5,12 +5,15 @@ import {
   createInsumo,
   updateInsumo,
   deleteInsumo,
+  listCategoriasMaestro,
+  listMaestro,
   registrarIngreso,
   registrarAjuste,
   getExistencias,
   listMovimientos,
   getAlertas,
 } from "./inventario.service.js";
+import type { AmbitoInsumo } from "../../generated/prisma/index.js";
 
 function requireBodegaId(req: Request, res: Response): string | null {
   const bodegaId =
@@ -56,7 +59,27 @@ export async function listInsumosHandler(req: Request, res: Response) {
     if (!userId) return;
     const bodegaId = typeof req.query.bodegaId === "string" ? req.query.bodegaId : undefined;
     const incluirInactivos = req.query.incluirInactivos === "true";
-    return res.json(await listInsumos(userId, bodegaId, incluirInactivos));
+    const ambito = typeof req.query.ambito === "string" ? (req.query.ambito as AmbitoInsumo) : undefined;
+    return res.json(await listInsumos(userId, bodegaId, incluirInactivos, ambito));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function categoriasMaestroHandler(req: Request, res: Response) {
+  try {
+    if (!requireUser(req, res)) return;
+    return res.json(await listCategoriasMaestro(req.query.ambito));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function maestroHandler(req: Request, res: Response) {
+  try {
+    if (!requireUser(req, res)) return;
+    const categoria = typeof req.query.categoria === "string" ? req.query.categoria : undefined;
+    return res.json(await listMaestro(req.query.ambito, categoria));
   } catch (error) {
     return handleError(res, error);
   }
@@ -66,17 +89,44 @@ export async function createInsumoHandler(req: Request, res: Response) {
   try {
     const userId = requireUser(req, res);
     if (!userId) return;
-    const { bodegaId, tipo, nombre_comercial, principio_activo, unidad_base, costo_unitario, stock_minimo } =
-      req.body ?? {};
-    const row = await createInsumo({
-      userId,
+    const {
       bodegaId,
+      ambito,
       tipo,
+      familia,
       nombre_comercial,
       principio_activo,
       unidad_base,
+      dosis_min,
+      dosis_max,
+      unidad_dosis,
+      proveedor,
       costo_unitario,
+      vigencia,
       stock_minimo,
+      marca,
+      fabricante,
+      presentacion,
+    } = req.body ?? {};
+    const row = await createInsumo({
+      userId,
+      bodegaId,
+      ambito,
+      tipo,
+      familia,
+      nombre_comercial,
+      principio_activo,
+      unidad_base,
+      dosis_min,
+      dosis_max,
+      unidad_dosis,
+      proveedor,
+      costo_unitario,
+      vigencia,
+      stock_minimo,
+      marca,
+      fabricante,
+      presentacion,
     });
     return res.status(201).json(row);
   } catch (error) {

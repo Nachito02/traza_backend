@@ -128,7 +128,7 @@ async function loadTareaScoped(tareaId: string, userId: string) {
   return tarea;
 }
 
-const CLASES_MAQUINARIA = ["motriz", "implemento", "herramienta"];
+const CLASES_MAQUINARIA = ["motriz", "implemento", "equipo", "herramienta"];
 const TIPOS_COMBUSTIBLE = ["gasoil", "nafta", "electricidad", "glp", "otro"];
 const MODALIDADES = ["propia", "contratada", "mixta"];
 

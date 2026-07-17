@@ -5,6 +5,8 @@ import {
   createInsumoHandler,
   updateInsumoHandler,
   deleteInsumoHandler,
+  categoriasMaestroHandler,
+  maestroHandler,
   existenciasHandler,
   ingresoHandler,
   ajusteHandler,
@@ -13,6 +15,10 @@ import {
 } from "./inventario.controller.js";
 
 export const inventarioRoutes = Router();
+
+// ── Catálogo maestro global (referencia para autocompletar) ──
+inventarioRoutes.get("/maestro/categorias", authMiddleware, categoriasMaestroHandler);
+inventarioRoutes.get("/maestro", authMiddleware, maestroHandler);
 
 // ── ABM de insumos ──
 inventarioRoutes.get("/insumos", authMiddleware, listInsumosHandler);

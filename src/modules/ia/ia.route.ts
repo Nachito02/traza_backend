@@ -11,7 +11,6 @@ import {
   botSolicitarDelegacionHandler,
   botConfirmarDelegacionHandler,
   botIniciarCreacionTareaHandler,
-  superAgentLoginHandler,
 } from "../bot/bot.controller.js";
 import {
   contactIaJobHandler,

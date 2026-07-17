@@ -1059,16 +1059,32 @@ model Finca {
   @@map("finca")
 }
 
+enum AmbitoInsumo {
+  finca
+  bodega
+}
+
 model InsumoCatalogo {
   insumo_id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id            String?               @db.Uuid
+  ambito               AmbitoInsumo          @default(finca)
   tipo                 String
+  familia              String?
   nombre_comercial     String
   principio_activo     String?
   unidad_base          String
+  dosis_min            Decimal?              @db.Decimal(14, 4)
+  dosis_max            Decimal?              @db.Decimal(14, 4)
+  unidad_dosis         String?
+  proveedor            String?
   costo_unitario       Decimal?              @db.Decimal(14, 4)
   moneda               String                @default("ARS")
+  vigencia             DateTime?             @db.Date
   stock_minimo         Decimal?              @db.Decimal(14, 3)
+  // Sólo aplican al ámbito bodega (enológicos / materiales secos).
+  marca                String?
+  fabricante           String?
+  presentacion         String?
   activo               Boolean               @default(true)
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
   bodega               Bodega?               @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
@@ -1079,7 +1095,30 @@ model InsumoCatalogo {
 
   @@unique([bodega_id, tipo, nombre_comercial])
   @@index([bodega_id], map: "idx_insumo_catalogo_bodega")
+  @@index([bodega_id, ambito], map: "idx_insumo_catalogo_bodega_ambito")
   @@map("insumo_catalogo")
+}
+
+// Catálogo maestro global (sin bodega): tablas de referencia del documento de
+// carga inicial. La UI lo usa para autocompletar; cada bodega crea su copia
+// editable en insumo_catalogo al seleccionar un producto.
+model InsumoMaestro {
+  insumo_maestro_id String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ambito            AmbitoInsumo
+  categoria         String
+  familia           String?
+  principio_activo  String?
+  nombre_comercial  String
+  unidad            String?
+  dosis_min         Decimal?     @db.Decimal(14, 4)
+  dosis_max         Decimal?     @db.Decimal(14, 4)
+  unidad_dosis      String?
+  activo            Boolean      @default(true)
+  created_at        DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@unique([ambito, categoria, nombre_comercial])
+  @@index([ambito, categoria], map: "idx_insumo_maestro_ambito_categoria")
+  @@map("insumo_maestro")
 }
 
 enum TipoMovimientoStock {
@@ -1465,12 +1504,15 @@ model PersonalBodega {
   personal_bodega_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id          String        @db.Uuid
   nombre             String
+  legajo             String?
+  fecha_ingreso      DateTime?     @db.Date
   user_id            String?       @db.Uuid
   tipo               TipoPersonal  @default(interno)
   modalidad          ModalidadPago @default(por_hora)
   rol                RolManoObra?
   sueldo_mensual     Decimal?      @db.Decimal(14, 2)
   costo_hora         Decimal?      @db.Decimal(14, 2)
+  costo_unitario     Decimal?      @db.Decimal(14, 2)
   dias_mes           Int           @default(25)
   activo             Boolean       @default(true)
   created_at         DateTime      @default(now()) @db.Timestamptz(6)
@@ -1482,22 +1524,63 @@ model PersonalBodega {
   @@map("personal_bodega")
 }
 
+enum AmbitoRecurso {
+  finca
+  bodega
+}
+
+// Catálogo de máquinas, implementos, equipos y herramientas por bodega. Es a la
+// vez el setup (qué recursos tenés, con specs por ámbito/clase) y la tarifa que
+// consume el módulo de costos (costo_hora/consumo). costo_hora y vigencia_desde
+// son opcionales: se puede catalogar un recurso sin cargarle todavía su precio.
 model TarifaMaquinaria {
   tarifa_maquinaria_id String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bodega_id            String             @db.Uuid
+  ambito               AmbitoRecurso      @default(finca)
   nombre               String
   clase                ClaseMaquinaria
-  costo_hora           Decimal            @db.Decimal(14, 2)
+  categoria            String?
+  familia              String?
+  potencia_hp          String?
+  uso_principal        String?
+  unidad_uso           String?
+  consumo_descripcion  String?
+  observaciones        String?
+  costo_hora           Decimal?           @db.Decimal(14, 2)
   consumo_lts_hora     Decimal?           @db.Decimal(10, 3)
   moneda               String             @default("ARS")
-  vigencia_desde       DateTime           @db.Date
+  vigencia_desde       DateTime?          @db.Date
   activo               Boolean            @default(true)
   created_at           DateTime           @default(now()) @db.Timestamptz(6)
   bodega               Bodega             @relation(fields: [bodega_id], references: [bodega_id], onDelete: Cascade, onUpdate: NoAction)
   actividad_maquina    ActividadMaquina[]
 
   @@index([bodega_id, clase], map: "idx_tarifa_maquinaria_bodega_clase")
+  @@index([bodega_id, ambito, clase], map: "idx_tarifa_maquinaria_bodega_ambito_clase")
   @@map("tarifa_maquinaria")
+}
+
+// Catálogo maestro global de recursos (sin bodega): tablas de referencia del
+// documento de carga inicial. La UI lo usa para autocompletar; cada bodega crea
+// su copia editable en tarifa_maquinaria al seleccionar un recurso.
+model RecursoMaestro {
+  recurso_maestro_id  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ambito              AmbitoRecurso
+  clase               ClaseMaquinaria
+  categoria           String?
+  familia             String?
+  nombre              String
+  potencia_hp         String?
+  uso_principal       String?
+  unidad_uso          String?
+  consumo_descripcion String?
+  observaciones       String?
+  activo              Boolean         @default(true)
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+
+  @@unique([ambito, clase, nombre])
+  @@index([ambito, clase], map: "idx_recurso_maestro_ambito_clase")
+  @@map("recurso_maestro")
 }
 
 model TarifaCombustible {
@@ -1807,6 +1890,8 @@ enum TipoPersonal {
 enum ModalidadPago {
   mensual
   por_hora
+  al_tanto
+  otro
 }
 
 enum RolManoObra {
@@ -1821,6 +1906,7 @@ enum RolManoObra {
 enum ClaseMaquinaria {
   motriz
   implemento
+  equipo
   herramienta
 }
 

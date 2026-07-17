@@ -19,9 +19,6 @@ type UpdateVasijaInput = {
   ubicacion?: string;
 };
 
-// Enums espejados del schema para casteo seguro
-const VASIJA_TIPO_VALUES = ["Hormigon","AceroInoxidable","Roble","FibraDeVidrio","Polietileno","Ceramica"] as const;
-
 type CorteComponenteInput = {
   vasijaId?: string;
   loteCosechaId?: string;

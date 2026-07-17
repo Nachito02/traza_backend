@@ -121,6 +121,15 @@ function normalizeOptionalNonNegativeNumber(value: unknown, label: string) {
   return numberValue;
 }
 
+// La superficie de un cuartel debe ser un número mayor a cero.
+function normalizePositiveNumber(value: unknown, label: string) {
+  const numberValue = Number(value);
+  if (value === undefined || value === null || value === "" || Number.isNaN(numberValue) || numberValue <= 0) {
+    throw new CuartelError(`${label} debe ser un número mayor a cero.`, 400);
+  }
+  return numberValue;
+}
+
 function normalizeOptionalNonNegativeInteger(value: unknown, label: string) {
   const numberValue = normalizeOptionalNonNegativeNumber(value, label);
   if (numberValue === null) return null;
@@ -199,7 +208,7 @@ export async function createCuartel({
   } = { finca_id: finca.finca_id, codigo_cuartel };
   const catalogFields = normalizeCuartelCatalogFields({ cultivo, tipo_variedad, variedad });
 
-  if (superficie_ha !== undefined) data.superficie_ha = superficie_ha;
+  if (superficie_ha !== undefined) data.superficie_ha = normalizePositiveNumber(superficie_ha, "Superficie");
   data.cultivo = catalogFields.cultivo;
   data.tipo_variedad = catalogFields.tipo_variedad;
   data.variedad = catalogFields.variedad;
@@ -290,7 +299,7 @@ export async function updateCuartel(
   } = {};
 
   if (codigo_cuartel !== undefined) data.codigo_cuartel = codigo_cuartel;
-  if (superficie_ha !== undefined) data.superficie_ha = superficie_ha;
+  if (superficie_ha !== undefined) data.superficie_ha = normalizePositiveNumber(superficie_ha, "Superficie");
   if (cultivo !== undefined || tipo_variedad !== undefined || variedad !== undefined) {
     const catalogFields = normalizeCuartelCatalogFields({
       cultivo: cultivo ?? cuartel.cultivo,

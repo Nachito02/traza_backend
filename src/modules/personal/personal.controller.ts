@@ -61,18 +61,33 @@ export async function createPersonalHandler(req: Request, res: Response) {
   try {
     const userId = requireUser(req, res);
     if (!userId) return;
-    const { bodegaId, nombre, targetUserId, tipo, modalidad, rol, sueldo_mensual, costo_hora, dias_mes } =
-      req.body ?? {};
-    const row = await createPersonal({
-      userId,
+    const {
       bodegaId,
       nombre,
+      legajo,
+      fecha_ingreso,
       targetUserId,
       tipo,
       modalidad,
       rol,
       sueldo_mensual,
       costo_hora,
+      costo_unitario,
+      dias_mes,
+    } = req.body ?? {};
+    const row = await createPersonal({
+      userId,
+      bodegaId,
+      nombre,
+      legajo,
+      fecha_ingreso,
+      targetUserId,
+      tipo,
+      modalidad,
+      rol,
+      sueldo_mensual,
+      costo_hora,
+      costo_unitario,
       dias_mes,
     });
     return res.status(201).json(row);

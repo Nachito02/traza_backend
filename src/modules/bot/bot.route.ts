@@ -21,7 +21,6 @@ import {
   createSuperAgentHandler,
   myDelegationsHandler,
   revokeDelegationHandler,
-  superAgentLoginHandler,
 } from "./bot.controller.js";
 
 export const botRoutes = Router();

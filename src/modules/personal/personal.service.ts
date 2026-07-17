@@ -11,9 +11,29 @@ export class PersonalError extends Error {
 }
 
 const TIPOS: TipoPersonal[] = ["interno", "externo"];
-const MODALIDADES: ModalidadPago[] = ["mensual", "por_hora"];
+const MODALIDADES: ModalidadPago[] = ["mensual", "por_hora", "al_tanto", "otro"];
 const ROLES = ["operario", "tractorista", "aplicador", "tecnico", "encargado", "contratista"];
 const HORAS_POR_JORNAL = 8;
+
+// Fecha de ingreso: acepta null/"" o una fecha ISO (YYYY-MM-DD). Devuelve Date | null.
+function parseFechaOrNull(value: unknown, label: string): Date | null {
+  if (value === undefined || value === null || value === "") return null;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) throw new PersonalError(`${label} inválida`, 400);
+  return d;
+}
+
+// Antigüedad en años completos desde la fecha de ingreso (derivada, no persistida).
+function antiguedadAnios(fechaIngreso: Date | null | undefined): number | null {
+  if (!fechaIngreso) return null;
+  const ingreso = new Date(fechaIngreso);
+  if (Number.isNaN(ingreso.getTime())) return null;
+  const hoy = new Date();
+  let anios = hoy.getFullYear() - ingreso.getFullYear();
+  const mes = hoy.getMonth() - ingreso.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < ingreso.getDate())) anios -= 1;
+  return anios < 0 ? 0 : anios;
+}
 
 function num(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -55,7 +75,9 @@ type PersonalCosto = {
   dias_mes: number;
 };
 
-/** Costo/hora efectivo: directo (por_hora) o derivado del sueldo (mensual). */
+/** Costo/hora efectivo: directo (por_hora) o derivado del sueldo (mensual).
+ *  "al_tanto"/"otro" se pagan por unidad producida (costo_unitario), no por hora,
+ *  por lo que no aportan costo/hora. */
 export function costoHoraPersona(p: PersonalCosto): number {
   if (p.modalidad === "mensual") {
     const sueldo = num(p.sueldo_mensual);
@@ -63,7 +85,8 @@ export function costoHoraPersona(p: PersonalCosto): number {
     if (sueldo <= 0) return 0;
     return sueldo / dias / HORAS_POR_JORNAL; // jornal = sueldo/días; hora = jornal/8
   }
-  return num(p.costo_hora);
+  if (p.modalidad === "por_hora") return num(p.costo_hora);
+  return 0; // al_tanto / otro: costo por unidad, no por hora
 }
 
 /** Mapa personal_bodega_id → costo/hora efectivo, para una bodega. */
@@ -89,7 +112,11 @@ export async function listPersonal(userId: string, bodegaId: string) {
     where: { bodega_id: bodegaId },
     orderBy: { created_at: "desc" },
   });
-  return rows.map((r) => ({ ...r, costo_hora_efectivo: Math.round(costoHoraPersona(r) * 100) / 100 }));
+  return rows.map((r) => ({
+    ...r,
+    costo_hora_efectivo: Math.round(costoHoraPersona(r) * 100) / 100,
+    antiguedad_anios: antiguedadAnios(r.fecha_ingreso),
+  }));
 }
 
 async function validateInput(input: {
@@ -112,12 +139,15 @@ export async function createPersonal(input: {
   userId: string;
   bodegaId: string;
   nombre: unknown;
+  legajo?: unknown;
+  fecha_ingreso?: unknown;
   targetUserId?: unknown; // opcional: vínculo a un usuario de la plataforma
   tipo?: unknown;
   modalidad?: unknown;
   rol?: unknown;
   sueldo_mensual?: unknown;
   costo_hora?: unknown;
+  costo_unitario?: unknown;
   dias_mes?: unknown;
 }) {
   await ensureBodegaManage(input.userId, input.bodegaId);
@@ -136,16 +166,22 @@ export async function createPersonal(input: {
     linkedUserId = input.targetUserId;
   }
 
+  const legajo =
+    typeof input.legajo === "string" && input.legajo.trim() ? input.legajo.trim() : null;
+
   return prisma.personalBodega.create({
     data: {
       bodega_id: input.bodegaId,
       nombre: input.nombre.trim(),
+      legajo,
+      fecha_ingreso: parseFechaOrNull(input.fecha_ingreso, "Fecha de ingreso"),
       ...(linkedUserId ? { user_id: linkedUserId } : {}),
       tipo: (input.tipo as TipoPersonal) ?? "interno",
       modalidad: (input.modalidad as ModalidadPago) ?? "por_hora",
       ...(input.rol ? { rol: input.rol as RolManoObra } : {}),
       sueldo_mensual: parsePositiveOrNull(input.sueldo_mensual, "Sueldo mensual"),
       costo_hora: parsePositiveOrNull(input.costo_hora, "Costo hora"),
+      costo_unitario: parsePositiveOrNull(input.costo_unitario, "Costo unitario"),
       dias_mes: parseIntPositive(input.dias_mes, "Días por mes", 25),
     },
   });
@@ -166,11 +202,14 @@ export async function updatePersonal(
   userId: string,
   input: {
     nombre?: unknown;
+    legajo?: unknown;
+    fecha_ingreso?: unknown;
     tipo?: unknown;
     modalidad?: unknown;
     rol?: unknown;
     sueldo_mensual?: unknown;
     costo_hora?: unknown;
+    costo_unitario?: unknown;
     dias_mes?: unknown;
     activo?: unknown;
   },
@@ -181,6 +220,12 @@ export async function updatePersonal(
     where: { personal_bodega_id: id },
     data: {
       ...(typeof input.nombre === "string" && input.nombre.trim() ? { nombre: input.nombre.trim() } : {}),
+      ...(input.legajo !== undefined
+        ? { legajo: typeof input.legajo === "string" && input.legajo.trim() ? input.legajo.trim() : null }
+        : {}),
+      ...(input.fecha_ingreso !== undefined
+        ? { fecha_ingreso: parseFechaOrNull(input.fecha_ingreso, "Fecha de ingreso") }
+        : {}),
       ...(input.tipo !== undefined ? { tipo: input.tipo as TipoPersonal } : {}),
       ...(input.modalidad !== undefined ? { modalidad: input.modalidad as ModalidadPago } : {}),
       ...(input.rol !== undefined ? { rol: input.rol ? (input.rol as RolManoObra) : null } : {}),
@@ -189,6 +234,9 @@ export async function updatePersonal(
         : {}),
       ...(input.costo_hora !== undefined
         ? { costo_hora: parsePositiveOrNull(input.costo_hora, "Costo hora") }
+        : {}),
+      ...(input.costo_unitario !== undefined
+        ? { costo_unitario: parsePositiveOrNull(input.costo_unitario, "Costo unitario") }
         : {}),
       ...(input.dias_mes !== undefined ? { dias_mes: parseIntPositive(input.dias_mes, "Días por mes", 25) } : {}),
       ...(typeof input.activo === "boolean" ? { activo: input.activo } : {}),
