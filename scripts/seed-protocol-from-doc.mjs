@@ -474,6 +474,13 @@ export async function seedProtocol(prisma) {
     select: { protocolo_id: true, nombre: true, version: true },
   });
 
+  // Libera temporalmente los órdenes existentes para poder reordenar sin chocar
+  // contra las restricciones únicas (protocolo_id, orden) y (etapa_id, orden).
+  await prisma.protocoloEtapa.updateMany({
+    where: { protocolo_id: protocolo.protocolo_id },
+    data: { orden: { increment: 1000 } },
+  });
+
   for (const etapa of etapas) {
     const createdEtapa = await prisma.protocoloEtapa.upsert({
       where: {
@@ -491,6 +498,11 @@ export async function seedProtocol(prisma) {
         orden: etapa.orden,
       },
       select: { etapa_id: true },
+    });
+
+    await prisma.protocoloProceso.updateMany({
+      where: { etapa_id: createdEtapa.etapa_id },
+      data: { orden: { increment: 1000 } },
     });
 
     for (const proceso of etapa.procesos) {
