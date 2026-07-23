@@ -471,14 +471,21 @@ export async function seedProtocol(prisma) {
       descripcion: "Plantillas operativas base cargadas desde docs/protocol.md",
       activo: true,
     },
-    select: { protocolo_id: true },
+    select: { protocolo_id: true, nombre: true, version: true },
   });
 
-  await prisma.protocoloEtapa.deleteMany({ where: { protocolo_id: protocolo.protocolo_id } });
-
   for (const etapa of etapas) {
-    const createdEtapa = await prisma.protocoloEtapa.create({
-      data: {
+    const createdEtapa = await prisma.protocoloEtapa.upsert({
+      where: {
+        protocolo_id_nombre: {
+          protocolo_id: protocolo.protocolo_id,
+          nombre: etapa.nombre,
+        },
+      },
+      update: {
+        orden: etapa.orden,
+      },
+      create: {
         protocolo_id: protocolo.protocolo_id,
         nombre: etapa.nombre,
         orden: etapa.orden,
@@ -487,8 +494,20 @@ export async function seedProtocol(prisma) {
     });
 
     for (const proceso of etapa.procesos) {
-      await prisma.protocoloProceso.create({
-        data: {
+      await prisma.protocoloProceso.upsert({
+        where: {
+          etapa_id_nombre: {
+            etapa_id: createdEtapa.etapa_id,
+            nombre: proceso.nombre,
+          },
+        },
+        update: {
+          evento_tipo: proceso.evento_tipo,
+          obligatorio: proceso.obligatorio,
+          orden: proceso.orden,
+          plantilla: proceso.plantilla,
+        },
+        create: {
           etapa_id: createdEtapa.etapa_id,
           nombre: proceso.nombre,
           evento_tipo: proceso.evento_tipo,
@@ -500,7 +519,7 @@ export async function seedProtocol(prisma) {
     }
   }
 
-  console.log(`Protocolo seed OK. Etapas: ${etapas.length}`);
+  console.log(`Protocolo seed OK. Etapas sincronizadas: ${etapas.length} (${protocolo.nombre} v${protocolo.version}).`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
