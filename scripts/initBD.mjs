@@ -1,8 +1,13 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 import { seedProtocol } from "./seed-protocol-from-doc.mjs";
+import { runSqlFile } from "./_psql.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -274,6 +279,17 @@ async function main() {
   await ensureBaseOperationData();
   const users = await ensureUsers();
   await seedProtocol(prisma);
+
+  // Catálogos base (SQL, idempotentes): maestros globales + tarifas/insumos de la bodega demo.
+  const rawUrl = process.env.DATABASE_URL;
+  const sql = (file) => join(__dirname, "..", file);
+  console.log("");
+  console.log("Sembrando catálogos base…");
+  runSqlFile(rawUrl, sql("seed-recursos-maestro.sql"));           // maestro de maquinaria (tractores/autopropulsadas/…)
+  runSqlFile(rawUrl, sql("seed-insumos-maestro.sql"));            // maestro de insumos
+  runSqlFile(rawUrl, sql("seed-labores.sql"));                    // matriz de sugerencias + herramientas por bodega
+  runSqlFile(rawUrl, sql("seed-costos.sql"));                     // tarifas de maquinaria/combustible por bodega
+  runSqlFile(rawUrl, sql("seed-insumos.sql"), ["-v", `bodega_id=${IDS.bodega}`]); // insumos base de la bodega demo
 
   console.log("");
   console.log("InitBD OK");

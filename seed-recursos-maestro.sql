@@ -10,13 +10,13 @@ INSERT INTO "recurso_maestro"
   ("ambito","clase","categoria","familia","nombre","potencia_hp","uso_principal","unidad_uso","consumo_descripcion","observaciones")
 SELECT 'finca'::"AmbitoRecurso",'motriz'::"ClaseMaquinaria",v.cat,v.fam,v.nom,v.pot,v.uso,v.uni,v.con,v.obs
 FROM (VALUES
-  ('Tractor',NULL,'Tractor Viñatero Angosto 55–65 HP','55–65','Viñedos tradicionales','Hora','4,5 l/h',NULL),
-  ('Tractor',NULL,'Tractor Viñatero Angosto 65–75 HP','65–75','Labores generales','Hora','5,5 l/h',NULL),
-  ('Tractor',NULL,'Tractor Viñatero Angosto 75–85 HP','75–85','Pulverización, desmalezado','Hora','6,5 l/h',NULL),
-  ('Tractor',NULL,'Tractor Frutero 85–95 HP','85–95','Pulverización pesada, fertilización','Hora','7,5 l/h',NULL),
-  ('Tractor',NULL,'Tractor Agrícola 95–110 HP','95–110','Rastras, cinceles, subsolado liviano','Hora','9,0 l/h',NULL),
-  ('Tractor',NULL,'Tractor Agrícola 110–130 HP','110–130','Subsolado, labores pesadas','Hora','11,0 l/h',NULL),
-  ('Tractor',NULL,'Tractor Alta Potencia 130–150 HP','130–150','Grandes implementos','Hora','13,0 l/h',NULL),
+  ('Tractor','Tractor Viñatero Angosto','Tractor Viñatero Angosto 55–65 HP','55–65','Viñedos tradicionales','Hora','4,5 l/h',NULL),
+  ('Tractor','Tractor Viñatero Angosto','Tractor Viñatero Angosto 65–75 HP','65–75','Labores generales','Hora','5,5 l/h',NULL),
+  ('Tractor','Tractor Viñatero Angosto','Tractor Viñatero Angosto 75–85 HP','75–85','Pulverización, desmalezado','Hora','6,5 l/h',NULL),
+  ('Tractor','Tractor Frutero','Tractor Frutero 85–95 HP','85–95','Pulverización pesada, fertilización','Hora','7,5 l/h',NULL),
+  ('Tractor','Tractor Agrícola','Tractor Agrícola 95–110 HP','95–110','Rastras, cinceles, subsolado liviano','Hora','9,0 l/h',NULL),
+  ('Tractor','Tractor Agrícola','Tractor Agrícola 110–130 HP','110–130','Subsolado, labores pesadas','Hora','11,0 l/h',NULL),
+  ('Tractor','Tractor Alta Potencia','Tractor Alta Potencia 130–150 HP','130–150','Grandes implementos','Hora','13,0 l/h',NULL),
   -- A.1.1 Maquinaria autopropulsada
   ('Cosecha',NULL,'Cosechadora de Vid',NULL,NULL,'Hora',NULL,NULL),
   ('Pulverización',NULL,'Pulverizadora Autopropulsada',NULL,NULL,'Hora',NULL,NULL),

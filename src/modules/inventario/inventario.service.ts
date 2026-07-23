@@ -160,6 +160,29 @@ export async function createInsumo(input: {
 
 // ── Catálogo maestro global (referencia para autocompletar) ──────────────────
 
+// Categorías curadas por ámbito: siempre aparecen en el select (en este orden),
+// aunque el maestro todavía no tenga productos cargados en esa categoría.
+const CATEGORIAS_CURADAS: Record<AmbitoInsumo, string[]> = {
+  finca: [
+    "Fertilizantes Inorgánicos",
+    "Fertilizantes Orgánicos",
+    "Insecticidas",
+    "Fungicidas",
+    "Herbicidas",
+    "Coadyuvantes",
+    "Semillas",
+    "Enmiendas",
+    "Material Vegetal",
+    "Alambrado y Conducción",
+    "Insumos para Poda, Atadura e Injertos",
+    "Insumos de Riego",
+    "Combustibles y Lubricantes",
+    "Limpieza y Desinfección",
+    "Elementos de Protección Personal (EPP)",
+  ],
+  bodega: [],
+};
+
 export async function listCategoriasMaestro(ambitoRaw: unknown): Promise<string[]> {
   const ambito = parseAmbito(ambitoRaw);
   const rows = await prisma.insumoMaestro.findMany({
@@ -168,7 +191,11 @@ export async function listCategoriasMaestro(ambitoRaw: unknown): Promise<string[
     select: { categoria: true },
     orderBy: { categoria: "asc" },
   });
-  return rows.map((r) => r.categoria);
+  const delMaestro = rows.map((r) => r.categoria);
+  const curadas = ambito ? CATEGORIAS_CURADAS[ambito] : [];
+  // Curadas primero (orden fijo) + cualquier categoría extra que traiga el maestro.
+  const extras = delMaestro.filter((c) => !curadas.includes(c));
+  return [...curadas, ...extras];
 }
 
 export async function listMaestro(ambitoRaw: unknown, categoria?: string) {

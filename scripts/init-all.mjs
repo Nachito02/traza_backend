@@ -1,18 +1,13 @@
-// Inicializa TODA la base en un solo comando, en el orden correcto:
+// Inicializa TODA la base en un solo comando:
 //   1) Schema (sólo si falta): prisma migrate deploy
-//   2) Bootstrap: usuarios + roles, bodega demo, campaña, protocolo
-//   3) Catálogos maestros globales: insumos y recursos
-//   4) Seeds de la bodega demo: tarifas de maquinaria/combustible, labores +
-//      herramientas, e insumos de finca
+//   2) Bootstrap completo: usuarios + roles, bodega demo, campaña, protocolo
+//      y catálogos/seed base de la bodega demo
 // Todo es idempotente: se puede correr varias veces sin duplicar.
 //   npm run init:all
 import "dotenv/config";
 import { execSync } from "node:child_process";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
-
-// Bodega demo creada por init:bd (mismo ID fijo). Se puede sobreescribir con BODEGA_ID.
-const BODEGA_ID = process.env.BODEGA_ID || "837bc9e4-8abe-4999-aaa2-15963e42f078";
 
 function run(label, cmd) {
   console.log(`\n\x1b[36m▶ ${label}\x1b[0m`);
@@ -46,15 +41,9 @@ async function main() {
     run("Creando el schema (prisma migrate deploy)", "npx prisma migrate deploy");
   }
 
-  run("Bootstrap: usuarios, roles, bodega demo, campaña y protocolo", "npm run init:bd");
-  run("Catálogo maestro de insumos (global)", "npm run seed:insumos-maestro");
-  run("Catálogo maestro de recursos (global)", "npm run seed:recursos-maestro");
-  run("Tarifas de la bodega demo: maquinaria y combustible", "npm run seed:costos");
-  run("Labores manuales + catálogo de herramientas", "npm run seed:labores");
-  run("Insumos de finca de la bodega demo", `npm run seed:insumos -- ${BODEGA_ID}`);
+  run("Bootstrap completo: usuarios, roles, bodega demo, campaña, protocolo y seeds base", "npm run init:bd");
 
   console.log("\n\x1b[32m✅ Base de datos inicializada por completo.\x1b[0m");
-  console.log(`   Bodega demo: ${BODEGA_ID}`);
   console.log("   Usuarios: pass 123456 (ver detalle arriba, salida de init:bd).");
 }
 

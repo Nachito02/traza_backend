@@ -126,7 +126,7 @@ export const etapas = [
     ],
   },
   {
-    nombre: "CAPÍTULO 3 · SUELO",
+    nombre: "CAPÍTULO 3 · SUELO Y LABORES CULTURALES",
     orden: 3,
     procesos: [
       {
@@ -192,6 +192,20 @@ export const etapas = [
           t("fecha", "date", true),
           t("tipo_cobertura", "string", true),
           t("manejo", "string", true),
+          t("responsable_user_id", "string", true),
+        ]),
+      },
+      {
+        nombre: "LABORES CULTURALES (MECANIZADAS)",
+        evento_tipo: "labores_culturales",
+        obligatorio: false,
+        orden: 6,
+        plantilla: plantilla([
+          t("fecha", "date", true),
+          t("cuartel_id", "string", true),
+          t("tipo_labor", "string", true),
+          t("intensidad", "string", true),
+          t("jornales", "number", true),
           t("responsable_user_id", "string", true),
         ]),
       },

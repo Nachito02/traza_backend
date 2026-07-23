@@ -604,6 +604,7 @@ async function materializarEvento(
     case "fertilizacion":
       return materializarFertilizacion(ctx, draft, userId);
     case "labor_suelo":
+    case "labores_culturales":
       return materializarLaborSuelo(ctx, draft, userId);
     case "canopia":
       return materializarCanopia(ctx, draft, userId);
