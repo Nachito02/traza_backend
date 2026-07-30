@@ -12,6 +12,9 @@ type CreateFincaInput = {
   renspa?: string;
   catastro?: string;
   ubicacion_texto?: string;
+  nro_inscripto_inv?: string;
+  cuit?: string;
+  razon_social?: string;
   userId: string;
 };
 
@@ -21,6 +24,9 @@ type UpdateFincaInput = {
   renspa?: string | null;
   catastro?: string | null;
   ubicacion_texto?: string | null;
+  nro_inscripto_inv?: string | null;
+  cuit?: string | null;
+  razon_social?: string | null;
   userId: string;
 };
 
@@ -296,6 +302,9 @@ export async function createFinca({
   renspa,
   catastro,
   ubicacion_texto,
+  nro_inscripto_inv,
+  cuit,
+  razon_social,
   userId,
 }: CreateFincaInput) {
   if (!bodegaId || !nombre_finca) {
@@ -312,12 +321,18 @@ export async function createFinca({
     renspa?: string | null;
     catastro?: string | null;
     ubicacion_texto?: string | null;
+    nro_inscripto_inv?: string | null;
+    cuit?: string | null;
+    razon_social?: string | null;
   } = { bodega_id: resolvedBodegaId, nombre_finca };
 
   if (rut !== undefined) data.rut = rut;
   if (renspa !== undefined) data.renspa = renspa;
   if (catastro !== undefined) data.catastro = catastro;
   if (ubicacion_texto !== undefined) data.ubicacion_texto = ubicacion_texto;
+  if (nro_inscripto_inv !== undefined) data.nro_inscripto_inv = nro_inscripto_inv;
+  if (cuit !== undefined) data.cuit = cuit;
+  if (razon_social !== undefined) data.razon_social = razon_social;
 
   return prisma.finca.create({ data });
 }
@@ -343,7 +358,17 @@ export async function getFincaById(fincaId: string, userId: string) {
 
 export async function updateFinca(
   fincaId: string,
-  { nombre_finca, rut, renspa, catastro, ubicacion_texto, userId }: UpdateFincaInput,
+  {
+    nombre_finca,
+    rut,
+    renspa,
+    catastro,
+    ubicacion_texto,
+    nro_inscripto_inv,
+    cuit,
+    razon_social,
+    userId,
+  }: UpdateFincaInput,
 ) {
   if (!fincaId) {
     throw new FincaError("fincaId requerido", 400);
@@ -368,6 +393,9 @@ export async function updateFinca(
     renspa?: string | null;
     catastro?: string | null;
     ubicacion_texto?: string | null;
+    nro_inscripto_inv?: string | null;
+    cuit?: string | null;
+    razon_social?: string | null;
   } = {};
 
   if (nombre_finca !== undefined) data.nombre_finca = nombre_finca;
@@ -375,6 +403,9 @@ export async function updateFinca(
   if (renspa !== undefined) data.renspa = renspa;
   if (catastro !== undefined) data.catastro = catastro;
   if (ubicacion_texto !== undefined) data.ubicacion_texto = ubicacion_texto;
+  if (nro_inscripto_inv !== undefined) data.nro_inscripto_inv = nro_inscripto_inv;
+  if (cuit !== undefined) data.cuit = cuit;
+  if (razon_social !== undefined) data.razon_social = razon_social;
 
   if (Object.keys(data).length === 0) {
     throw new FincaError("No hay campos para actualizar", 400);

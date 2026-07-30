@@ -31,11 +31,15 @@ import {
   deleteVasijaHandler,
   getAnalisisRecepcionHandler,
   getCiuHandler,
+  getComposicionActualVasijaHandler,
   getControlFermentacionHandler,
   getCodigoEnvaseHandler,
   getCorteHandler,
   getDespachoHandler,
   getExistenciaVasijaHandler,
+  getImpactoBorradoOperacionVasijaHandler,
+  getImpactoBorradoRecepcionHandler,
+  getImpactoBorradoRemitoHandler,
   getLoteFraccionamientoHandler,
   getOperacionVasijaHandler,
   getProductoHandler,
@@ -81,6 +85,7 @@ elaboracionRoutes.post("/vasijas", authMiddleware, createVasijaHandler);
 elaboracionRoutes.get("/vasijas/:id", authMiddleware, getVasijaHandler);
 elaboracionRoutes.patch("/vasijas/:id", authMiddleware, updateVasijaHandler);
 elaboracionRoutes.delete("/vasijas/:id", authMiddleware, deleteVasijaHandler);
+elaboracionRoutes.get("/vasijas/:id/composicion-actual", authMiddleware, getComposicionActualVasijaHandler);
 
 elaboracionRoutes.get("/cortes", authMiddleware, listCortesHandler);
 elaboracionRoutes.post("/cortes", authMiddleware, createCorteHandler);
@@ -141,6 +146,11 @@ elaboracionRoutes.post("/remitos-uva", authMiddleware, createRemitoUvaHandler);
 elaboracionRoutes.get("/remitos-uva/:id", authMiddleware, getRemitoUvaHandler);
 elaboracionRoutes.patch("/remitos-uva/:id", authMiddleware, updateRemitoUvaHandler);
 elaboracionRoutes.delete("/remitos-uva/:id", authMiddleware, deleteRemitoUvaHandler);
+elaboracionRoutes.get(
+  "/remitos-uva/:id/impacto-borrado",
+  authMiddleware,
+  getImpactoBorradoRemitoHandler,
+);
 
 elaboracionRoutes.get("/recepciones-bodega", authMiddleware, listRecepcionesBodegaHandler);
 elaboracionRoutes.post("/recepciones-bodega", authMiddleware, createRecepcionBodegaHandler);
@@ -154,6 +164,11 @@ elaboracionRoutes.delete(
   "/recepciones-bodega/:id",
   authMiddleware,
   deleteRecepcionBodegaHandler,
+);
+elaboracionRoutes.get(
+  "/recepciones-bodega/:id/impacto-borrado",
+  authMiddleware,
+  getImpactoBorradoRecepcionHandler,
 );
 
 elaboracionRoutes.get("/analisis-recepcion", authMiddleware, listAnalisisRecepcionHandler);
@@ -182,6 +197,11 @@ elaboracionRoutes.delete(
   "/operaciones-vasija/:id",
   authMiddleware,
   deleteOperacionVasijaHandler,
+);
+elaboracionRoutes.get(
+  "/operaciones-vasija/:id/impacto-borrado",
+  authMiddleware,
+  getImpactoBorradoOperacionVasijaHandler,
 );
 
 elaboracionRoutes.get("/despachos", authMiddleware, listDespachosHandler);

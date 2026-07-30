@@ -2,9 +2,11 @@ import type { Request, Response } from "express";
 import {
   BodegaError,
   createBodega,
+  getBodegaById,
   linkProductorToBodega,
   listFincaVinculosByBodega,
   listProductoresByBodega,
+  updateBodega,
   upsertBodegaFincaVinculo,
 } from "./bodega.service.js";
 
@@ -27,6 +29,47 @@ export async function createBodegaHandler(req: Request, res: Response) {
       productorIds,
     });
     return res.status(201).json(bodega);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getBodegaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const bodegaId = String(req.params.bodegaId ?? "");
+    if (!bodegaId) {
+      return res.status(400).json({ error: "bodegaId requerido" });
+    }
+    const bodega = await getBodegaById(bodegaId, req.user.userId);
+    return res.json(bodega);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function updateBodegaHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const bodegaId = String(req.params.bodegaId ?? "");
+    if (!bodegaId) {
+      return res.status(400).json({ error: "bodegaId requerido" });
+    }
+    const { nombre, razon_social, cuit, codigo, nro_inscripto_inv } = req.body ?? {};
+    const bodega = await updateBodega({
+      bodegaId,
+      userId: req.user.userId,
+      ...(nombre !== undefined ? { nombre: String(nombre) } : {}),
+      ...(razon_social !== undefined ? { razon_social: String(razon_social) } : {}),
+      ...(cuit !== undefined ? { cuit: String(cuit) } : {}),
+      ...(codigo !== undefined ? { codigo: String(codigo) } : {}),
+      ...(nro_inscripto_inv !== undefined ? { nro_inscripto_inv: String(nro_inscripto_inv) } : {}),
+    });
+    return res.json(bodega);
   } catch (error) {
     return handleError(res, error);
   }

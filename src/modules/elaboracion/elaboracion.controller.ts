@@ -29,13 +29,17 @@ import {
   deleteRemitoUva,
   deleteVasija,
   ElaboracionError,
+  getImpactoBorradoOperacionVasija,
   getAnalisisRecepcionById,
   getCiuById,
+  getComposicionActualVasija,
   getControlFermentacionById,
   getCodigoEnvaseById,
   getCorteById,
   getDespachoById,
   getExistenciaVasijaById,
+  getImpactoBorradoRecepcion,
+  getImpactoBorradoRemito,
   getLoteFraccionamientoById,
   getOperacionVasijaById,
   getProductoById,
@@ -74,9 +78,21 @@ import {
   updateVasija,
 } from "./elaboracion.service.js";
 
+function isPrismaForeignKeyError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "P2003" || error.code === "P2014")
+  );
+}
+
 function handleError(res: Response, error: unknown) {
   if (error instanceof ElaboracionError) {
     return res.status(error.status).json({ error: error.message });
+  }
+  if (isPrismaForeignKeyError(error)) {
+    return res.status(409).json({ error: "No se puede eliminar: tiene registros relacionados" });
   }
   console.error("[elaboracion]", error);
   return res.status(500).json({ error: "Error interno" });
@@ -107,6 +123,16 @@ export async function getVasijaHandler(req: Request, res: Response) {
     const userId = requireUserId(req, res);
     if (!userId) return;
     return res.json(await getVasijaById(String(req.params.id ?? ""), userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getComposicionActualVasijaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    return res.json(await getComposicionActualVasija(String(req.params.id ?? ""), userId));
   } catch (error) {
     return handleError(res, error);
   }
@@ -458,6 +484,16 @@ export async function deleteRemitoUvaHandler(req: Request, res: Response) {
   }
 }
 
+export async function getImpactoBorradoRemitoHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    return res.json(await getImpactoBorradoRemito(String(req.params.id ?? ""), userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function listRecepcionesBodegaHandler(req: Request, res: Response) {
   try {
     const userId = requireUserId(req, res);
@@ -516,6 +552,16 @@ export async function deleteRecepcionBodegaHandler(req: Request, res: Response) 
     return res.json(
       await deleteRecepcionBodega(String(req.params.id ?? ""), userId),
     );
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getImpactoBorradoRecepcionHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    return res.json(await getImpactoBorradoRecepcion(String(req.params.id ?? ""), userId));
   } catch (error) {
     return handleError(res, error);
   }
@@ -642,6 +688,16 @@ export async function deleteOperacionVasijaHandler(req: Request, res: Response) 
     return res.json(
       await deleteOperacionVasija(String(req.params.id ?? ""), userId),
     );
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getImpactoBorradoOperacionVasijaHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    return res.json(await getImpactoBorradoOperacionVasija(String(req.params.id ?? ""), userId));
   } catch (error) {
     return handleError(res, error);
   }
