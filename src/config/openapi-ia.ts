@@ -5,14 +5,25 @@ const uuidParam = (name: string) => ({
   schema: { type: "string", format: "uuid" },
 });
 
-const apiBaseServer = [{ url: "/api", description: "API base path" }];
-
 const openapiIaSpec = {
   openapi: "3.0.3",
   info: {
     title: "Traza IA API",
-    version: "1.1.0",
-    description: "API de integración para bots y agentes sobre Traza.",
+    version: "1.2.0",
+    description:
+      "API de integración para el **agente de IA / bot** sobre Traza.\n\n" +
+      "**Base:** todas las rutas cuelgan de `/api/ia`.\n\n" +
+      "**Autenticación:** enviar `Authorization: Bearer <token>` en todas las llamadas, salvo `/auth/login`. " +
+      "El token se obtiene con `/auth/login` (bot_agent o super_agent).\n\n" +
+      "**Flujo típico:**\n" +
+      "1. `/auth/login` → token.\n" +
+      "2. `/me` → identidad del bot y sus delegaciones activas.\n" +
+      "3. **Catálogos** (`/catalogos/*`) → resolver `bodegaId`, `fincaId`, `cuartelId`, `procesoId`, insumos, etc. " +
+      "a partir de lo que menciona el usuario.\n" +
+      "4. **Tareas** (`/tareas/*`) → consultar, crear (`/tareas/iniciar`) y resolver órdenes de trabajo desde WhatsApp.\n" +
+      "5. **Delegaciones** (`/delegaciones/*`) → si el bot no tiene permiso para actuar en nombre del usuario, " +
+      "se solicita y confirma por chat.\n\n" +
+      "**Consultas libres:** `/consultas` responde preguntas en lenguaje natural sobre los datos de la bodega.",
   },
   servers: [
     {
@@ -84,6 +95,9 @@ const openapiIaSpec = {
       post: {
         tags: ["Autenticación"],
         summary: "Crear usuario bot normal (requiere admin_sistema)",
+        description:
+          "Crea un usuario bot con rol `bot_agent`, identificado por email. Este bot necesita delegación para " +
+          "actuar en nombre de un usuario (a diferencia del super_agent). Solo lo puede crear un admin_sistema.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -155,48 +169,68 @@ const openapiIaSpec = {
       get: {
         tags: ["Autenticación"],
         summary: "Identidad del bot autenticado y delegaciones activas",
-        responses: { 200: { description: "OK" } },
+        description:
+          "Devuelve el perfil del bot (`user`), sus `rolesGlobales` y las `activeDelegations` " +
+          "(delegaciones vigentes, cada una con su bodega y scopes). Es la primera llamada útil al " +
+          "iniciar sesión: indica en nombre de quién puede actuar el bot y sobre qué bodegas.",
+        responses: { 200: { description: "Perfil del bot, roles globales y delegaciones activas" } },
       },
     },
     "/catalogos/bodegas": {
       get: {
         tags: ["Catálogos"],
         summary: "Bodegas visibles para el bot por delegación",
-        responses: { 200: { description: "OK" } },
+        description:
+          "Lista todas las bodegas activas del sistema (`bodega_id`, `nombre`), ordenadas por nombre. " +
+          "Es el primer paso para resolver el `bodega_id` a partir del nombre que menciona el usuario, " +
+          "antes de listar tareas/campañas o crear datos. Solo requiere el token del bot (no necesita delegación).",
+        responses: { 200: { description: "Lista de bodegas activas: { bodega_id, nombre }" } },
       },
     },
     "/catalogos/fincas": {
       get: {
         tags: ["Catálogos"],
         summary: "Fincas visibles por delegación",
+        description:
+          "Lista las fincas, opcionalmente filtradas por `bodegaId`. Se usa para resolver el `fincaId` " +
+          "necesario al crear tareas o registrar eventos de campo (cosecha, riego, fertilización, etc.).",
         parameters: [
           {
             name: "bodegaId",
             in: "query",
             required: false,
             schema: { type: "string", format: "uuid" },
+            description: "Filtra las fincas de una bodega. Sin filtro, devuelve todas.",
           },
         ],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Lista de fincas (con su bodega_id)" } },
       },
     },
     "/catalogos/cuarteles": {
       get: {
         tags: ["Catálogos"],
         summary: "Cuarteles de una finca",
+        description:
+          "Lista los cuarteles activos de una finca (filtro `fincaId`). Cada cuartel incluye su finca " +
+          "(`finca_id`, `nombre_finca`, `bodega_id`). Se usa para resolver el `cuartelId` requerido en " +
+          "tareas y eventos agronómicos de campo.",
         parameters: [
           {
             name: "fincaId",
             in: "query",
             required: false,
             schema: { type: "string", format: "uuid" },
+            description: "Finca cuyos cuarteles se listan.",
           },
         ],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Lista de cuarteles (con su finca)" } },
       },
       post: {
         tags: ["Catálogos"],
         summary: "Crear cuartel en una finca (requiere delegación)",
+        description:
+          "Da de alta un cuartel en una finca. Requiere `fincaId` y `codigoCuartel`; el resto (superficie, " +
+          "variedad, sistema de riego, etc.) es opcional. El bot necesita delegación con scope `cuarteles.crear`.",
         requestBody: {
           required: true,
           content: {
@@ -225,21 +259,28 @@ const openapiIaSpec = {
       get: {
         tags: ["Catálogos"],
         summary: "Campañas visibles por delegación",
+        description:
+          "Lista las campañas (temporadas), opcionalmente por `bodegaId`, de la más reciente a la más " +
+          "antigua. Se usa para ubicar la campaña activa al consultar o registrar datos.",
         parameters: [
           {
             name: "bodegaId",
             in: "query",
             required: false,
             schema: { type: "string", format: "uuid" },
+            description: "Filtra las campañas de una bodega.",
           },
         ],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Lista de campañas (más reciente primero)" } },
       },
     },
     "/catalogos/trabajadores": {
       get: {
         tags: ["Catálogos"],
         summary: "Lista trabajadores de una bodega (usuarios registrados y sin acceso)",
+        description:
+          "Lista las personas de una bodega, tanto usuarios con acceso a la plataforma como los registrados sin " +
+          "acceso (`tieneAcceso: false`). Se usa para resolver a quién asignar una tarea. Filtrable por `bodegaId`.",
         parameters: [
           {
             name: "bodegaId",
@@ -325,36 +366,63 @@ const openapiIaSpec = {
       get: {
         tags: ["Catálogos"],
         summary: "Protocolos activos",
-        responses: { 200: { description: "OK" } },
+        description:
+          "Lista los protocolos activos (ordenados por nombre y versión). Un protocolo define las etapas " +
+          "y procesos de trabajo; el `protocolo_id` se usa luego con `/catalogos/protocolos/{protocoloId}/procesos` " +
+          "para obtener el `procesoId` que necesita la creación de tareas.",
+        responses: { 200: { description: "Lista de protocolos activos" } },
       },
     },
     "/catalogos/protocolos/{protocoloId}/procesos": {
       get: {
         tags: ["Catálogos"],
         summary: "Etapas y procesos de un protocolo",
+        description:
+          "Devuelve el protocolo con sus etapas (`protocolo_etapa`) y, dentro de cada una, sus procesos " +
+          "(`protocolo_proceso`), ordenados. De acá sale el `procesoId` que identifica el tipo de tarea a crear " +
+          "en `/tareas/iniciar`.",
         parameters: [uuidParam("protocoloId")],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Protocolo con etapas y procesos expandidos" }, 404: { description: "Protocolo no encontrado" } },
       },
     },
     "/catalogos/insumos": {
       get: {
         tags: ["Catálogos"],
         summary: "Catálogo de insumos con lotes habilitados",
+        description:
+          "Lista el catálogo de insumos (fertilizantes, fitosanitarios, etc.), cada uno con hasta 10 lotes " +
+          "habilitados (los más próximos a vencer primero). Filtrable por `tipo`. Se usa para resolver el insumo " +
+          "y el lote al registrar aplicaciones/fertilizaciones.",
         parameters: [
           {
             name: "tipo",
             in: "query",
             required: false,
             schema: { type: "string" },
+            description: "Filtra por tipo de insumo (ej. `fertilizante`, `fitosanitario`).",
           },
         ],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Insumos con sus lotes habilitados" } },
+      },
+    },
+    "/catalogos/actividades-sugerencias": {
+      get: {
+        tags: ["Catálogos"],
+        summary: "Matriz de sugerencias por actividad para el flujo conversacional",
+        description:
+          "Devuelve la matriz de configuración que guía la conversación del bot: por cada actividad/labor " +
+          "(ej. poda, atadura, riego), qué datos preguntar y qué equipos/insumos sugerir. La usa el bot para " +
+          "armar las preguntas y sugerencias al ayudar a cargar una tarea, sin tener que inferirlas.",
+        responses: { 200: { description: "Matriz de actividades con sus sugerencias" } },
       },
     },
     "/catalogos/eventos": {
       get: {
         tags: ["Catálogos"],
         summary: "Lista de tipos de evento disponibles para registrar",
+        description:
+          "Devuelve los tipos de evento agronómico/de bodega que se pueden registrar (riego, cosecha, fenología, " +
+          "fertilización, etc.). Para cada tipo, `/catalogos/eventos/{tipo}/schema` da los campos requeridos.",
         responses: {
           200: {
             description: "OK",
@@ -371,6 +439,9 @@ const openapiIaSpec = {
       get: {
         tags: ["Catálogos"],
         summary: "Schema de campos requeridos/opcionales para un tipo de evento",
+        description:
+          "Devuelve el schema de datos de un tipo de evento: qué campos son obligatorios/opcionales, su tipo y " +
+          "valores válidos (enum). El bot lo usa para saber qué preguntar antes de registrar el evento.",
         parameters: [
           {
             name: "tipo",
@@ -406,12 +477,16 @@ const openapiIaSpec = {
       get: {
         tags: ["Tareas"],
         summary: "Lista de tareas visibles para el bot",
+        description:
+          "Lista las tareas (órdenes de trabajo) que el bot puede ver. Un bot normal solo ve las de bodegas " +
+          "donde tiene delegación activa; el super agent ve todas. Filtrable por `estado`, `bodegaId` y por el " +
+          "`whatsapp` del asignado.",
         parameters: [
-          { name: "estado", in: "query", required: false, schema: { type: "string", enum: ["pendiente", "en_progreso", "completado", "cancelado"] } },
-          { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+          { name: "estado", in: "query", required: false, schema: { type: "string", enum: ["pendiente", "en_progreso", "completado", "cancelado"] }, description: "Filtra por estado de la tarea." },
+          { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "Filtra por bodega." },
           { name: "whatsapp", in: "query", required: false, schema: { type: "string" }, description: "Filtra por WhatsApp del asignado (E.164)" },
         ],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Lista de tareas visibles para el bot" } },
       },
     },
     "/tareas/iniciar": {
@@ -497,14 +572,21 @@ const openapiIaSpec = {
       get: {
         tags: ["Tareas"],
         summary: "Detalle resumido de una tarea",
+        description:
+          "Devuelve el resumen de una asignación de tarea por su `tareaAsignacionId`: estado, proceso, " +
+          "asignados y datos básicos. Para el detalle expandido con schema de carga usar `/tareas/{id}/contexto`.",
         parameters: [uuidParam("tareaAsignacionId")],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Detalle resumido de la tarea" } },
       },
     },
     "/tareas/{tareaAsignacionId}/contexto": {
       get: {
         tags: ["Tareas"],
         summary: "Contexto expandido para resolución de la tarea",
+        description:
+          "Devuelve todo lo necesario para resolver una tarea desde el chat: el resumen (`tarea`), el tipo de " +
+          "evento inferido (`eventoTipo`), el `inputSchema` de campos a completar, y contexto adicional " +
+          "(trazabilidad, hallazgos abiertos, historial del bot). Es la llamada base antes de guardar progreso.",
         parameters: [uuidParam("tareaAsignacionId")],
         responses: {
           200: {
@@ -532,6 +614,9 @@ const openapiIaSpec = {
       post: {
         tags: ["Tareas"],
         summary: "Registrar contacto del bot con el operario",
+        description:
+          "Deja registrado que el bot contactó al operario asignado a la tarea (con un `message` opcional). " +
+          "Sirve para la trazabilidad de la conversación antes de ayudar a cargar los datos.",
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: {
           required: false,
@@ -772,6 +857,9 @@ const openapiIaSpec = {
       get: {
         tags: ["Trazabilidad"],
         summary: "Trazabilidades visibles por delegación",
+        description:
+          "⚠️ Sección no activa por el momento. Lista las trazabilidades visibles según delegación, " +
+          "filtrable por `bodegaId`, `campaniaId`, `fincaId`, `cuartelId` y `estado`.",
         parameters: [
           { name: "bodegaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
           { name: "campaniaId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
@@ -786,22 +874,27 @@ const openapiIaSpec = {
       get: {
         tags: ["Trazabilidad"],
         summary: "Detalle de una trazabilidad visible",
+        description: "⚠️ Sección no activa por el momento. Detalle de una trazabilidad por su `trazabilidadId`.",
         parameters: [uuidParam("trazabilidadId")],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Detalle de la trazabilidad" } },
       },
     },
     "/trazabilidades/{trazabilidadId}/contexto": {
       get: {
         tags: ["Trazabilidad"],
         summary: "Contexto expandido de una trazabilidad",
+        description: "⚠️ Sección no activa por el momento. Contexto expandido (eventos, hallazgos, etc.) de una trazabilidad.",
         parameters: [uuidParam("trazabilidadId")],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Contexto expandido de la trazabilidad" } },
       },
     },
     "/hallazgos": {
       get: {
         tags: ["Trazabilidad"],
         summary: "Hallazgos visibles por delegación",
+        description:
+          "⚠️ Sección no activa por el momento. Lista los hallazgos (no conformidades) filtrables por " +
+          "`trazabilidadId`, `estado` y `severidad`.",
         parameters: [
           { name: "trazabilidadId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
           { name: "estado", in: "query", required: false, schema: { type: "string" } },
@@ -814,14 +907,18 @@ const openapiIaSpec = {
       get: {
         tags: ["Trazabilidad"],
         summary: "Detalle de un hallazgo",
+        description: "⚠️ Sección no activa por el momento. Detalle de un hallazgo por su `hallazgoId`.",
         parameters: [uuidParam("hallazgoId")],
-        responses: { 200: { description: "OK" } },
+        responses: { 200: { description: "Detalle del hallazgo" } },
       },
     },
     "/eventos": {
       get: {
         tags: ["Trazabilidad"],
         summary: "Lectura de eventos para responder preguntas del bot",
+        description:
+          "⚠️ Sección no activa por el momento. Lee eventos agronómicos y de bodega para responder consultas, " +
+          "filtrable por `tipo`, `bodegaId`, `campaniaId`, `fincaId`, `cuartelId`, `trazabilidadId` y `limit`.",
         parameters: [
           { name: "tipo", in: "query", required: false, schema: { type: "string" } },
           { name: "trazabilidadId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
@@ -838,6 +935,10 @@ const openapiIaSpec = {
       get: {
         tags: ["Usuarios"],
         summary: "Datos del usuario por WhatsApp + delegaciones activas del bot hacia ese usuario",
+        description:
+          "Busca al usuario por su número de WhatsApp (E.164) y devuelve sus datos, bodegas y las delegaciones " +
+          "activas del bot hacia él. `tiene_delegacion: true` indica que el bot ya puede actuar en su nombre. " +
+          "Es la llamada base para saber si hace falta pedir delegación antes de crear una tarea.",
         parameters: [
           {
             name: "whatsapp",
@@ -882,6 +983,7 @@ const openapiIaSpec = {
       get: {
         tags: ["Usuarios"],
         summary: "Datos de un usuario por ID (incluye whatsapp)",
+        description: "Devuelve los datos de un usuario por su `userId` (incluye `whatsapp_e164`). Útil cuando ya se tiene el ID y se necesita el contacto.",
         parameters: [uuidParam("userId")],
         responses: {
           200: {
@@ -906,6 +1008,11 @@ const openapiIaSpec = {
       post: {
         tags: ["Consultas"],
         summary: "Búsqueda transversal para responder preguntas del bot",
+        description:
+          "Recibe una `pregunta` en lenguaje libre y busca de forma transversal sobre los datos visibles de " +
+          "la(s) bodega(s), devolviendo un `resumen` y `resultados` agrupados. Se puede acotar con `bodegaId` o " +
+          "`trazabilidadId`. Es el endpoint para responder preguntas abiertas del usuario (ej. \"¿cuánto malbec " +
+          "reserva hay?\").",
         requestBody: {
           required: true,
           content: {
@@ -935,6 +1042,10 @@ const openapiIaSpec = {
       post: {
         summary: "Crear delegación manualmente",
         tags: ["Delegaciones"],
+        description:
+          "Crea una delegación (permiso para que un bot actúe en nombre de un usuario) de forma directa, sin el " +
+          "flujo de confirmación por chat. Requiere `botUserId` y `scopes`; opcionalmente se acota con `bodegaId` " +
+          "y `expiresAt`. Para el flujo desde WhatsApp usar `/delegaciones/solicitar` + `/delegaciones/confirmar`.",
         requestBody: {
           required: true,
           content: {
@@ -959,7 +1070,10 @@ const openapiIaSpec = {
       get: {
         summary: "Listar delegaciones activas otorgadas por el usuario autenticado",
         tags: ["Delegaciones"],
-        responses: { 200: { description: "OK" } },
+        description:
+          "Lista las delegaciones activas que el usuario autenticado otorgó a bots (con su bodega, scopes y " +
+          "expiración). Sirve para que el encargado vea y audite qué permisos concedió.",
+        responses: { 200: { description: "Delegaciones activas otorgadas por el usuario" } },
       },
     },
     "/delegaciones/solicitar": {
@@ -1028,405 +1142,9 @@ const openapiIaSpec = {
       delete: {
         summary: "Revocar una delegación",
         tags: ["Delegaciones"],
+        description: "Revoca una delegación por su `botDelegationId`. A partir de ahí el bot deja de poder actuar en nombre de ese usuario con esos scopes.",
         parameters: [{ name: "botDelegationId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: { 200: { description: "Delegación revocada" }, 403: { description: "Sin permiso" }, 404: { description: "No encontrada" } },
-      },
-    },
-    "/bot/auth/register": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Autenticación"],
-        summary: "Crear usuario bot normal (ruta /bot)",
-        security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["email", "password", "nombre"],
-                properties: {
-                  email: { type: "string", format: "email" },
-                  password: { type: "string" },
-                  nombre: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Bot creado" } },
-      },
-    },
-    "/bot/auth/register-agent": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Agent"],
-        summary: "Crear super agente (ruta /bot)",
-        security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["nombre", "password"],
-                properties: {
-                  nombre: { type: "string" },
-                  password: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Super agente creado" } },
-      },
-    },
-    "/bot/auth/login": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Autenticación"],
-        summary: "Login del bot (ruta /bot)",
-        security: [],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["username", "password"],
-                properties: {
-                  username: { type: "string" },
-                  password: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/usuarios/whatsapp/{whatsapp}": {
-      servers: apiBaseServer,
-      get: {
-        tags: ["Usuarios"],
-        summary: "Perfil completo del usuario por WhatsApp",
-        parameters: [{ name: "whatsapp", in: "path", required: true, schema: { type: "string" }, example: "+5491112345678" }],
-        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
-      },
-    },
-    "/bot/tareas/whatsapp/{whatsapp}": {
-      servers: apiBaseServer,
-      get: {
-        tags: ["Tareas"],
-        summary: "Tareas asignadas al usuario identificado por WhatsApp",
-        parameters: [
-          { name: "whatsapp", in: "path", required: true, schema: { type: "string" }, example: "+5491112345678" },
-          { name: "estados", in: "query", required: false, schema: { type: "string" } },
-        ],
-        responses: { 200: { description: "OK" }, 404: { description: "No encontrado" } },
-      },
-    },
-    "/bot/delegaciones": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Delegaciones"],
-        summary: "Crear delegación manualmente",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["botUserId", "scopes"],
-                properties: {
-                  botUserId: { type: "string", format: "uuid" },
-                  bodegaId: { type: "string", format: "uuid" },
-                  scopes: { type: "array", items: { type: "string" } },
-                  expiresAt: { type: "string", format: "date-time" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Delegación creada" } },
-      },
-    },
-    "/bot/delegaciones/me": {
-      servers: apiBaseServer,
-      get: {
-        tags: ["Delegaciones"],
-        summary: "Listar delegaciones activas del usuario autenticado",
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/delegaciones/solicitar": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Delegaciones"],
-        summary: "Solicitar delegación desde el chat",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["whatsapp", "scopes"],
-                properties: {
-                  whatsapp: { type: "string", example: "+5491112345678" },
-                  scopes: { type: "array", items: { type: "string" } },
-                  bodegaId: { type: "string", format: "uuid" },
-                  expiresAt: { type: "string", format: "date-time" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 200: { description: "Código generado" }, 404: { description: "Usuario no encontrado" } },
-      },
-    },
-    "/bot/delegaciones/confirmar": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Delegaciones"],
-        summary: "Confirmar delegación",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["whatsapp", "codigo"],
-                properties: {
-                  whatsapp: { type: "string", example: "+5491112345678" },
-                  codigo: { type: "string", example: "847291" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Delegación creada" }, 400: { description: "Código inválido o expirado" } },
-      },
-    },
-    "/bot/delegaciones/{botDelegationId}": {
-      servers: apiBaseServer,
-      delete: {
-        tags: ["Delegaciones"],
-        summary: "Revocar una delegación",
-        parameters: [{ name: "botDelegationId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { 200: { description: "Delegación revocada" }, 403: { description: "Sin permiso" }, 404: { description: "No encontrada" } },
-      },
-    },
-    "/bot/tareas": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Tareas"],
-        summary: "Crear tarea en nombre de un encargado",
-        description: "Endpoint legacy. Para nuevos desarrollos usar `/api/ia/tareas/iniciar`. Si el `procesoId` pertenece a un evento de finca, enviar `fincaId` y `cuartelId` para no crear ordenes incompletas.",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["onBehalfUserId", "bodegaId", "procesoId"],
-                properties: {
-                  onBehalfUserId: { type: "string", format: "uuid" },
-                  bodegaId: { type: "string", format: "uuid" },
-                  procesoId: { type: "string", format: "uuid" },
-                  fincaId: { type: "string", format: "uuid", description: "Obligatorio junto con cuartelId para procesos de finca/cosecha" },
-                  cuartelId: { type: "string", format: "uuid", description: "Obligatorio junto con fincaId para procesos de finca/cosecha" },
-                  descripcion: { type: "string" },
-                  prioridad: { type: "string", enum: ["baja", "media", "alta"] },
-                  fechaFin: { type: "string", format: "date-time" },
-                  imagenCid: { type: "string" },
-                  imagenUrl: { type: "string" },
-                  assigneeUserIds: { type: "array", items: { type: "string", format: "uuid" } },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Tarea creada" } },
-      },
-    },
-    "/bot/tareas/iniciar": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Tareas"],
-        summary: "Iniciar creación de tarea desde WhatsApp",
-        description: "Endpoint legacy equivalente al flujo IA. Aunque el recurso tecnico se llama tarea, para producto representa una orden de trabajo. Para procesos de finca/cosecha enviar siempre `fincaId` y `cuartelId`.",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["whatsapp", "bodegaId", "procesoId"],
-                properties: {
-                  whatsapp: { type: "string", example: "+541134567890" },
-                  bodegaId: { type: "string", format: "uuid" },
-                  procesoId: { type: "string", format: "uuid" },
-                  fincaId: { type: "string", format: "uuid", description: "Obligatorio junto con cuartelId para procesos de finca/cosecha" },
-                  cuartelId: { type: "string", format: "uuid", description: "Obligatorio junto con fincaId para procesos de finca/cosecha" },
-                  descripcion: { type: "string" },
-                  prioridad: { type: "string", enum: ["baja", "media", "alta"] },
-                  fechaFin: { type: "string", format: "date-time" },
-                  imagenCid: { type: "string" },
-                  imagenUrl: { type: "string" },
-                  assigneeUserIds: { type: "array", items: { type: "string", format: "uuid" } },
-                  delegacionExpiresAt: { type: "string", format: "date-time" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Tarea creada" }, 202: { description: "Delegación requerida" } },
-      },
-    },
-    "/bot/asignaciones/{tareaAsignacionId}/contactar": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Tareas"],
-        summary: "Registrar contacto del bot con el operario",
-        parameters: [uuidParam("tareaAsignacionId")],
-        requestBody: {
-          required: false,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: { message: { type: "string" } },
-              },
-            },
-          },
-        },
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/asignaciones/{tareaAsignacionId}/ayudar-carga": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Tareas"],
-        summary: "Marcar ayuda de carga del bot",
-        parameters: [uuidParam("tareaAsignacionId")],
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/asignaciones/{tareaAsignacionId}/estado": {
-      servers: apiBaseServer,
-      patch: {
-        tags: ["Tareas"],
-        summary: "Actualizar estado de una asignación",
-        parameters: [uuidParam("tareaAsignacionId")],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["estado"],
-                properties: {
-                  estado: { type: "string", enum: ["pendiente", "en_progreso", "completado", "cancelado"] },
-                  observaciones: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/protocolos": {
-      servers: apiBaseServer,
-      get: {
-        tags: ["Catálogos"],
-        summary: "Protocolos activos con etapas y procesos expandidos",
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/bodegas/{bodegaId}/operarios": {
-      servers: apiBaseServer,
-      get: {
-        tags: ["Catálogos"],
-        summary: "Miembros activos de una bodega con sus roles",
-        parameters: [uuidParam("bodegaId")],
-        responses: { 200: { description: "OK" } },
-      },
-    },
-    "/bot/bodegas/{bodegaId}/vasijas": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Catálogos"],
-        summary: "Crear vasija en una bodega en nombre de un encargado",
-        parameters: [uuidParam("bodegaId")],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["onBehalfUserId", "codigo"],
-                properties: {
-                  onBehalfUserId: { type: "string", format: "uuid" },
-                  codigo: { type: "string", example: "V-14" },
-                  tipo: { type: "string", example: "tanque" },
-                  capacidad_litros: { type: "number", example: 50000 },
-                  estado: { type: "string", example: "libre" },
-                  ubicacion: { type: "string", example: "Nave B" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Vasija creada" } },
-      },
-    },
-    "/bot/fincas/{fincaId}/cuarteles": {
-      servers: apiBaseServer,
-      post: {
-        tags: ["Catálogos"],
-        summary: "Crear cuartel en una finca en nombre de un encargado",
-        parameters: [uuidParam("fincaId")],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["onBehalfUserId", "codigo_cuartel"],
-                properties: {
-                  onBehalfUserId: { type: "string", format: "uuid" },
-                  codigo_cuartel: { type: "string", example: "C-03" },
-                  superficie_ha: { type: "number", example: 4.5 },
-                  cultivo: { type: "string", enum: ["Vid"], example: "Vid" },
-                  tipo_variedad: { type: "string", enum: ["tinta", "blanca", "rosada"], example: "tinta" },
-                  variedad: { type: "string", enum: ["malbec", "bonarda", "cabernet_sauvignon", "syrah", "merlot", "tempranillo", "pinot_noir", "sangiovese", "aspiran_bouschet", "pedro_gimenez", "torrontes_riojano", "torrontes_sanjuanino", "chardonnay", "sauvignon_blanc", "chenin", "semillon", "viognier", "ugni_blanc", "cereza", "criolla_grande", "moscatel_rosado"], example: "malbec" },
-                  sistema_riego: {
-                    type: "string",
-                    enum: ["goteo", "surco", "aspersion", "microaspersion", "secano"],
-                    example: "goteo",
-                  },
-                  sistema_productivo: {
-                    type: "string",
-                    enum: ["convencional", "organico_ecologico", "regenerativo", "labranza_cero_cobertura_vegetal", "biodinamica"],
-                    example: "organico_ecologico",
-                    description: "Manejo de cultivo",
-                  },
-                  sistema_conduccion: {
-                    type: "string",
-                    enum: ["espaldera", "parral", "vaso", "guyot", "cordon_bilateral_doble_cordon", "cordon_unilateral"],
-                    example: "cordon_bilateral_doble_cordon",
-                  },
-                  cantidad_hileras: { type: "integer", example: 42 },
-                  largo_hileras_m: { type: "number", example: 120 },
-                  densidad_hileras: { type: "number", example: 2.5 },
-                  distancia_plantacion: { type: "string", example: "2.5 x 1.2 m" },
-                },
-              },
-            },
-          },
-        },
-        responses: { 201: { description: "Cuartel creado" } },
       },
     },
   },
