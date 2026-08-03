@@ -1,9 +1,11 @@
 import { Router } from "express";
 import {
   createBodegaHandler,
+  getBodegaHandler,
   listBodegaFincaVinculosHandler,
   linkProductorToBodegaHandler,
   listBodegaProductoresHandler,
+  updateBodegaHandler,
   upsertBodegaFincaVinculoHandler,
 } from "./bodega.controller.js";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
@@ -15,6 +17,8 @@ export const bodegaRoutes = Router();
 
 //TODO proteger ruta
 bodegaRoutes.post("/", authMiddleware, createBodegaHandler);
+bodegaRoutes.get("/:bodegaId", authMiddleware, getBodegaHandler);
+bodegaRoutes.patch("/:bodegaId", authMiddleware, updateBodegaHandler);
 bodegaRoutes.get("/:bodegaId/fincas", authMiddleware, listFincasByBodegaHandler);
 bodegaRoutes.get("/:bodegaId/fincas/vinculos", authMiddleware, listBodegaFincaVinculosHandler);
 bodegaRoutes.put("/:bodegaId/fincas/:fincaId/vinculo", authMiddleware, upsertBodegaFincaVinculoHandler);

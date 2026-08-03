@@ -1,4 +1,10 @@
 import { prisma } from "../../config/prismaClient.js";
+import {
+  recolectarCiusDeGenealogia,
+  resolverGenealogiaLote,
+  type CiuContribucion,
+  type LoteGenealogiaNode,
+} from "../lotes/lotes.service.js";
 
 type CreateTrazabilidadInput = {
   protocoloId: string;
@@ -250,34 +256,15 @@ export async function getTrazabilidadInversaByCodigoEnvase(
           },
           corte: {
             include: {
+              // Flujo nuevo (guiado, vía vasijas): el corte ya generó su propio Lote.
+              lote_creado: { select: { lote_id: true } },
+              // Flujo viejo (carga manual): hay que resolver el/los lote(s) a mano.
               corte_componente: {
                 include: {
-                  evento_cosecha: {
-                    include: {
-                      cuartel: {
-                        include: {
-                          finca: true,
-                        },
-                      },
-                      campania: true,
-                    },
-                  },
+                  lote: { select: { lote_id: true } },
                   vasija: {
                     include: {
-                      vasija_contenido: {
-                        include: {
-                          evento_cosecha: {
-                            include: {
-                              cuartel: {
-                                include: {
-                                  finca: true,
-                                },
-                              },
-                              campania: true,
-                            },
-                          },
-                        },
-                      },
+                      vasija_contenido: { select: { lote_id: true } },
                     },
                   },
                 },
@@ -296,62 +283,34 @@ export async function getTrazabilidadInversaByCodigoEnvase(
   const bodegaId = codigo.lote_fraccionamiento.producto.bodega_id;
   await ensureUserBodega(userId, bodegaId);
 
-  const lotesMap = new Map<
-    string,
-    {
-      lote_cosecha_id: string;
-      fecha_cosecha: Date;
-      campania: { campania_id: string; nombre: string };
-      cuartel: {
-        cuartel_id: string;
-        codigo_cuartel: string;
-        finca: { finca_id: string; nombre_finca: string };
-      };
-    }
-  >();
+  const corte = codigo.lote_fraccionamiento.corte;
 
-  for (const componente of codigo.lote_fraccionamiento.corte.corte_componente) {
-    if (componente.evento_cosecha) {
-      const c = componente.evento_cosecha;
-      lotesMap.set(c.lote_cosecha_id, {
-        lote_cosecha_id: c.lote_cosecha_id,
-        fecha_cosecha: c.fecha_cosecha,
-        campania: {
-          campania_id: c.campania.campania_id,
-          nombre: c.campania.nombre,
-        },
-        cuartel: {
-          cuartel_id: c.cuartel.cuartel_id,
-          codigo_cuartel: c.cuartel.codigo_cuartel,
-          finca: {
-            finca_id: c.cuartel.finca.finca_id,
-            nombre_finca: c.cuartel.finca.nombre_finca,
-          },
-        },
-      });
+  // Raíces desde las que arrancar la genealogía, con su peso relativo dentro del corte.
+  const raices: string[] = [];
+  if (corte.lote_creado.length > 0) {
+    for (const l of corte.lote_creado) raices.push(l.lote_id);
+  } else {
+    const loteIds = new Set<string>();
+    for (const componente of corte.corte_componente) {
+      if (componente.lote) loteIds.add(componente.lote.lote_id);
+      if (componente.vasija) {
+        for (const vc of componente.vasija.vasija_contenido) loteIds.add(vc.lote_id);
+      }
     }
-
-    if (!componente.vasija) continue;
-    for (const contenido of componente.vasija.vasija_contenido) {
-      const c = contenido.evento_cosecha;
-      lotesMap.set(c.lote_cosecha_id, {
-        lote_cosecha_id: c.lote_cosecha_id,
-        fecha_cosecha: c.fecha_cosecha,
-        campania: {
-          campania_id: c.campania.campania_id,
-          nombre: c.campania.nombre,
-        },
-        cuartel: {
-          cuartel_id: c.cuartel.cuartel_id,
-          codigo_cuartel: c.cuartel.codigo_cuartel,
-          finca: {
-            finca_id: c.cuartel.finca.finca_id,
-            nombre_finca: c.cuartel.finca.nombre_finca,
-          },
-        },
-      });
-    }
+    raices.push(...loteIds);
   }
+
+  const pesoPorRaiz = raices.length > 0 ? 100 / raices.length : 0;
+  const genealogia: LoteGenealogiaNode[] = [];
+  const ciusMap = new Map<string, CiuContribucion>();
+
+  for (const loteId of raices) {
+    const nodo = await resolverGenealogiaLote(loteId, pesoPorRaiz);
+    genealogia.push(nodo);
+    recolectarCiusDeGenealogia(nodo, pesoPorRaiz, ciusMap);
+  }
+
+  const cius = Array.from(ciusMap.values()).sort((a, b) => b.porcentaje_efectivo - a.porcentaje_efectivo);
 
   return {
     codigo_envase_id: codigo.codigo_envase_id,
@@ -366,10 +325,11 @@ export async function getTrazabilidadInversaByCodigoEnvase(
     },
     producto: codigo.lote_fraccionamiento.producto,
     corte: {
-      corte_id: codigo.lote_fraccionamiento.corte.corte_id,
-      fecha: codigo.lote_fraccionamiento.corte.fecha,
-      objetivo: codigo.lote_fraccionamiento.corte.objetivo,
+      corte_id: corte.corte_id,
+      fecha: corte.fecha,
+      objetivo: corte.objetivo,
     },
-    origenes: Array.from(lotesMap.values()),
+    genealogia,
+    cius,
   };
 }

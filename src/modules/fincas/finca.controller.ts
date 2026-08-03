@@ -22,8 +22,17 @@ export async function createFincaHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const { bodegaId, nombre_finca, rut, renspa, catastro, ubicacion_texto } =
-      req.body ?? {};
+    const {
+      bodegaId,
+      nombre_finca,
+      rut,
+      renspa,
+      catastro,
+      ubicacion_texto,
+      nro_inscripto_inv,
+      cuit,
+      razon_social,
+    } = req.body ?? {};
     const finca = await createFinca({
       bodegaId,
       nombre_finca,
@@ -31,6 +40,9 @@ export async function createFincaHandler(req: Request, res: Response) {
       renspa,
       catastro,
       ubicacion_texto,
+      nro_inscripto_inv,
+      cuit,
+      razon_social,
       userId: req.user.userId,
     });
     return res.status(201).json(finca);
@@ -90,13 +102,25 @@ export async function updateFincaHandler(req: Request, res: Response) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const fincaId = String(req.params.fincaId ?? "");
-    const { nombre_finca, rut, renspa, catastro, ubicacion_texto } = req.body ?? {};
+    const {
+      nombre_finca,
+      rut,
+      renspa,
+      catastro,
+      ubicacion_texto,
+      nro_inscripto_inv,
+      cuit,
+      razon_social,
+    } = req.body ?? {};
     const finca = await updateFinca(fincaId, {
       nombre_finca,
       rut,
       renspa,
       catastro,
       ubicacion_texto,
+      nro_inscripto_inv,
+      cuit,
+      razon_social,
       userId: req.user.userId,
     });
     return res.json(finca);

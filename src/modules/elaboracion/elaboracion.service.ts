@@ -7,6 +7,7 @@ type CreateVasijaInput = {
   codigo: string;
   tipo?: string;
   capacidad_litros?: number;
+  uso?: string;
   etapa?: string;
   ubicacion?: string;
 };
@@ -15,13 +16,14 @@ type UpdateVasijaInput = {
   codigo?: string;
   tipo?: string;
   capacidad_litros?: number;
+  uso?: string;
   etapa?: string;
   ubicacion?: string;
 };
 
 type CorteComponenteInput = {
   vasijaId?: string;
-  loteCosechaId?: string;
+  loteId?: string;
   volumen_l?: number;
   porcentaje?: number;
 };
@@ -103,6 +105,8 @@ type CreateRemitoUvaInput = {
   llegada_bodega?: string;
   transportista?: string;
   patente?: string;
+  modelo_vehiculo?: string;
+  cuit_conductor?: string;
   kg_declarados?: number;
   kg_bruto?: number;
   kg_tara?: number;
@@ -122,6 +126,8 @@ type UpdateRemitoUvaInput = {
   llegada_bodega?: string;
   transportista?: string;
   patente?: string;
+  modelo_vehiculo?: string;
+  cuit_conductor?: string;
   kg_declarados?: number;
   kg_bruto?: number;
   kg_tara?: number;
@@ -189,7 +195,112 @@ type CreateOperacionVasijaInput = {
   actorUserId?: string;
   volumen_movido_l?: number;
   observaciones?: string;
+  /** Requerido cuando tipo === "ingreso": el Lote que entra a la vasija destino. */
+  loteId?: string;
 };
+
+/** Margen para redondeos de punto flotante al comparar/repartir volúmenes. */
+const EPSILON_VOLUMEN_L = 0.001;
+
+/**
+ * Motor del ledger de composición (VasijaContenido). Se llama dentro de la misma
+ * transacción que crea la OperacionVasija. Nunca edita una fila existente: cierra
+ * (`hasta`) y abre filas nuevas. Bloquea el movimiento si se pide sacar más volumen
+ * del que hay activo en la vasija de origen.
+ */
+async function aplicarMovimientoVasija(
+  tx: Prisma.TransactionClient,
+  params: {
+    operacionVasijaId: string;
+    tipo: "ingreso" | "fermentacion" | "trasiego" | "descube" | "correccion" | "corte_parcial";
+    vasijaOrigenId?: string | null | undefined;
+    vasijaDestinoId?: string | null | undefined;
+    volumenMovidoL?: number | null | undefined;
+    fechaHora: Date;
+    loteId?: string | null | undefined;
+  },
+): Promise<void> {
+  const { operacionVasijaId, tipo, vasijaOrigenId, vasijaDestinoId, volumenMovidoL, fechaHora, loteId } = params;
+
+  if (tipo === "fermentacion") return;
+
+  if (tipo === "ingreso") {
+    if (!vasijaDestinoId) {
+      throw new ElaboracionError("El ingreso requiere una vasija destino", 400);
+    }
+    if (!loteId) {
+      throw new ElaboracionError("El ingreso requiere un lote", 400);
+    }
+    if (!volumenMovidoL || volumenMovidoL <= 0) {
+      throw new ElaboracionError("El ingreso requiere volumen_movido_l mayor a 0", 400);
+    }
+    await tx.vasijaContenido.create({
+      data: {
+        vasija_id: vasijaDestinoId,
+        lote_id: loteId,
+        desde: fechaHora,
+        volumen_l: volumenMovidoL,
+        operacion_vasija_id: operacionVasijaId,
+      },
+    });
+    return;
+  }
+
+  // trasiego / descube / correccion / corte_parcial: movimiento desde una vasija de
+  // origen, opcionalmente hacia una vasija destino. Si hay varios lotes mezclados en
+  // el origen, se reparte proporcional entre todos (no se puede sacar "solo un lote"
+  // de una vasija ya mezclada).
+  if (!vasijaOrigenId || !volumenMovidoL || volumenMovidoL <= 0) return;
+
+  const activos = await tx.vasijaContenido.findMany({
+    where: { vasija_id: vasijaOrigenId, hasta: null },
+  });
+  const disponible = activos.reduce((acc, row) => acc + Number(row.volumen_l ?? 0), 0);
+
+  if (disponible + EPSILON_VOLUMEN_L < volumenMovidoL) {
+    throw new ElaboracionError(
+      `Volumen insuficiente en origen: disponible ${disponible.toFixed(2)} l, solicitado ${volumenMovidoL.toFixed(2)} l`,
+      400,
+    );
+  }
+
+  const fraccion = disponible > 0 ? volumenMovidoL / disponible : 0;
+
+  for (const row of activos) {
+    const rowVolumen = Number(row.volumen_l ?? 0);
+    const movido = rowVolumen * fraccion;
+    const restante = rowVolumen - movido;
+
+    await tx.vasijaContenido.update({
+      where: { vasija_contenido_id: row.vasija_contenido_id },
+      data: { hasta: fechaHora },
+    });
+
+    if (restante > EPSILON_VOLUMEN_L) {
+      await tx.vasijaContenido.create({
+        data: {
+          vasija_id: vasijaOrigenId,
+          lote_id: row.lote_id,
+          desde: fechaHora,
+          volumen_l: restante,
+          operacion_vasija_id: operacionVasijaId,
+        },
+      });
+    }
+
+    if (vasijaDestinoId && movido > EPSILON_VOLUMEN_L) {
+      await tx.vasijaContenido.create({
+        data: {
+          vasija_id: vasijaDestinoId,
+          lote_id: row.lote_id,
+          desde: fechaHora,
+          volumen_l: movido,
+          operacion_vasija_id: operacionVasijaId,
+        },
+      });
+    }
+  }
+}
 
 type UpdateOperacionVasijaInput = {
   vasijaOrigenId?: string;
@@ -227,6 +338,10 @@ type CreateCiuInput = {
   codigo_ciu: string;
   estado?: string;
   emitido_at: string;
+  variedad_codigo_inv?: string;
+  variedad_nombre?: string;
+  tenor_azucarino_gl?: number;
+  uva_organica?: boolean;
   observaciones?: string;
 };
 
@@ -235,6 +350,10 @@ type UpdateCiuInput = {
   codigo_ciu?: string;
   estado?: string;
   emitido_at?: string;
+  variedad_codigo_inv?: string;
+  variedad_nombre?: string;
+  tenor_azucarino_gl?: number;
+  uva_organica?: boolean;
   observaciones?: string;
 };
 
@@ -498,7 +617,7 @@ async function getAnalisisScoped(analisisRecepcionId: string, userId: string) {
 async function getOperacionScoped(operacionVasijaId: string, userId: string) {
   const operacion = await prisma.operacionVasija.findUnique({
     where: { operacion_vasija_id: operacionVasijaId },
-    select: { operacion_vasija_id: true, bodega_id: true, fecha_hora: true },
+    select: { operacion_vasija_id: true, bodega_id: true, fecha_hora: true, tipo: true },
   });
   if (!operacion) throw new ElaboracionError("Operacion de vasija no encontrada", 404);
   await ensureUserBodega(userId, operacion.bodega_id);
@@ -570,9 +689,9 @@ async function getControlFermentacionScoped(
 function normalizeComponentes(componentes?: CorteComponenteInput[]) {
   if (!componentes || componentes.length === 0) return [];
   for (const c of componentes) {
-    if (!c.vasijaId && !c.loteCosechaId) {
+    if (!c.vasijaId && !c.loteId) {
       throw new ElaboracionError(
-        "Cada componente debe tener vasijaId o loteCosechaId",
+        "Cada componente debe tener vasijaId o loteId",
         400,
       );
     }
@@ -606,8 +725,41 @@ export async function getVasijaById(vasijaId: string, userId: string) {
   return vasija;
 }
 
+/** Composición activa de una vasija: qué lotes tiene adentro hoy, cuánto volumen y qué % representa cada uno. */
+export async function getComposicionActualVasija(vasijaId: string, userId: string) {
+  const vasija = await getVasijaById(vasijaId, userId);
+
+  const activos = await prisma.vasijaContenido.findMany({
+    where: { vasija_id: vasijaId, hasta: null },
+    include: { lote: { select: { lote_id: true, codigo: true, origen: true, variedad: true } } },
+    orderBy: { desde: "asc" },
+  });
+
+  const total = activos.reduce((acc, row) => acc + Number(row.volumen_l ?? 0), 0);
+
+  return {
+    vasija_id: vasija.vasija_id,
+    codigo: vasija.codigo,
+    capacidad_litros: vasija.capacidad_litros,
+    volumen_disponible_l: total,
+    composicion: activos.map((row) => {
+      const volumen = Number(row.volumen_l ?? 0);
+      return {
+        vasija_contenido_id: row.vasija_contenido_id,
+        lote_id: row.lote.lote_id,
+        lote_codigo: row.lote.codigo,
+        lote_origen: row.lote.origen,
+        lote_variedad: row.lote.variedad,
+        volumen_l: volumen,
+        porcentaje: total > 0 ? (volumen / total) * 100 : 0,
+        desde: row.desde,
+      };
+    }),
+  };
+}
+
 export async function createVasija(input: CreateVasijaInput) {
-  const { userId, bodegaId, codigo, tipo, capacidad_litros, etapa, ubicacion } = input;
+  const { userId, bodegaId, codigo, tipo, capacidad_litros, uso, etapa, ubicacion } = input;
   if (!bodegaId || !codigo) {
     throw new ElaboracionError("bodegaId y codigo son requeridos", 400);
   }
@@ -619,6 +771,7 @@ export async function createVasija(input: CreateVasijaInput) {
       codigo,
       ...(tipo !== undefined ? { tipo: tipo as import("../../generated/prisma/index.js").VasijaTipo } : {}),
       ...(capacidad_litros !== undefined ? { capacidad_litros } : {}),
+      ...(uso !== undefined ? { uso: uso as import("../../generated/prisma/index.js").VasijaUso } : {}),
       ...(etapa !== undefined ? { etapa: etapa as import("../../generated/prisma/index.js").VasijaEtapa } : {}),
       ...(ubicacion !== undefined ? { ubicacion } : {}),
     },
@@ -639,6 +792,7 @@ export async function updateVasija(
       ...(input.capacidad_litros !== undefined
         ? { capacidad_litros: input.capacidad_litros }
         : {}),
+      ...(input.uso !== undefined ? { uso: input.uso as import("../../generated/prisma/index.js").VasijaUso } : {}),
       ...(input.etapa !== undefined ? { etapa: input.etapa as import("../../generated/prisma/index.js").VasijaEtapa } : {}),
       ...(input.ubicacion !== undefined ? { ubicacion: input.ubicacion } : {}),
     },
@@ -716,12 +870,15 @@ export async function createCorte(input: CreateCorteInput) {
         throw new ElaboracionError("La vasija no pertenece a la bodega", 400);
       }
     }
-    if (c.loteCosechaId) {
-      const lote = await prisma.eventoCosecha.findUnique({
-        where: { lote_cosecha_id: c.loteCosechaId },
-        select: { lote_cosecha_id: true },
+    if (c.loteId) {
+      const lote = await prisma.lote.findUnique({
+        where: { lote_id: c.loteId },
+        select: { bodega_id: true },
       });
-      if (!lote) throw new ElaboracionError("Lote de cosecha no encontrado", 404);
+      if (!lote) throw new ElaboracionError("Lote no encontrado", 404);
+      if (lote.bodega_id !== bodegaId) {
+        throw new ElaboracionError("El lote no pertenece a la bodega", 400);
+      }
     }
   }
 
@@ -744,8 +901,8 @@ export async function createCorte(input: CreateCorteInput) {
         data: safeComponentes.map((c) => ({
           corte_id: corte.corte_id,
           ...(c.vasijaId !== undefined ? { vasija_id: c.vasijaId } : {}),
-          ...(c.loteCosechaId !== undefined
-            ? { lote_cosecha_id: c.loteCosechaId }
+          ...(c.loteId !== undefined
+            ? { lote_id: c.loteId }
             : {}),
           ...(c.volumen_l !== undefined ? { volumen_l: c.volumen_l } : {}),
           ...(c.porcentaje !== undefined ? { porcentaje: c.porcentaje } : {}),
@@ -804,8 +961,8 @@ export async function updateCorte(
           data: safeComponentes.map((c) => ({
             corte_id: existing.corte_id,
             ...(c.vasijaId !== undefined ? { vasija_id: c.vasijaId } : {}),
-            ...(c.loteCosechaId !== undefined
-              ? { lote_cosecha_id: c.loteCosechaId }
+            ...(c.loteId !== undefined
+              ? { lote_id: c.loteId }
               : {}),
             ...(c.volumen_l !== undefined ? { volumen_l: c.volumen_l } : {}),
             ...(c.porcentaje !== undefined ? { porcentaje: c.porcentaje } : {}),
@@ -1159,6 +1316,8 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
     llegada_bodega,
     transportista,
     patente,
+    modelo_vehiculo,
+    cuit_conductor,
     kg_declarados,
     kg_bruto,
     kg_tara,
@@ -1194,6 +1353,8 @@ export async function createRemitoUva(input: CreateRemitoUvaInput) {
         : {}),
       ...(transportista !== undefined ? { transportista } : {}),
       ...(patente !== undefined ? { patente } : {}),
+      ...(modelo_vehiculo !== undefined ? { modelo_vehiculo } : {}),
+      ...(cuit_conductor !== undefined ? { cuit_conductor } : {}),
       ...(kg_declarados !== undefined ? { kg_declarados } : {}),
       ...(kg_bruto !== undefined ? { kg_bruto } : {}),
       ...(kg_tara !== undefined ? { kg_tara } : {}),
@@ -1268,6 +1429,8 @@ export async function updateRemitoUva(
         : {}),
       ...(input.transportista !== undefined ? { transportista: input.transportista } : {}),
       ...(input.patente !== undefined ? { patente: input.patente } : {}),
+      ...(input.modelo_vehiculo !== undefined ? { modelo_vehiculo: input.modelo_vehiculo } : {}),
+      ...(input.cuit_conductor !== undefined ? { cuit_conductor: input.cuit_conductor } : {}),
       ...(input.kg_declarados !== undefined ? { kg_declarados: input.kg_declarados } : {}),
       ...(input.kg_bruto !== undefined ? { kg_bruto: input.kg_bruto } : {}),
       ...(input.kg_tara !== undefined ? { kg_tara: input.kg_tara } : {}),
@@ -1286,9 +1449,134 @@ export async function updateRemitoUva(
   });
 }
 
+/**
+ * Borra una recepción y todo lo que cuelga de ella (Ciu, QcIngresoUva, y el
+ * Lote que haya armado si nadie más lo usó — incluyendo el volumen que ya
+ * tenga en vasija, con el mismo criterio que `eliminarLote`). Bloquea solo si
+ * ese lote ya se usó como componente de OTRO lote (blend) — ahí no hay
+ * cascada segura, hay que corregir ese corte primero.
+ */
+async function eliminarRecepcionEnCascada(tx: Prisma.TransactionClient, recepcionBodegaId: string) {
+  const loteOrigen = await tx.loteOrigenRecepcion.findUnique({
+    where: { recepcion_bodega_id: recepcionBodegaId },
+    select: { lote_id: true },
+  });
+
+  if (loteOrigen) {
+    const [composicionCount, vasijaContenidoCount, otrosOrigenesCount] = await Promise.all([
+      tx.loteComposicion.count({ where: { lote_padre_id: loteOrigen.lote_id } }),
+      tx.vasijaContenido.count({ where: { lote_id: loteOrigen.lote_id } }),
+      tx.loteOrigenRecepcion.count({
+        where: { lote_id: loteOrigen.lote_id, recepcion_bodega_id: { not: recepcionBodegaId } },
+      }),
+    ]);
+    if (composicionCount > 0) {
+      throw new ElaboracionError(
+        "No se puede eliminar: el lote de esta recepción ya se usó como componente de otro lote (blend). Corregí ese corte primero.",
+        409,
+      );
+    }
+    // Una vez que el vino de este lote ya quedó registrado en una vasija, borrar el
+    // remito/recepción de origen no puede hacerlo desaparecer del ledger — el vino
+    // sigue estando físicamente ahí. Para corregir un error en ese punto hay que
+    // corregir/borrar la operación de vasija puntual (ver deleteOperacionVasija), no
+    // el papeleo de origen.
+    if (vasijaContenidoCount > 0) {
+      throw new ElaboracionError(
+        "No se puede eliminar: el lote de esta recepción ya tiene volumen registrado en una vasija. Corregí esa operación de vasija primero (en \"Movimientos\" de la vasija).",
+        409,
+      );
+    }
+    await tx.loteOrigenRecepcion.delete({ where: { recepcion_bodega_id: recepcionBodegaId } });
+    if (otrosOrigenesCount === 0) {
+      await tx.lote.delete({ where: { lote_id: loteOrigen.lote_id } });
+    }
+  }
+
+  await tx.qcIngresoUva.deleteMany({ where: { recepcion_bodega_id: recepcionBodegaId } });
+  await tx.ciu.deleteMany({ where: { recepcion_bodega_id: recepcionBodegaId } });
+  await tx.recepcionBodega.delete({ where: { recepcion_bodega_id: recepcionBodegaId } });
+}
+
+export type ImpactoBorradoRecepcion = {
+  tieneAnalisis: boolean;
+  ciu: { codigo_ciu: string } | null;
+  lote: { codigo: string; esUnicoOrigen: boolean; volumenVasijaL: number; bloqueado: boolean } | null;
+};
+
+/** Preview de lo que `eliminarRecepcionEnCascada` va a borrar (o bloquear), para avisar antes de confirmar. */
+export async function getImpactoBorradoRecepcion(
+  recepcionBodegaId: string,
+  userId: string,
+): Promise<ImpactoBorradoRecepcion> {
+  await getRecepcionScoped(recepcionBodegaId, userId);
+
+  const [analisisCount, ciu, loteOrigen] = await Promise.all([
+    prisma.analisisRecepcion.count({ where: { recepcion_bodega_id: recepcionBodegaId } }),
+    prisma.ciu.findUnique({ where: { recepcion_bodega_id: recepcionBodegaId }, select: { codigo_ciu: true } }),
+    prisma.loteOrigenRecepcion.findUnique({
+      where: { recepcion_bodega_id: recepcionBodegaId },
+      select: { lote_id: true, lote: { select: { codigo: true } } },
+    }),
+  ]);
+
+  let lote: ImpactoBorradoRecepcion["lote"] = null;
+  if (loteOrigen) {
+    const [otrosOrigenesCount, vasijaContenido, composicionCount] = await Promise.all([
+      prisma.loteOrigenRecepcion.count({
+        where: { lote_id: loteOrigen.lote_id, recepcion_bodega_id: { not: recepcionBodegaId } },
+      }),
+      prisma.vasijaContenido.findMany({ where: { lote_id: loteOrigen.lote_id }, select: { volumen_l: true } }),
+      prisma.loteComposicion.count({ where: { lote_padre_id: loteOrigen.lote_id } }),
+    ]);
+    const volumenVasijaL = vasijaContenido.reduce((acc, v) => acc + Number(v.volumen_l ?? 0), 0);
+    lote = {
+      codigo: loteOrigen.lote.codigo,
+      esUnicoOrigen: otrosOrigenesCount === 0,
+      volumenVasijaL,
+      bloqueado: composicionCount > 0 || volumenVasijaL > 0,
+    };
+  }
+
+  return { tieneAnalisis: analisisCount > 0, ciu, lote };
+}
+
+export type ImpactoBorradoRemito = {
+  recepciones: number;
+  tieneAnalisis: boolean;
+  cius: string[];
+  lotes: Array<{ codigo: string; esUnicoOrigen: boolean; bloqueado: boolean }>;
+};
+
+export async function getImpactoBorradoRemito(remitoUvaId: string, userId: string): Promise<ImpactoBorradoRemito> {
+  await getRemitoScoped(remitoUvaId, userId);
+  const recepciones = await prisma.recepcionBodega.findMany({
+    where: { remito_uva_id: remitoUvaId },
+    select: { recepcion_bodega_id: true },
+  });
+  const impactos = await Promise.all(
+    recepciones.map((r) => getImpactoBorradoRecepcion(r.recepcion_bodega_id, userId)),
+  );
+  return {
+    recepciones: recepciones.length,
+    tieneAnalisis: impactos.some((i) => i.tieneAnalisis),
+    cius: impactos.map((i) => i.ciu?.codigo_ciu).filter((c): c is string => Boolean(c)),
+    lotes: impactos.map((i) => i.lote).filter((l): l is NonNullable<typeof l> => Boolean(l)),
+  };
+}
+
 export async function deleteRemitoUva(remitoUvaId: string, userId: string) {
   await getRemitoScoped(remitoUvaId, userId);
-  await prisma.remitoUva.delete({ where: { remito_uva_id: remitoUvaId } });
+  await prisma.$transaction(async (tx) => {
+    const recepciones = await tx.recepcionBodega.findMany({
+      where: { remito_uva_id: remitoUvaId },
+      select: { recepcion_bodega_id: true },
+    });
+    for (const recepcion of recepciones) {
+      await eliminarRecepcionEnCascada(tx, recepcion.recepcion_bodega_id);
+    }
+    await tx.remitoUva.delete({ where: { remito_uva_id: remitoUvaId } });
+  });
   return { deleted: true };
 }
 
@@ -1355,7 +1643,7 @@ export async function updateRecepcionBodega(
 
 export async function deleteRecepcionBodega(recepcionBodegaId: string, userId: string) {
   await getRecepcionScoped(recepcionBodegaId, userId);
-  await prisma.recepcionBodega.delete({ where: { recepcion_bodega_id: recepcionBodegaId } });
+  await prisma.$transaction((tx) => eliminarRecepcionEnCascada(tx, recepcionBodegaId));
   return { deleted: true };
 }
 
@@ -1522,12 +1810,16 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
     actorUserId,
     volumen_movido_l,
     observaciones,
+    loteId,
   } = input;
   if (!bodegaId || !tipo || !fecha_hora) {
     throw new ElaboracionError("bodegaId, tipo y fecha_hora son requeridos", 400);
   }
   if (!vasijaOrigenId && !vasijaDestinoId) {
     throw new ElaboracionError("Se requiere al menos una vasija (origen o destino)", 400);
+  }
+  if (tipo === "ingreso" && !loteId) {
+    throw new ElaboracionError("El ingreso requiere un lote", 400);
   }
   await ensureUserBodega(userId, bodegaId);
 
@@ -1549,6 +1841,15 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
       throw new ElaboracionError("vasijaDestinoId invalida para la bodega", 400);
     }
   }
+  if (loteId) {
+    const lote = await prisma.lote.findUnique({
+      where: { lote_id: loteId },
+      select: { bodega_id: true },
+    });
+    if (!lote || lote.bodega_id !== bodegaId) {
+      throw new ElaboracionError("loteId invalido para la bodega", 400);
+    }
+  }
   const resolvedOrdenEnologoId = await resolveOrdenEnologoId({
     bodegaId,
     fechaHora: fecha_hora,
@@ -1565,21 +1866,37 @@ export async function createOperacionVasija(input: CreateOperacionVasijaInput) {
     }
   }
 
-  return prisma.operacionVasija.create({
-    data: {
-      bodega_id: bodegaId,
-      ...(vasijaOrigenId !== undefined ? { vasija_origen_id: vasijaOrigenId } : {}),
-      ...(vasijaDestinoId !== undefined ? { vasija_destino_id: vasijaDestinoId } : {}),
-      ...(resolvedOrdenEnologoId !== undefined ? { orden_enologo_id: resolvedOrdenEnologoId } : {}),
-      ...(recepcionBodegaId !== undefined
-        ? { recepcion_bodega_id: recepcionBodegaId }
-        : {}),
+  const fechaHoraDate = parseDate(fecha_hora, "Fecha hora");
+
+  return prisma.$transaction(async (tx) => {
+    const operacion = await tx.operacionVasija.create({
+      data: {
+        bodega_id: bodegaId,
+        ...(vasijaOrigenId !== undefined ? { vasija_origen_id: vasijaOrigenId } : {}),
+        ...(vasijaDestinoId !== undefined ? { vasija_destino_id: vasijaDestinoId } : {}),
+        ...(resolvedOrdenEnologoId !== undefined ? { orden_enologo_id: resolvedOrdenEnologoId } : {}),
+        ...(recepcionBodegaId !== undefined
+          ? { recepcion_bodega_id: recepcionBodegaId }
+          : {}),
+        tipo,
+        fecha_hora: fechaHoraDate,
+        ...(actorUserId !== undefined ? { user_id: actorUserId } : {}),
+        ...(volumen_movido_l !== undefined ? { volumen_movido_l } : {}),
+        ...(observaciones !== undefined ? { observaciones } : {}),
+      },
+    });
+
+    await aplicarMovimientoVasija(tx, {
+      operacionVasijaId: operacion.operacion_vasija_id,
       tipo,
-      fecha_hora: parseDate(fecha_hora, "Fecha hora"),
-      ...(actorUserId !== undefined ? { user_id: actorUserId } : {}),
-      ...(volumen_movido_l !== undefined ? { volumen_movido_l } : {}),
-      ...(observaciones !== undefined ? { observaciones } : {}),
-    },
+      vasijaOrigenId,
+      vasijaDestinoId,
+      volumenMovidoL: volumen_movido_l,
+      fechaHora: fechaHoraDate,
+      loteId,
+    });
+
+    return operacion;
   });
 }
 
@@ -1630,9 +1947,81 @@ export async function updateOperacionVasija(
   });
 }
 
+export type ImpactoBorradoOperacionVasija = {
+  tipo: string;
+  vasijaContenidoVinculado: Array<{ volumen_l: number; activo: boolean }>;
+  reversible: boolean;
+  motivoNoReversible: string | null;
+};
+
+function evaluarReversibilidadOperacion(
+  tipo: string,
+  vinculado: Array<{ volumen_l: unknown; hasta: Date | null }>,
+): { reversible: boolean; motivo: string | null } {
+  if (vinculado.length === 0) return { reversible: true, motivo: null };
+  if (tipo !== "ingreso") {
+    return {
+      reversible: false,
+      motivo:
+        "Este tipo de movimiento (trasiego/descube/corrección) no se puede deshacer automáticamente sin arriesgar el ledger de la vasija — corregilo con un movimiento inverso.",
+    };
+  }
+  if (vinculado.some((v) => v.hasta !== null)) {
+    return {
+      reversible: false,
+      motivo: "El volumen que generó esta operación ya se movió de nuevo (trasiego/corte) — corregilo desde ahí primero.",
+    };
+  }
+  return { reversible: true, motivo: null };
+}
+
+/** Preview de si `deleteOperacionVasija` va a poder borrar (o bloquear) esta operación. */
+export async function getImpactoBorradoOperacionVasija(
+  operacionVasijaId: string,
+  userId: string,
+): Promise<ImpactoBorradoOperacionVasija> {
+  const operacion = await getOperacionScoped(operacionVasijaId, userId);
+  const vinculado = await prisma.vasijaContenido.findMany({
+    where: { operacion_vasija_id: operacionVasijaId },
+    select: { volumen_l: true, hasta: true },
+  });
+  const { reversible, motivo } = evaluarReversibilidadOperacion(operacion.tipo, vinculado);
+
+  return {
+    tipo: operacion.tipo,
+    vasijaContenidoVinculado: vinculado.map((v) => ({
+      volumen_l: Number(v.volumen_l ?? 0),
+      activo: v.hasta === null,
+    })),
+    reversible,
+    motivoNoReversible: motivo,
+  };
+}
+
+/**
+ * Borra una operación de vasija. Si generó volumen en el ledger (`VasijaContenido`),
+ * solo se puede deshacer si es un "ingreso" simple que nadie movió todavía — ese caso
+ * se revierte completo (se borra también la fila que generó). El resto de los tipos
+ * (trasiego/descube/corrección) no se deshacen solos: hay que corregirlos con un
+ * movimiento inverso, para no arriesgar el balance de volumen de la vasija.
+ */
 export async function deleteOperacionVasija(operacionVasijaId: string, userId: string) {
-  await getOperacionScoped(operacionVasijaId, userId);
-  await prisma.operacionVasija.delete({ where: { operacion_vasija_id: operacionVasijaId } });
+  const operacion = await getOperacionScoped(operacionVasijaId, userId);
+  const vinculado = await prisma.vasijaContenido.findMany({
+    where: { operacion_vasija_id: operacionVasijaId },
+    select: { vasija_contenido_id: true, volumen_l: true, hasta: true },
+  });
+  const { reversible, motivo } = evaluarReversibilidadOperacion(operacion.tipo, vinculado);
+  if (!reversible) {
+    throw new ElaboracionError(motivo ?? "No se puede eliminar esta operación", 409);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (vinculado.length > 0) {
+      await tx.vasijaContenido.deleteMany({ where: { operacion_vasija_id: operacionVasijaId } });
+    }
+    await tx.operacionVasija.delete({ where: { operacion_vasija_id: operacionVasijaId } });
+  });
   return { deleted: true };
 }
 
@@ -1748,8 +2137,19 @@ async function resolveRecepcionForCiu(
 }
 
 export async function createCiu(input: CreateCiuInput) {
-  const { userId, bodegaId, recepcionBodegaId, codigo_ciu, estado, emitido_at, observaciones } =
-    input;
+  const {
+    userId,
+    bodegaId,
+    recepcionBodegaId,
+    codigo_ciu,
+    estado,
+    emitido_at,
+    variedad_codigo_inv,
+    variedad_nombre,
+    tenor_azucarino_gl,
+    uva_organica,
+    observaciones,
+  } = input;
   if (!bodegaId || !recepcionBodegaId || !codigo_ciu || !emitido_at) {
     throw new ElaboracionError(
       "bodegaId, recepcionBodegaId, codigo_ciu y emitido_at son requeridos",
@@ -1773,6 +2173,10 @@ export async function createCiu(input: CreateCiuInput) {
       codigo_ciu,
       emitido_at: parseDate(emitido_at, "Emitido at"),
       ...(estado !== undefined ? { estado } : {}),
+      ...(variedad_codigo_inv !== undefined ? { variedad_codigo_inv } : {}),
+      ...(variedad_nombre !== undefined ? { variedad_nombre } : {}),
+      ...(tenor_azucarino_gl !== undefined ? { tenor_azucarino_gl } : {}),
+      ...(uva_organica !== undefined ? { uva_organica } : {}),
       ...(observaciones !== undefined ? { observaciones } : {}),
     },
   });
@@ -1807,6 +2211,10 @@ export async function updateCiu(ciuId: string, userId: string, input: UpdateCiuI
       ...(input.emitido_at !== undefined
         ? { emitido_at: parseDate(input.emitido_at, "Emitido at") }
         : {}),
+      ...(input.variedad_codigo_inv !== undefined ? { variedad_codigo_inv: input.variedad_codigo_inv } : {}),
+      ...(input.variedad_nombre !== undefined ? { variedad_nombre: input.variedad_nombre } : {}),
+      ...(input.tenor_azucarino_gl !== undefined ? { tenor_azucarino_gl: input.tenor_azucarino_gl } : {}),
+      ...(input.uva_organica !== undefined ? { uva_organica: input.uva_organica } : {}),
       ...(input.observaciones !== undefined ? { observaciones: input.observaciones } : {}),
     },
   });

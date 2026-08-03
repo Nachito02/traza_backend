@@ -7,22 +7,52 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Estado actual: la operación que la vasija está realizando en este momento (dato dinámico).
 enum VasijaEtapa {
-  ingreso
-  fermentacion
-  trasiego
-  descube
-  correccion
-  corte_parcial
+  vacia
+  disponible
+  en_limpieza
+  sanitizada
+  ocupada
+  en_fermentacion
+  en_maceracion
+  en_crianza
+  en_estabilizacion
+  lista_para_trasiego
+  lista_para_fraccionamiento
+  en_mantenimiento
+  bloqueada
+  fuera_de_servicio
 }
 
 enum VasijaTipo {
-  Hormigon
-  AceroInoxidable
-  Roble
-  FibraDeVidrio
-  Polietileno
-  Ceramica
+  TanqueAceroInoxidable
+  VasijaHormigon
+  VasijaMamposteria
+  TanqueFibraDeVidrio
+  TanquePRFV
+  BarricaRobleFrances
+  BarricaRobleAmericano
+  HuevoHormigon
+  TanqueMovilInoxidable
+  Otro
+}
+
+/// Uso principal: la función para la que fue diseñada la vasija.
+enum VasijaUso {
+  ingreso
+  fermentacion_alcoholica
+  fermentacion_malolactica
+  conservacion
+  clarificacion
+  estabilizacion
+  corte
+  preparacion_fraccionamiento
+  pulmon_de_linea
+  fermentacion_en_barrica
+  crianza
+  microoxigenacion
+  otro
 }
 
 enum TipoCosecha {
@@ -97,6 +127,10 @@ model Bodega {
   nombre                    String
   razon_social              String?
   cuit                      String?
+  /// Código corto (ej. "SDF") usado como primer segmento del código de lote.
+  codigo                    String?                   @unique
+  /// Nro de inscripto ante el INV (ej. "D72177"), Rubro I del CIU.
+  nro_inscripto_inv         String?
   activo                    Boolean                   @default(true)
   created_at                DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                  @default(now()) @db.Timestamptz(6)
@@ -124,6 +158,7 @@ model Bodega {
   vasija                    Vasija[]
   qc_ingreso_uva            QcIngresoUva[]
   operacion_vasija          OperacionVasija[]
+  lote                      Lote[]
   corte                     Corte[]
   producto                  Producto[]
   tarifa_maquinaria         TarifaMaquinaria[]
@@ -164,6 +199,7 @@ model Campania {
   evento_cobertura_erosion        EventoCoberturaErosion[]
   trazabilidad                    Trazabilidad[]
   corte                           Corte[]
+  lote                            Lote[]
 
   @@unique([bodega_id, nombre], map: "uq_campania_bodega_nombre")
   @@index([bodega_id], map: "idx_campania_bodega")
@@ -220,6 +256,7 @@ model Cuartel {
   trazabilidad_origen             TrazabilidadOrigen[]
   tarea                           Tarea[]
   milestone_asignacion            MilestoneAsignacion[]
+  lote                            Lote[]
 
   @@unique([finca_id, codigo_cuartel])
   @@index([finca_id], map: "idx_cuartel_finca")
@@ -325,21 +362,19 @@ model EventoCapacitacion {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model EventoCosecha {
-  lote_cosecha_id     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fecha_cosecha       DateTime          @db.Date
-  cuartel_id          String            @db.Uuid
-  campania_id         String            @db.Uuid
-  cantidad            Decimal           @db.Decimal(12, 3)
+  lote_cosecha_id     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha_cosecha       DateTime    @db.Date
+  cuartel_id          String      @db.Uuid
+  campania_id         String      @db.Uuid
+  cantidad            Decimal     @db.Decimal(12, 3)
   unidad              String
   destino             String?
-  responsable_user_id String?           @db.Uuid
-  created_at          DateTime          @default(now()) @db.Timestamptz(6)
-  campania            Campania          @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
-  cuartel             Cuartel           @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
-  app_user            AppUser?          @relation(fields: [responsable_user_id], references: [user_id], onUpdate: NoAction)
+  responsable_user_id String?     @db.Uuid
+  created_at          DateTime    @default(now()) @db.Timestamptz(6)
+  campania            Campania    @relation(fields: [campania_id], references: [campania_id], onUpdate: NoAction)
+  cuartel             Cuartel     @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  app_user            AppUser?    @relation(fields: [responsable_user_id], references: [user_id], onUpdate: NoAction)
   remito_uva          RemitoUva[]
-  vasija_contenido    VasijaContenido[]
-  corte_componente    CorteComponente[]
 
   @@index([cuartel_id, campania_id, fecha_cosecha], map: "idx_cosecha_cuartel_campania_fecha")
   @@map("evento_cosecha")
@@ -355,6 +390,10 @@ model RemitoUva {
   llegada_bodega         DateTime?         @db.Timestamptz(6)
   transportista          String?
   patente                String?
+  /// Modelo del vehículo (Rubro IV del CIU, ej. "-FORD 1985").
+  modelo_vehiculo        String?
+  /// CUIT/CUIL del conductor (Rubro IV del CIU).
+  cuit_conductor         String?
   kg_declarados          Decimal?          @db.Decimal(12, 3)
   kg_bruto               Decimal?          @db.Decimal(12, 3)
   kg_tara                Decimal?          @db.Decimal(12, 3)
@@ -379,18 +418,19 @@ model RemitoUva {
 }
 
 model RecepcionBodega {
-  recepcion_bodega_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  remito_uva_id       String              @db.Uuid
-  fecha_hora          DateTime            @db.Timestamptz(6)
-  kg_pesados          Decimal?            @db.Decimal(12, 3)
-  clasificacion       String?
-  observaciones       String?
-  created_at          DateTime            @default(now()) @db.Timestamptz(6)
-  remito_uva          RemitoUva           @relation(fields: [remito_uva_id], references: [remito_uva_id], onDelete: Restrict, onUpdate: NoAction)
-  analisis_recepcion  AnalisisRecepcion[]
-  ciu                 Ciu?
-  qc_ingreso_uva      QcIngresoUva[]
-  operacion_vasija    OperacionVasija[]
+  recepcion_bodega_id   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  remito_uva_id         String               @db.Uuid
+  fecha_hora            DateTime             @db.Timestamptz(6)
+  kg_pesados            Decimal?             @db.Decimal(12, 3)
+  clasificacion         String?
+  observaciones         String?
+  created_at            DateTime             @default(now()) @db.Timestamptz(6)
+  remito_uva            RemitoUva            @relation(fields: [remito_uva_id], references: [remito_uva_id], onDelete: Restrict, onUpdate: NoAction)
+  analisis_recepcion    AnalisisRecepcion[]
+  ciu                   Ciu?
+  qc_ingreso_uva        QcIngresoUva[]
+  operacion_vasija      OperacionVasija[]
+  lote_origen_recepcion LoteOrigenRecepcion?
 
   @@index([remito_uva_id], map: "idx_recepcion_bodega_remito")
   @@index([fecha_hora], map: "idx_recepcion_bodega_fecha")
@@ -421,6 +461,11 @@ model Ciu {
   codigo_ciu          String
   estado              String          @default("emitido")
   emitido_at          DateTime        @db.Timestamptz(6)
+  /// Rubro V del CIU: código de variedad del INV (ej. "120") y su nombre (ej. "SYRAH (SHIRAZ-SIRAH)").
+  variedad_codigo_inv String?
+  variedad_nombre     String?
+  tenor_azucarino_gl  Decimal?        @db.Decimal(8, 3)
+  uva_organica        Boolean?
   observaciones       String?
   created_at          DateTime        @default(now()) @db.Timestamptz(6)
   bodega              Bodega          @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
@@ -460,6 +505,7 @@ model Vasija {
   codigo               String
   tipo                 VasijaTipo?
   capacidad_litros     Decimal?              @db.Decimal(12, 3)
+  uso                  VasijaUso?
   etapa                VasijaEtapa?
   ubicacion            String?
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
@@ -477,21 +523,105 @@ model Vasija {
   @@map("vasija")
 }
 
+/// Ledger de composición: qué Lote (y cuánto volumen) hay en cada vasija, en cada
+/// ventana de tiempo. `hasta = NULL` significa "sigue activo hoy". Nunca se edita una
+/// fila existente: los movimientos cierran filas viejas (`hasta`) y abren nuevas.
 model VasijaContenido {
-  vasija_contenido_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  vasija_id           String        @db.Uuid
-  lote_cosecha_id     String        @db.Uuid
-  desde               DateTime      @db.Timestamptz(6)
-  hasta               DateTime?     @db.Timestamptz(6)
-  kg_aportados        Decimal?      @db.Decimal(12, 3)
-  porcentaje_aporte   Decimal?      @db.Decimal(7, 4)
-  created_at          DateTime      @default(now()) @db.Timestamptz(6)
-  vasija              Vasija        @relation(fields: [vasija_id], references: [vasija_id], onDelete: Restrict, onUpdate: NoAction)
-  evento_cosecha      EventoCosecha @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: Restrict, onUpdate: NoAction)
+  vasija_contenido_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vasija_id           String    @db.Uuid
+  lote_id             String    @db.Uuid
+  /// Qué operación generó esta fila (si vino de un ingreso/trasiego/descube/corrección
+  /// vía OperacionVasija). Null si vino de un Corte (`crearCorteConVasijas` escribe
+  /// directo). Permite deshacer una operación de forma segura sin adivinar por fecha/volumen.
+  operacion_vasija_id String?   @db.Uuid
+  desde               DateTime  @db.Timestamptz(6)
+  hasta               DateTime? @db.Timestamptz(6)
+  volumen_l           Decimal?  @db.Decimal(12, 3)
+  kg_aportados        Decimal?  @db.Decimal(12, 3)
+  porcentaje_aporte   Decimal?  @db.Decimal(7, 4)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  vasija              Vasija           @relation(fields: [vasija_id], references: [vasija_id], onDelete: Restrict, onUpdate: NoAction)
+  lote                Lote             @relation(fields: [lote_id], references: [lote_id], onDelete: Restrict, onUpdate: NoAction)
+  operacion_vasija    OperacionVasija? @relation(fields: [operacion_vasija_id], references: [operacion_vasija_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([vasija_id, desde], map: "idx_vasija_contenido_vasija_desde")
-  @@index([lote_cosecha_id], map: "idx_vasija_contenido_lote")
+  @@index([vasija_id, hasta], map: "idx_vasija_contenido_vasija_activo")
+  @@index([lote_id], map: "idx_vasija_contenido_lote")
+  @@index([operacion_vasija_id], map: "idx_vasija_contenido_operacion")
   @@map("vasija_contenido")
+}
+
+enum LoteOrigen {
+  ingreso
+  corte
+}
+
+/// Lote interno de bodega: agrupa uno o más CIU/recepciones del mismo cuartel (origen
+/// "ingreso"), o es el resultado de un blend de otros lotes (origen "corte"). No tiene
+/// campo de estado propio — se deriva de VasijaContenido en el momento de leer.
+model Lote {
+  lote_id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bodega_id       String     @db.Uuid
+  codigo          String
+  secuencia       Int
+  origen          LoteOrigen
+  campania_id     String?    @db.Uuid
+  cuartel_id      String?    @db.Uuid
+  variedad        String?
+  corte_origen_id String?    @db.Uuid
+  observaciones   String?
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+
+  bodega                Bodega                @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  campania              Campania?             @relation(fields: [campania_id], references: [campania_id], onDelete: SetNull, onUpdate: NoAction)
+  cuartel               Cuartel?              @relation(fields: [cuartel_id], references: [cuartel_id], onDelete: SetNull, onUpdate: NoAction)
+  corte_origen          Corte?                @relation("CorteLoteResultado", fields: [corte_origen_id], references: [corte_id], onDelete: SetNull, onUpdate: NoAction)
+  lote_origen_recepcion LoteOrigenRecepcion[]
+  vasija_contenido      VasijaContenido[]
+  corte_componente      CorteComponente[]
+  composicion_hijo      LoteComposicion[]     @relation("LoteComposicionHijo")
+  composicion_padre     LoteComposicion[]     @relation("LoteComposicionPadre")
+
+  @@unique([bodega_id, codigo], map: "uq_lote_bodega_codigo")
+  @@index([bodega_id, cuartel_id, campania_id], map: "idx_lote_bodega_cuartel_campania")
+  @@map("lote")
+}
+
+/// Qué recepciones (y por lo tanto qué CIU) componen un Lote de origen "ingreso".
+/// Una recepción pertenece, como máximo, a un solo Lote.
+model LoteOrigenRecepcion {
+  lote_id             String   @db.Uuid
+  recepcion_bodega_id String   @unique @db.Uuid
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  lote             Lote            @relation(fields: [lote_id], references: [lote_id], onDelete: Restrict, onUpdate: NoAction)
+  recepcion_bodega RecepcionBodega @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([lote_id, recepcion_bodega_id])
+  @@index([lote_id], map: "idx_lote_origen_recepcion_lote")
+  @@map("lote_origen_recepcion")
+}
+
+/// Genealogía de blends: un Lote resultado de un corte puede tener varios lotes padre
+/// (blend parcial), y un lote padre puede a su vez ser resultado de otro corte anterior
+/// (blend de blends). Es un grafo dirigido, no un árbol.
+model LoteComposicion {
+  lote_composicion_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lote_id             String   @db.Uuid
+  lote_padre_id       String   @db.Uuid
+  corte_id            String?  @db.Uuid
+  porcentaje          Decimal? @db.Decimal(7, 4)
+  volumen_l           Decimal? @db.Decimal(12, 3)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  lote       Lote   @relation("LoteComposicionHijo", fields: [lote_id], references: [lote_id], onDelete: Restrict, onUpdate: NoAction)
+  lote_padre Lote   @relation("LoteComposicionPadre", fields: [lote_padre_id], references: [lote_id], onDelete: Restrict, onUpdate: NoAction)
+  corte      Corte? @relation(fields: [corte_id], references: [corte_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([lote_id, lote_padre_id, corte_id], map: "uq_lote_composicion_hijo_padre_corte")
+  @@index([lote_padre_id], map: "idx_lote_composicion_padre")
+  @@index([lote_id], map: "idx_lote_composicion_hijo")
+  @@map("lote_composicion")
 }
 
 model ExistenciaVasija {
@@ -563,6 +693,7 @@ model OperacionVasija {
   orden_enologo       OrdenEnologo?       @relation(fields: [orden_enologo_id], references: [orden_enologo_id], onDelete: SetNull, onUpdate: NoAction)
   recepcion_bodega    RecepcionBodega?    @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: SetNull, onUpdate: NoAction)
   app_user            AppUser?            @relation(fields: [user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+  vasija_contenido    VasijaContenido[]
 
   @@index([bodega_id, fecha_hora], map: "idx_operacion_vasija_bodega_fecha")
   @@index([vasija_origen_id], map: "idx_operacion_vasija_origen")
@@ -585,6 +716,8 @@ model Corte {
   responsable          AppUser?              @relation("CorteResponsable", fields: [responsable_user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
   corte_componente     CorteComponente[]
   lote_fraccionamiento LoteFraccionamiento[]
+  lote_creado          Lote[]                @relation("CorteLoteResultado")
+  lote_composicion     LoteComposicion[]
 
   @@index([bodega_id, fecha], map: "idx_corte_bodega_fecha")
   @@index([campania_id], map: "idx_corte_campania")
@@ -593,20 +726,20 @@ model Corte {
 }
 
 model CorteComponente {
-  corte_componente_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corte_id            String         @db.Uuid
-  vasija_id           String?        @db.Uuid
-  lote_cosecha_id     String?        @db.Uuid
-  volumen_l           Decimal?       @db.Decimal(12, 3)
-  porcentaje          Decimal?       @db.Decimal(7, 4)
-  created_at          DateTime       @default(now()) @db.Timestamptz(6)
-  corte               Corte          @relation(fields: [corte_id], references: [corte_id], onDelete: Cascade, onUpdate: NoAction)
-  vasija              Vasija?        @relation(fields: [vasija_id], references: [vasija_id], onDelete: SetNull, onUpdate: NoAction)
-  evento_cosecha      EventoCosecha? @relation(fields: [lote_cosecha_id], references: [lote_cosecha_id], onDelete: SetNull, onUpdate: NoAction)
+  corte_componente_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corte_id            String   @db.Uuid
+  vasija_id           String?  @db.Uuid
+  lote_id             String?  @db.Uuid
+  volumen_l           Decimal? @db.Decimal(12, 3)
+  porcentaje          Decimal? @db.Decimal(7, 4)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  corte               Corte    @relation(fields: [corte_id], references: [corte_id], onDelete: Cascade, onUpdate: NoAction)
+  vasija              Vasija?  @relation(fields: [vasija_id], references: [vasija_id], onDelete: SetNull, onUpdate: NoAction)
+  lote                Lote?    @relation(fields: [lote_id], references: [lote_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([corte_id], map: "idx_corte_componente_corte")
   @@index([vasija_id], map: "idx_corte_componente_vasija")
-  @@index([lote_cosecha_id], map: "idx_corte_componente_lote")
+  @@index([lote_id], map: "idx_corte_componente_lote")
   @@map("corte_componente")
 }
 
@@ -1040,6 +1173,11 @@ model Finca {
   renspa               String?
   catastro             String?
   ubicacion_texto      String?
+  /// Datos del viñatero/propietario de uva para el CIU (Rubro II-A). Suelen coincidir
+  /// con los de la finca, pero son del titular legal, no de la propiedad en sí.
+  nro_inscripto_inv    String?
+  cuit                 String?
+  razon_social         String?
   activo               Boolean               @default(true)
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
   updated_at           DateTime              @default(now()) @db.Timestamptz(6)

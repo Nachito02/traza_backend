@@ -26,6 +26,16 @@ type UpsertBodegaFincaVinculoInput = {
   activo?: boolean;
 };
 
+type UpdateBodegaInput = {
+  bodegaId: string;
+  userId: string;
+  nombre?: string;
+  razon_social?: string;
+  cuit?: string;
+  codigo?: string;
+  nro_inscripto_inv?: string;
+};
+
 export class BodegaError extends Error {
   status: number;
 
@@ -107,6 +117,81 @@ async function ensureUserCanManageBodega(userId: string, bodegaId: string) {
   const ok = await canManageBodega(userId, bodegaId);
   if (!ok) {
     throw new BodegaError("No autorizado para esta bodega", 403);
+  }
+}
+
+/** Deriva un código corto (ej. "SDF") de las iniciales del nombre, ignorando sufijos societarios comunes. */
+function deriveCodigoFromNombre(nombre: string): string {
+  const SUFIJOS = new Set(["sa", "s.a", "s.a.", "srl", "s.r.l", "s.r.l.", "ltda", "ltd"]);
+  const palabras = nombre
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-zA-Z.]/g, ""))
+    .filter((w) => w && !SUFIJOS.has(w.toLowerCase()));
+  const iniciales = palabras.map((w) => w[0]?.toUpperCase() ?? "").join("");
+  if (iniciales.length >= 2) return iniciales.slice(0, 4);
+  return nombre.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase();
+}
+
+export async function getBodegaById(bodegaId: string, userId: string) {
+  await ensureUserCanAccessBodega(userId, bodegaId);
+  const bodega = await prisma.bodega.findUnique({ where: { bodega_id: bodegaId } });
+  if (!bodega) {
+    throw new BodegaError("Bodega no encontrada", 404);
+  }
+  return bodega;
+}
+
+export async function updateBodega({
+  bodegaId,
+  userId,
+  nombre,
+  razon_social,
+  cuit,
+  codigo,
+  nro_inscripto_inv,
+}: UpdateBodegaInput) {
+  await ensureUserCanManageBodega(userId, bodegaId);
+
+  const existing = await prisma.bodega.findUnique({ where: { bodega_id: bodegaId } });
+  if (!existing) {
+    throw new BodegaError("Bodega no encontrada", 404);
+  }
+
+  const data: {
+    nombre?: string;
+    razon_social?: string | null;
+    cuit?: string | null;
+    codigo?: string | null;
+    nro_inscripto_inv?: string | null;
+  } = {};
+
+  if (nombre !== undefined) {
+    if (!nombre.trim()) throw new BodegaError("Nombre no puede estar vacío", 400);
+    data.nombre = nombre.trim();
+  }
+  if (razon_social !== undefined) data.razon_social = razon_social.trim() || null;
+  if (cuit !== undefined) data.cuit = cuit.trim() || null;
+  if (nro_inscripto_inv !== undefined) data.nro_inscripto_inv = nro_inscripto_inv.trim() || null;
+
+  if (codigo !== undefined) {
+    data.codigo = codigo.trim() ? codigo.trim().toUpperCase() : null;
+  } else if (!existing.codigo) {
+    // Auto-sugerido si todavía no tiene código propio.
+    data.codigo = deriveCodigoFromNombre(data.nombre ?? existing.nombre);
+  }
+
+  try {
+    return await prisma.bodega.update({ where: { bodega_id: bodegaId }, data });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
+      throw new BodegaError("Ese código de bodega ya está en uso", 409);
+    }
+    throw error;
   }
 }
 

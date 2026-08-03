@@ -12,6 +12,7 @@ import { tareaRoutes } from "../modules/tareas/tarea.route.js";
 import { botRoutes } from "../modules/bot/bot.route.js";
 import { iaRoutes } from "../modules/ia/ia.route.js";
 import { elaboracionRoutes } from "../modules/elaboracion/elaboracion.route.js";
+import { lotesRoutes } from "../modules/lotes/lotes.route.js";
 import { costosRoutes } from "../modules/costos/costos.route.js";
 import { inventarioRoutes } from "../modules/inventario/inventario.route.js";
 import { recursosRoutes } from "../modules/recursos/recursos.route.js";
@@ -33,6 +34,9 @@ routes.use("/productores", productorRoutes);
 routes.use("/tareas", tareaRoutes);
 routes.use("/bot", botRoutes);
 routes.use("/ia", iaRoutes);
+// lotesRoutes va antes que elaboracionRoutes: comparten el prefijo /elaboracion y
+// /recepciones-bodega/para-lote necesita matchear antes que /recepciones-bodega/:id.
+routes.use("/elaboracion", lotesRoutes);
 routes.use("/elaboracion", elaboracionRoutes);
 routes.use("/costos", costosRoutes);
 routes.use("/inventario", inventarioRoutes);
