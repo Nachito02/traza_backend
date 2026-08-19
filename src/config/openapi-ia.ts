@@ -964,7 +964,7 @@ const openapiIaSpec = {
                   delegaciones_activas: [
                     {
                       bot_delegation_id: "...",
-                      scopes: ["tareas.crear", "tareas.actualizar_estado"],
+                      scopes: ["tareas.crear", "tareas.ver", "tareas.contactar", "tareas.cargar_datos", "tareas.actualizar_estado", "tareas.resolver"],
                       bodega: { bodega_id: "...", nombre: "Bodega Norte" },
                       expires_at: null,
                       created_at: "2026-03-17T10:00:00Z",
@@ -1056,7 +1056,7 @@ const openapiIaSpec = {
                 properties: {
                   botUserId: { type: "string", format: "uuid" },
                   bodegaId: { type: "string", format: "uuid", description: "Opcional — limita la delegación a una bodega específica" },
-                  scopes: { type: "array", items: { type: "string" }, example: ["tareas.crear", "tareas.actualizar_estado", "cuarteles.crear", "vasijas.crear"] },
+                  scopes: { type: "array", items: { type: "string" }, description: "Scopes válidos (ver GET /bot/scopes): tareas.crear, tareas.ver, tareas.contactar, tareas.cargar_datos, tareas.actualizar_estado, tareas.resolver", example: ["tareas.crear", "tareas.ver", "tareas.contactar", "tareas.cargar_datos", "tareas.actualizar_estado", "tareas.resolver"] },
                   expiresAt: { type: "string", format: "date-time", description: "Opcional" },
                 },
               },
@@ -1090,7 +1090,7 @@ const openapiIaSpec = {
                 required: ["whatsapp", "scopes"],
                 properties: {
                   whatsapp: { type: "string", example: "+5491112345678" },
-                  scopes: { type: "array", items: { type: "string" }, example: ["tareas.crear", "tareas.actualizar_estado", "cuarteles.crear", "vasijas.crear"] },
+                  scopes: { type: "array", items: { type: "string" }, description: "Scopes válidos (ver GET /bot/scopes): tareas.crear, tareas.ver, tareas.contactar, tareas.cargar_datos, tareas.actualizar_estado, tareas.resolver", example: ["tareas.crear", "tareas.ver", "tareas.contactar", "tareas.cargar_datos", "tareas.actualizar_estado", "tareas.resolver"] },
                   bodegaId: { type: "string", format: "uuid", description: "Opcional" },
                   expiresAt: { type: "string", format: "date-time", description: "Opcional" },
                 },

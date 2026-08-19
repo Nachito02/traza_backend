@@ -1913,6 +1913,22 @@ model BotDelegation {
   @@map("bot_delegation")
 }
 
+// Código temporal para confirmar una delegación vía WhatsApp. Persistido (antes
+// vivía en memoria: se perdía al reiniciar y no funcionaba con múltiples instancias).
+model BotDelegationCode {
+  code                  String    @id
+  bot_user_id           String    @db.Uuid
+  on_behalf_user_id     String    @db.Uuid
+  bodega_id             String?   @db.Uuid
+  scopes                String[]
+  delegation_expires_at DateTime? @db.Timestamptz(6)
+  code_expires_at       DateTime  @db.Timestamptz(6)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([code_expires_at], map: "idx_bot_delegation_code_expires")
+  @@map("bot_delegation_code")
+}
+
 model BotActionLog {
   bot_action_log_id   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bot_user_id         String           @db.Uuid

@@ -17,26 +17,23 @@ import {
   normalizeVariedad,
 } from "../cuarteles/cuartel.catalog.js";
 
-type PendingDelegation = {
-  botUserId: string;
-  onBehalfUserId: string;
-  scopes: string[];
-  bodegaId: string | undefined;
-  expiresAt: string | undefined;
-  expiresCode: number;
-};
-
-const pendingDelegations = new Map<string, PendingDelegation>();
+// Scopes que se pueden delegar a un agente bot (fuente de verdad).
+export const VALID_SCOPES = [
+  "tareas.crear",
+  "tareas.ver",
+  "tareas.contactar",
+  "tareas.cargar_datos",
+  "tareas.actualizar_estado",
+  "tareas.resolver",
+] as const;
 
 function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function cleanExpiredCodes() {
-  const now = Date.now();
-  for (const [code, data] of pendingDelegations) {
-    if (data.expiresCode < now) pendingDelegations.delete(code);
-  }
+/** Borra códigos de delegación vencidos (best-effort). */
+async function cleanExpiredCodes() {
+  await prisma.botDelegationCode.deleteMany({ where: { code_expires_at: { lt: new Date() } } });
 }
 
 type CreateDelegationInput = {
@@ -109,6 +106,19 @@ function resolveFincaRequirement(eventoTipo: string | null | undefined): FincaRe
 
 function normalizeScopes(scopes: string[]) {
   return Array.from(new Set(scopes.filter((s) => typeof s === "string" && s.trim().length > 0)));
+}
+
+/** Normaliza y valida los scopes; lanza 400 con la lista de válidos si alguno no lo es. */
+function validateScopes(scopes: string[]): string[] {
+  const clean = normalizeScopes(scopes);
+  const invalid = clean.filter((s) => !(VALID_SCOPES as readonly string[]).includes(s));
+  if (invalid.length > 0) {
+    throw new BotError(
+      `Scopes inválidos: ${invalid.join(", ")}. Válidos: ${VALID_SCOPES.join(", ")}`,
+      400,
+    );
+  }
+  return clean;
 }
 
 async function isSuperAgent(userId: string): Promise<boolean> {
@@ -194,7 +204,7 @@ export async function createBotDelegation(input: CreateDelegationInput, grantedB
   if (!input.botUserId) {
     throw new BotError("botUserId es requerido", 400);
   }
-  const scopes = normalizeScopes(input.scopes ?? []);
+  const scopes = validateScopes(input.scopes ?? []);
   if (scopes.length === 0) {
     throw new BotError("Debe delegar al menos un scope", 400);
   }
@@ -833,17 +843,20 @@ export async function botSolicitarDelegacion(
     await ensureBodegaMembership(user.user_id, input.bodegaId);
   }
 
-  cleanExpiredCodes();
+  await cleanExpiredCodes();
 
-  const scopes = normalizeScopes(input.scopes);
+  const scopes = validateScopes(input.scopes);
   const code = generateCode();
-  pendingDelegations.set(code, {
-    botUserId,
-    onBehalfUserId: user.user_id,
-    scopes,
-    bodegaId: input.bodegaId,
-    expiresAt: input.expiresAt,
-    expiresCode: Date.now() + 10 * 60 * 1000, // 10 minutos
+  await prisma.botDelegationCode.create({
+    data: {
+      code,
+      bot_user_id: botUserId,
+      on_behalf_user_id: user.user_id,
+      scopes,
+      ...(input.bodegaId ? { bodega_id: input.bodegaId } : {}),
+      ...(input.expiresAt ? { delegation_expires_at: new Date(input.expiresAt) } : {}),
+      code_expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutos
+    },
   });
 
   return {
@@ -859,10 +872,10 @@ export async function botConfirmarDelegacion(whatsapp: string, codigo: string) {
     throw new BotError("whatsapp y codigo son requeridos", 400);
   }
 
-  cleanExpiredCodes();
+  await cleanExpiredCodes();
 
-  const pending = pendingDelegations.get(codigo);
-  if (!pending) {
+  const pending = await prisma.botDelegationCode.findUnique({ where: { code: codigo } });
+  if (!pending || pending.code_expires_at < new Date()) {
     throw new BotError("Código inválido o expirado", 400);
   }
 
@@ -870,11 +883,11 @@ export async function botConfirmarDelegacion(whatsapp: string, codigo: string) {
     where: { whatsapp_e164: whatsapp },
     select: { user_id: true },
   });
-  if (!user || user.user_id !== pending.onBehalfUserId) {
+  if (!user || user.user_id !== pending.on_behalf_user_id) {
     throw new BotError("El código no corresponde a este usuario", 403);
   }
 
-  pendingDelegations.delete(codigo);
+  await prisma.botDelegationCode.delete({ where: { code: codigo } });
 
   const data: {
     granted_by_user_id: string;
@@ -883,12 +896,12 @@ export async function botConfirmarDelegacion(whatsapp: string, codigo: string) {
     bodega_id?: string;
     expires_at?: Date;
   } = {
-    granted_by_user_id: pending.onBehalfUserId,
-    bot_user_id: pending.botUserId,
+    granted_by_user_id: pending.on_behalf_user_id,
+    bot_user_id: pending.bot_user_id,
     scopes: pending.scopes,
   };
-  if (pending.bodegaId) data.bodega_id = pending.bodegaId;
-  if (pending.expiresAt) data.expires_at = new Date(pending.expiresAt);
+  if (pending.bodega_id) data.bodega_id = pending.bodega_id;
+  if (pending.delegation_expires_at) data.expires_at = pending.delegation_expires_at;
 
   return prisma.botDelegation.create({ data });
 }

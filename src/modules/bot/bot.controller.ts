@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { AuthError } from "../auth/auth.service.js";
 import {
+  VALID_SCOPES,
   botActualizarAsignacionEstado,
   botAyudarCarga,
   botConfirmarDelegacion,
@@ -33,6 +34,11 @@ function handleError(res: Response, error: unknown) {
   }
   console.error("[bot]", error);
   return res.status(500).json({ error: "Error interno" });
+}
+
+export function listScopesHandler(_req: Request, res: Response) {
+  // Lista de scopes que se pueden delegar a un agente bot (para que el asistente los use).
+  return res.json({ scopes: VALID_SCOPES });
 }
 
 export async function createSuperAgentHandler(req: Request, res: Response) {

@@ -18,6 +18,7 @@ import {
   botRegisterHandler,
   botSolicitarDelegacionHandler,
   createDelegationHandler,
+  listScopesHandler,
   createSuperAgentHandler,
   myDelegationsHandler,
   revokeDelegationHandler,
@@ -43,6 +44,7 @@ botRoutes.get(
   botGetTareasByWhatsappHandler,
 );
 
+botRoutes.get("/scopes", authMiddleware, listScopesHandler);
 botRoutes.post("/delegaciones", authMiddleware, createDelegationHandler);
 botRoutes.get("/delegaciones/me", authMiddleware, myDelegationsHandler);
 botRoutes.delete("/delegaciones/:botDelegationId", authMiddleware, revokeDelegationHandler);
