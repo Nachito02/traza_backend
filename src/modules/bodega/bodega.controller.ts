@@ -59,7 +59,7 @@ export async function updateBodegaHandler(req: Request, res: Response) {
     if (!bodegaId) {
       return res.status(400).json({ error: "bodegaId requerido" });
     }
-    const { nombre, razon_social, cuit, codigo, nro_inscripto_inv } = req.body ?? {};
+    const { nombre, razon_social, cuit, codigo, nro_inscripto_inv, kg_por_tacho } = req.body ?? {};
     const bodega = await updateBodega({
       bodegaId,
       userId: req.user.userId,
@@ -68,6 +68,9 @@ export async function updateBodegaHandler(req: Request, res: Response) {
       ...(cuit !== undefined ? { cuit: String(cuit) } : {}),
       ...(codigo !== undefined ? { codigo: String(codigo) } : {}),
       ...(nro_inscripto_inv !== undefined ? { nro_inscripto_inv: String(nro_inscripto_inv) } : {}),
+      ...(kg_por_tacho !== undefined
+        ? { kg_por_tacho: kg_por_tacho === null || kg_por_tacho === "" ? null : Number(kg_por_tacho) }
+        : {}),
     });
     return res.json(bodega);
   } catch (error) {

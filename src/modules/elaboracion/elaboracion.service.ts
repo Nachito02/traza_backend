@@ -1,5 +1,6 @@
 import { prisma } from "../../config/prismaClient.js";
 import type { Prisma } from "../../generated/prisma/index.js";
+import type { IpfsUploadResult } from "../../lib/ipfs.js";
 
 type CreateVasijaInput = {
   userId: string;
@@ -553,6 +554,26 @@ async function getRemitoScoped(remitoUvaId: string, userId: string) {
   if (!remito) throw new ElaboracionError("Remito de uva no encontrado", 404);
   await ensureUserBodega(userId, remito.bodega_id);
   return remito;
+}
+
+export async function addAdjuntoRemitoUva(
+  remitoUvaId: string,
+  userId: string,
+  adjunto: IpfsUploadResult,
+) {
+  await getRemitoScoped(remitoUvaId, userId);
+  const remito = await prisma.remitoUva.findUnique({
+    where: { remito_uva_id: remitoUvaId },
+    select: { adjuntos: true },
+  });
+  const current: IpfsUploadResult[] = Array.isArray(remito?.adjuntos)
+    ? (remito.adjuntos as unknown as IpfsUploadResult[])
+    : [];
+  return prisma.remitoUva.update({
+    where: { remito_uva_id: remitoUvaId },
+    data: { adjuntos: [...current, adjunto] as unknown as Prisma.InputJsonValue },
+    select: { remito_uva_id: true, adjuntos: true },
+  });
 }
 
 async function validateRemitoOrigen(input: {

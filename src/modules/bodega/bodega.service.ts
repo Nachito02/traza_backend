@@ -34,6 +34,7 @@ type UpdateBodegaInput = {
   cuit?: string;
   codigo?: string;
   nro_inscripto_inv?: string;
+  kg_por_tacho?: number | null;
 };
 
 export class BodegaError extends Error {
@@ -149,6 +150,7 @@ export async function updateBodega({
   cuit,
   codigo,
   nro_inscripto_inv,
+  kg_por_tacho,
 }: UpdateBodegaInput) {
   await ensureUserCanManageBodega(userId, bodegaId);
 
@@ -163,6 +165,7 @@ export async function updateBodega({
     cuit?: string | null;
     codigo?: string | null;
     nro_inscripto_inv?: string | null;
+    kg_por_tacho?: number | null;
   } = {};
 
   if (nombre !== undefined) {
@@ -172,6 +175,12 @@ export async function updateBodega({
   if (razon_social !== undefined) data.razon_social = razon_social.trim() || null;
   if (cuit !== undefined) data.cuit = cuit.trim() || null;
   if (nro_inscripto_inv !== undefined) data.nro_inscripto_inv = nro_inscripto_inv.trim() || null;
+  if (kg_por_tacho !== undefined) {
+    if (kg_por_tacho !== null && (Number.isNaN(kg_por_tacho) || kg_por_tacho <= 0)) {
+      throw new BodegaError("Kg por tacho debe ser un número positivo", 400);
+    }
+    data.kg_por_tacho = kg_por_tacho;
+  }
 
   if (codigo !== undefined) {
     data.codigo = codigo.trim() ? codigo.trim().toUpperCase() : null;
