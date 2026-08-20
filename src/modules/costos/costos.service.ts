@@ -915,6 +915,42 @@ export async function getResumenPorCuartel(cuartelId: string, userId: string) {
   return aggregate(costos, num(cuartel.superficie_ha) || null);
 }
 
+/**
+ * Agrega costos de todas las actividades (Tarea) de una vasija — mismo patrón
+ * que getResumenPorCuartel, pero el costo unitario es por litro de capacidad
+ * en vez de por hectárea (la vasija no tiene superficie).
+ */
+export async function getResumenPorVasija(vasijaId: string, userId: string) {
+  const vasija = await prisma.vasija.findUnique({
+    where: { vasija_id: vasijaId },
+    select: { vasija_id: true, capacidad_litros: true, bodega_id: true },
+  });
+  if (!vasija) throw new CostoError("Vasija no encontrada", 404);
+  await ensureBodegaAccess(userId, vasija.bodega_id);
+
+  const costos = await prisma.actividadCosto.findMany({
+    // Excluir actividades canceladas (la "eliminación" es un soft-delete).
+    where: { tarea: { vasija_id: vasijaId, estado: { not: "cancelado" } } },
+    select: { categoria: true, monto: true },
+  });
+
+  const porCategoria: Record<string, number> = {};
+  let total = 0;
+  for (const c of costos) {
+    const m = num(c.monto);
+    porCategoria[c.categoria] = money((porCategoria[c.categoria] ?? 0) + m);
+    total += m;
+  }
+  total = money(total);
+  const capacidadLitros = num(vasija.capacidad_litros);
+  return {
+    total,
+    porCategoria,
+    costoPorLitro: capacidadLitros > 0 ? money(total / capacidadLitros) : null,
+    actividades: costos.length,
+  };
+}
+
 const actividadSelect = {
   tarea_id: true,
   titulo: true,

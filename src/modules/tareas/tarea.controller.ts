@@ -44,6 +44,7 @@ export async function createTareaHandler(req: Request, res: Response) {
       procesoId,
       fincaId,
       cuartelId,
+      vasijaId,
       descripcion,
       fechaFin,
       prioridad,
@@ -58,6 +59,7 @@ export async function createTareaHandler(req: Request, res: Response) {
         procesoId,
         fincaId,
         cuartelId,
+        vasijaId,
         descripcion,
         fechaFin,
         prioridad,
@@ -78,10 +80,21 @@ export async function registrarActividadHandler(req: Request, res: Response) {
     if (!req.user?.userId) {
       return res.status(401).json({ error: "unauthorized" });
     }
-    const { bodegaId, procesoId, fincaId, cuartelId, descripcion, ejecucion, maquinas, insumos, contratistas } =
-      req.body ?? {};
+    const {
+      bodegaId,
+      procesoId,
+      fincaId,
+      cuartelId,
+      vasijaId,
+      descripcion,
+      draft,
+      ejecucion,
+      maquinas,
+      insumos,
+      contratistas,
+    } = req.body ?? {};
     const result = await registrarActividadDirecta(
-      { bodegaId, procesoId, fincaId, cuartelId, descripcion, ejecucion, maquinas, insumos, contratistas },
+      { bodegaId, procesoId, fincaId, cuartelId, vasijaId, descripcion, draft, ejecucion, maquinas, insumos, contratistas },
       req.user.userId,
     );
     return res.status(201).json(result);

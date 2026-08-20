@@ -131,6 +131,8 @@ model Bodega {
   codigo                    String?                   @unique
   /// Nro de inscripto ante el INV (ej. "D72177"), Rubro I del CIU.
   nro_inscripto_inv         String?
+  /// Equivalente en kg de un "tacho" para esta bodega (default ~20kg si no se configura).
+  kg_por_tacho              Decimal?                  @db.Decimal(10, 2)
   activo                    Boolean                   @default(true)
   created_at                DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                  @default(now()) @db.Timestamptz(6)
@@ -404,6 +406,8 @@ model RemitoUva {
   presencia_hojas_escala Int?
   tipo_cosecha           TipoCosecha?
   observaciones          String?
+  /// Fotos/comprobantes del remito, subidos a IPFS ({ cid, url, nombre, tipo, size }[]).
+  adjuntos               Json?
   created_at             DateTime          @default(now()) @db.Timestamptz(6)
   bodega                 Bodega            @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
   finca                  Finca             @relation(fields: [finca_id], references: [finca_id], onDelete: Restrict, onUpdate: NoAction)
@@ -517,6 +521,7 @@ model Vasija {
   operacion_origen     OperacionVasija[]     @relation("OperacionVasijaOrigen")
   operacion_destino    OperacionVasija[]     @relation("OperacionVasijaDestino")
   corte_componente     CorteComponente[]
+  tarea                Tarea[]
 
   @@unique([bodega_id, codigo], map: "uq_vasija_bodega_codigo")
   @@index([bodega_id], map: "idx_vasija_bodega")
@@ -681,6 +686,10 @@ model OperacionVasija {
   vasija_destino_id   String?             @db.Uuid
   orden_enologo_id    String?             @db.Uuid
   recepcion_bodega_id String?             @db.Uuid
+  /// Tarea que originó esta operación (cuando se registró vía el flujo de
+  /// actividades/costos). Nullable: sigue habiendo operaciones creadas fuera
+  /// de ese flujo, no requerimos tarea para todas.
+  tarea_id            String?             @unique @db.Uuid
   tipo                TipoOperacionVasija
   fecha_hora          DateTime            @db.Timestamptz(6)
   user_id             String?             @db.Uuid
@@ -693,6 +702,7 @@ model OperacionVasija {
   orden_enologo       OrdenEnologo?       @relation(fields: [orden_enologo_id], references: [orden_enologo_id], onDelete: SetNull, onUpdate: NoAction)
   recepcion_bodega    RecepcionBodega?    @relation(fields: [recepcion_bodega_id], references: [recepcion_bodega_id], onDelete: SetNull, onUpdate: NoAction)
   app_user            AppUser?            @relation(fields: [user_id], references: [user_id], onDelete: SetNull, onUpdate: NoAction)
+  tarea               Tarea?              @relation(fields: [tarea_id], references: [tarea_id], onDelete: SetNull, onUpdate: NoAction)
   vasija_contenido    VasijaContenido[]
 
   @@index([bodega_id, fecha_hora], map: "idx_operacion_vasija_bodega_fecha")
@@ -1567,6 +1577,9 @@ model Tarea {
   bodega_id   String      @db.Uuid
   finca_id    String?     @db.Uuid
   cuartel_id  String?     @db.Uuid
+  /// Igual patrón que finca_id/cuartel_id: nullable, la vasija sobre la que se
+  /// hace la actividad (limpieza, trasiego, fermentación, etc.) cuando aplica.
+  vasija_id   String?     @db.Uuid
   proceso_id  String      @db.Uuid
   created_by  String      @db.Uuid
   titulo      String
@@ -1582,6 +1595,7 @@ model Tarea {
   bodega                Bodega                 @relation(fields: [bodega_id], references: [bodega_id], onUpdate: NoAction)
   finca                 Finca?                 @relation(fields: [finca_id], references: [finca_id], onUpdate: NoAction)
   cuartel               Cuartel?               @relation(fields: [cuartel_id], references: [cuartel_id], onUpdate: NoAction)
+  vasija                Vasija?                @relation(fields: [vasija_id], references: [vasija_id], onUpdate: NoAction)
   protocolo_proceso     ProtocoloProceso       @relation(fields: [proceso_id], references: [proceso_id], onUpdate: NoAction)
   app_user              AppUser                @relation("TareaCreatedBy", fields: [created_by], references: [user_id], onUpdate: NoAction)
   tarea_asignacion      TareaAsignacion[]
@@ -1591,9 +1605,11 @@ model Tarea {
   actividad_insumo      ActividadInsumo[]
   actividad_contratista ActividadContratista[]
   actividad_costo       ActividadCosto[]
+  operacion_vasija      OperacionVasija?
 
   @@index([bodega_id, estado], map: "idx_tarea_bodega_estado")
   @@index([finca_id, estado], map: "idx_tarea_finca_estado")
+  @@index([vasija_id, estado], map: "idx_tarea_vasija_estado")
   @@index([proceso_id], map: "idx_tarea_proceso")
   @@index([created_by], map: "idx_tarea_created_by")
   @@map("tarea")

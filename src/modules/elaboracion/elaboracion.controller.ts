@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
+import { IpfsNotConfiguredError, IpfsUploadError, uploadToIpfs } from "../../lib/ipfs.js";
 import {
+  addAdjuntoRemitoUva,
   createAnalisisRecepcion,
   createCiu,
   createControlFermentacion,
@@ -490,6 +492,28 @@ export async function getImpactoBorradoRemitoHandler(req: Request, res: Response
     if (!userId) return;
     return res.json(await getImpactoBorradoRemito(String(req.params.id ?? ""), userId));
   } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function uploadRemitoUvaAdjuntoHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (!file) {
+      return res.status(400).json({ error: "No se recibió ningún archivo." });
+    }
+    const adjunto = await uploadToIpfs(file.buffer, file.originalname, file.mimetype);
+    const updated = await addAdjuntoRemitoUva(String(req.params.id ?? ""), userId, adjunto);
+    return res.status(201).json({ adjunto, adjuntos: updated.adjuntos });
+  } catch (error) {
+    if (error instanceof IpfsNotConfiguredError) {
+      return res.status(503).json({ error: error.message });
+    }
+    if (error instanceof IpfsUploadError) {
+      return res.status(502).json({ error: error.message });
+    }
     return handleError(res, error);
   }
 }

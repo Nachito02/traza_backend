@@ -11,6 +11,7 @@ import {
   addActividadInsumo,
   addActividadContratista,
 } from "../costos/costos.service.js";
+import { createOperacionVasija } from "../elaboracion/elaboracion.service.js";
 
 /**
  * Recalcula los costos de una tarea sin romper el flujo si algo falla
@@ -29,6 +30,7 @@ type CreateTareaInput = {
   procesoId: string;
   fincaId?: string;
   cuartelId?: string;
+  vasijaId?: string;
   descripcion?: string;
   fechaFin?: string;
   prioridad?: string;
@@ -96,6 +98,75 @@ function resolveFincaRequirement(eventoTipo: string | null | undefined): FincaRe
   if (FINCA_PRODUCCION_EVENT_TYPES.has(tipo)) return "finca_cuartel";
   if (FINCA_REQUERIDA_EVENT_TYPES.has(tipo)) return "finca";
   return "none";
+}
+
+// Catálogo completo de operaciones que se pueden hacer sobre una vasija (la
+// vasija funciona como un cuartel: cada una de estas es una Tarea con
+// costos/insumos). Ver Especificacion_Funcional_Bodega_v1.md.
+const VASIJA_REQUERIDA_EVENT_TYPES = new Set([
+  "llenado",
+  "vaciado",
+  "carga_mosto",
+  "carga_vino",
+  "trasiego",
+  "corte_de_vinos",
+  "homogeneizacion",
+  "fermentacion_alcoholica",
+  "fermentacion_malolactica",
+  "maceracion",
+  "crianza",
+  "crianza_sobre_lias",
+  "clarificacion",
+  "estabilizacion",
+  "filtracion",
+  "microoxigenacion",
+  "aireacion",
+  "remontaje",
+  "bazuqueo",
+  "delestage",
+  "adicion_insumos_enologicos",
+  "correccion_enologica",
+  "toma_muestra",
+  "muestreo_laboratorio",
+  "control_analitico",
+  "inspeccion",
+  "preparacion_embotellado",
+  "alimentacion_linea_fraccionamiento",
+  "descube",
+  "prensado",
+  "lavado",
+  "limpieza_cip",
+  "sanitizacion",
+  "desinfeccion",
+  "esterilizacion",
+  "calibracion",
+  "mantenimiento_preventivo",
+  "mantenimiento_correctivo",
+  "reparacion",
+  "cambio_junta_accesorios",
+  "apertura_vasija",
+  "cierre_vasija",
+]);
+
+// Subconjunto de lo anterior que efectivamente mueve volumen entre vasijas (o
+// hacia/desde una vasija) — dispara materializarMovimientoVasija, que crea la
+// OperacionVasija/actualiza VasijaContenido. El resto son actividades de
+// vasija "puras": quedan como Tarea con costos/insumos, sin ledger de volumen.
+const VASIJA_MOVIMIENTO_EVENT_TYPES = new Set([
+  "llenado",
+  "vaciado",
+  "carga_mosto",
+  "carga_vino",
+  "trasiego",
+  "corte_de_vinos",
+  "descube",
+]);
+
+type VasijaRequirement = "vasija" | "none";
+
+function resolveVasijaRequirement(eventoTipo: string | null | undefined): VasijaRequirement {
+  const tipo = String(eventoTipo ?? "").toLowerCase().trim();
+  return VASIJA_REQUERIDA_EVENT_TYPES.has(tipo) ? "vasija" : "none";
 }
 
 async function ensureCanManageBodega(userId: string, bodegaId: string) {
@@ -179,6 +250,27 @@ async function ensureValidFincaTarget(input: {
   }
 }
 
+// Independiente de ensureValidFincaTarget: una tarea puede requerir finca+cuartel,
+// vasija, ambas cosas o ninguna — son chequeos en paralelo, no una alternativa.
+async function ensureValidVasijaTarget(input: {
+  bodegaId: string;
+  vasijaId?: string | undefined;
+  requirement: VasijaRequirement;
+}) {
+  if (input.requirement === "vasija" && !input.vasijaId) {
+    throw new TareaError("Esta tarea requiere una vasija", 400);
+  }
+  if (input.vasijaId) {
+    const vasija = await prisma.vasija.findFirst({
+      where: { vasija_id: input.vasijaId, bodega_id: input.bodegaId },
+      select: { vasija_id: true },
+    });
+    if (!vasija) {
+      throw new TareaError("La vasija seleccionada no pertenece a la bodega indicada", 400);
+    }
+  }
+}
+
 function parseRequiredDate(value: unknown, label: string) {
   const date = new Date(String(value ?? "").trim());
   if (Number.isNaN(date.getTime())) {
@@ -222,6 +314,7 @@ type TareaContext = {
   bodega_id: string;
   finca_id: string | null;
   cuartel_id: string | null;
+  vasija_id: string | null;
   evento_tipo: string;
 };
 
@@ -231,6 +324,7 @@ async function loadTareaContext(tareaId: string): Promise<TareaContext> {
     select: {
       tarea_id: true,
       bodega_id: true,
+      vasija_id: true,
       finca_id: true,
       cuartel_id: true,
       protocolo_proceso: { select: { evento_tipo: true } },
@@ -242,6 +336,7 @@ async function loadTareaContext(tareaId: string): Promise<TareaContext> {
     bodega_id: tarea.bodega_id,
     finca_id: tarea.finca_id,
     cuartel_id: tarea.cuartel_id,
+    vasija_id: tarea.vasija_id,
     evento_tipo: String(tarea.protocolo_proceso?.evento_tipo ?? "").toLowerCase().trim(),
   };
 }
@@ -299,6 +394,106 @@ type EventoMaterializado = {
   id: string;
   [key: string]: unknown;
 };
+
+// ── Movimiento de vino entre vasijas ────────────────────────────────────────
+//
+// El `tipo` que espera OperacionVasija (el enum TipoOperacionVasija de siempre:
+// ingreso/trasiego/descube/...) es distinto del `evento_tipo` de la vasija (el
+// catálogo nuevo de ~40 actividades). Este mapa dice, para cada evento_tipo que
+// mueve volumen: qué `tipo` de OperacionVasija generar, y de qué lado va la
+// vasija de la propia tarea (`ctx.vasija_id`) — el otro lado (si corresponde)
+// sale del draft, igual que ya arma `operacionFields` en el frontend.
+const VASIJA_MOVIMIENTO_TIPO_MAP: Record<
+  string,
+  {
+    operacionTipo: "ingreso" | "trasiego" | "descube" | "correccion" | "corte_parcial";
+    ladoTarea: "origen" | "destino";
+  }
+> = {
+  llenado: { operacionTipo: "ingreso", ladoTarea: "destino" },
+  carga_mosto: { operacionTipo: "ingreso", ladoTarea: "destino" },
+  carga_vino: { operacionTipo: "ingreso", ladoTarea: "destino" },
+  vaciado: { operacionTipo: "descube", ladoTarea: "origen" },
+  descube: { operacionTipo: "descube", ladoTarea: "origen" },
+  trasiego: { operacionTipo: "trasiego", ladoTarea: "origen" },
+  corte_de_vinos: { operacionTipo: "corte_parcial", ladoTarea: "origen" },
+};
+
+/**
+ * Crea la OperacionVasija (y con ella actualiza VasijaContenido, vía la lógica
+ * ya probada de `createOperacionVasija`/`aplicarMovimientoVasija` en
+ * elaboracion.service.ts — no se toca esa lógica) y la deja linkeada a esta
+ * tarea. Solo se llama para los evento_tipo de VASIJA_MOVIMIENTO_EVENT_TYPES.
+ */
+async function materializarMovimientoVasija(
+  ctx: TareaContext,
+  draft: TareaEntradaDraft,
+  userId: string,
+): Promise<EventoMaterializado> {
+  if (!ctx.vasija_id) {
+    throw new TareaError(`La orden de tipo "${ctx.evento_tipo}" requiere una vasija asignada`, 400);
+  }
+  const config = VASIJA_MOVIMIENTO_TIPO_MAP[ctx.evento_tipo];
+  if (!config) {
+    throw new TareaError(`Tipo de evento de vasija no reconocido: ${ctx.evento_tipo}`, 400);
+  }
+
+  const otraVasijaId = parseOptionalString(draft.vasijaId) ?? undefined;
+  const vasijaOrigenId = config.ladoTarea === "origen" ? ctx.vasija_id : otraVasijaId;
+  const vasijaDestinoId = config.ladoTarea === "destino" ? ctx.vasija_id : otraVasijaId;
+
+  const operacion = await createOperacionVasija({
+    userId,
+    bodegaId: ctx.bodega_id,
+    ...(vasijaOrigenId !== undefined ? { vasijaOrigenId } : {}),
+    ...(vasijaDestinoId !== undefined ? { vasijaDestinoId } : {}),
+    tipo: config.operacionTipo,
+    fecha_hora: parseRequiredDate(draft.fecha_hora, "Fecha y hora").toISOString(),
+    actorUserId: parseOptionalString(draft.actorUserId) ?? userId,
+    volumen_movido_l: parsePositiveNumber(draft.volumen_movido_l, "Volumen movido"),
+    ...(parseOptionalString(draft.observaciones)
+      ? { observaciones: parseOptionalString(draft.observaciones) as string }
+      : {}),
+    ...(parseOptionalString(draft.loteId) ? { loteId: parseOptionalString(draft.loteId) as string } : {}),
+    ...(parseOptionalString(draft.enologoUserId)
+      ? { enologoUserId: parseOptionalString(draft.enologoUserId) as string }
+      : {}),
+    ...(parseOptionalString(draft.recepcionBodegaId)
+      ? { recepcionBodegaId: parseOptionalString(draft.recepcionBodegaId) as string }
+      : {}),
+  });
+
+  await prisma.operacionVasija.update({
+    where: { operacion_vasija_id: operacion.operacion_vasija_id },
+    data: { tarea_id: ctx.tarea_id },
+  });
+
+  // Si el movimiento vació por completo la vasija de origen (trasiego total,
+  // descube, etc.), se marca "vacía" sola — así queda lista como destino
+  // válido la próxima vez, sin que alguien tenga que acordarse de cambiarle
+  // la etapa a mano. Mismo margen (0.001) que usa aplicarMovimientoVasija
+  // para redondeos de punto flotante.
+  if (vasijaOrigenId) {
+    const activos = await prisma.vasijaContenido.findMany({
+      where: { vasija_id: vasijaOrigenId, hasta: null },
+      select: { volumen_l: true },
+    });
+    const disponible = activos.reduce((acc, row) => acc + Number(row.volumen_l ?? 0), 0);
+    if (disponible <= 0.001) {
+      await prisma.vasija.update({
+        where: { vasija_id: vasijaOrigenId },
+        data: { etapa: "vacia" },
+      });
+    }
+  }
+
+  return {
+    tipo: ctx.evento_tipo,
+    id: operacion.operacion_vasija_id,
+    operacion_vasija_id: operacion.operacion_vasija_id,
+    volumen_movido_l: operacion.volumen_movido_l,
+  };
+}
 
 // ── Materializadores por tipo de evento ─────────────────────────────────────
 
@@ -621,8 +816,13 @@ async function materializarEvento(
     case "energia":
       return materializarEnergia(ctx, draft);
     default:
-      // Tipos sin tabla tipada aún (accidente, capacitacion, etc.)
-      // el draft queda guardado en tareaEntrada.adjuntos como JSON
+      if (VASIJA_MOVIMIENTO_EVENT_TYPES.has(ctx.evento_tipo)) {
+        return materializarMovimientoVasija(ctx, draft, userId);
+      }
+      // Tipos sin tabla tipada aún (accidente, capacitacion, y las ~35
+      // actividades de vasija sin movimiento de volumen — limpieza,
+      // mantenimiento, fermentación, clarificación, etc.): el draft queda
+      // guardado en tareaEntrada.adjuntos como JSON.
       return null;
   }
 }
@@ -659,6 +859,15 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
     requirement: fincaRequirement,
   });
 
+  // Chequeo independiente del de finca/cuartel: una tarea puede requerir uno,
+  // otro, ambos o ninguno.
+  const vasijaRequirement = resolveVasijaRequirement(proceso.evento_tipo);
+  await ensureValidVasijaTarget({
+    bodegaId: input.bodegaId,
+    vasijaId: input.vasijaId,
+    requirement: vasijaRequirement,
+  });
+
   const assigneeUserIds = Array.from(new Set(input.assigneeUserIds ?? []));
   await ensureUsersBelongToBodega(assigneeUserIds, input.bodegaId);
 
@@ -667,6 +876,7 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
     proceso_id: string;
     finca_id?: string | null;
     cuartel_id?: string | null;
+    vasija_id?: string | null;
     created_by: string;
     titulo: string;
     prioridad: string;
@@ -692,6 +902,9 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
   }
   if (input.cuartelId !== undefined) {
     data.cuartel_id = input.cuartelId;
+  }
+  if (input.vasijaId !== undefined) {
+    data.vasija_id = input.vasijaId;
   }
   if (input.descripcion !== undefined) {
     data.descripcion = input.descripcion;
@@ -719,6 +932,7 @@ export async function createTarea(input: CreateTareaInput, actorUserId: string) 
     include: {
       finca: { select: { finca_id: true, nombre_finca: true } },
       cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
+      vasija: { select: { vasija_id: true, codigo: true } },
       tarea_asignacion: {
         include: { app_user: { select: { user_id: true, nombre: true, email: true, whatsapp_e164: true } } },
       },
@@ -733,8 +947,16 @@ type RegistrarActividadInput = {
   procesoId: string;
   fincaId?: string;
   cuartelId?: string;
+  vasijaId?: string;
   /** Campos de la actividad serializados (mismo formato que CampoPage). */
   descripcion?: string;
+  /**
+   * Cuando se pasa, SÍ se materializa el evento tipado (a diferencia del resto
+   * de esta función, pensada originalmente para CampoPage). Lo usa el botón
+   * "Nueva operación" de Vasijas: para los evento_tipo de movimiento
+   * (llenado/vaciado/trasiego/etc.) esto es lo que crea la OperacionVasija.
+   */
+  draft?: Record<string, unknown>;
   /** Costos opcionales para crear todo en un solo paso. */
   ejecucion?: Record<string, unknown>;
   maquinas?: Record<string, unknown>[];
@@ -748,20 +970,23 @@ type RegistrarActividadInput = {
  * existentes: crea la tarea auto-asignada al actor, le carga la entrada con los
  * datos y la finaliza (lo que dispara el recálculo de costos).
  *
- * Igual que CampoPage, manda `descripcion` (no `draft`): registra los datos sin
- * materializar el evento tipado, evitando requisitos extra (p. ej. campaña).
+ * Igual que CampoPage, por defecto manda `descripcion` (no `draft`): registra
+ * los datos sin materializar el evento tipado, evitando requisitos extra (p.
+ * ej. campaña). Si el caller pasa `draft` explícitamente (p. ej. Vasijas, que
+ * sí necesita materializar para mover volumen), se reenvía tal cual.
  */
 export async function registrarActividadDirecta(
   input: RegistrarActividadInput,
   actorUserId: string,
 ) {
-  // 1) Crear la tarea auto-asignada al encargado (valida scope + regla de finca).
+  // 1) Crear la tarea auto-asignada al encargado (valida scope + regla de finca/vasija).
   const tarea = await createTarea(
     {
       bodegaId: input.bodegaId,
       procesoId: input.procesoId,
       ...(input.fincaId !== undefined ? { fincaId: input.fincaId } : {}),
       ...(input.cuartelId !== undefined ? { cuartelId: input.cuartelId } : {}),
+      ...(input.vasijaId !== undefined ? { vasijaId: input.vasijaId } : {}),
       assigneeUserIds: [actorUserId],
     },
     actorUserId,
@@ -778,6 +1003,7 @@ export async function registrarActividadDirecta(
     tareaAsignacionId: asignacion.tarea_asignacion_id,
     userId: actorUserId,
     ...(input.descripcion !== undefined ? { descripcion: input.descripcion } : {}),
+    ...(input.draft !== undefined ? { draft: input.draft } : {}),
   });
 
   // 4) Finalizar (marca completado + dispara recalcularCostosSafe).

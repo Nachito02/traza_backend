@@ -405,10 +405,17 @@ remito.
     aviso.
 - **Limpieza de datos de prueba, como práctica general**: en vez de un botón
   de "reset" permanente en la app (riesgoso si algún día se clickea sin
-  querer, incluso en producción), el usuario prefirió pedirlo puntualmente
-  cuando haga falta — se limpia con un script ad-hoc igual que los que se
-  usaron para verificar cada fix de esta sesión, scopeado a una bodega
-  puntual, sin tocar el resto.
+  querer, incluso en producción), se resolvió con un script,
+  `~/reset-bodega-pruebas.mjs` — **deliberadamente fuera de los dos repos**
+  (no vive en `traza_backend` ni en `traza_frontend`) para que nunca corra
+  riesgo de terminar commiteado. No tiene ninguna credencial adentro: recibe
+  el `bodega_id` como argumento y lee `DATABASE_URL` del entorno en el momento
+  de correrlo (nunca hardcodeada en el archivo ni en ningún doc — usá la de tu
+  `.env` local, no la pegues acá). Antes de borrar pide escribir el nombre
+  exacto de la bodega como confirmación. Borra remitos/recepciones/CIU/lotes/
+  movimientos y existencias de vasija de esa bodega puntual; no toca vasijas,
+  fincas, cuarteles, campañas, usuarios ni la config de la bodega.
+  Uso: `cd traza_backend && DATABASE_URL="<tu URL local>" npx tsx ~/reset-bodega-pruebas.mjs <bodega_id>`.
 
 **Probado contra la base local**: 1) la operación huérfana real (sin
 `VasijaContenido`) del usuario se borró sin problema; 2) sintético: crear

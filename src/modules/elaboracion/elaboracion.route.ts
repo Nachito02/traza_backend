@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import {
   createAnalisisRecepcionHandler,
@@ -76,7 +77,25 @@ import {
   updateRecepcionBodegaHandler,
   updateRemitoUvaHandler,
   updateVasijaHandler,
+  uploadRemitoUvaAdjuntoHandler,
 } from "./elaboracion.controller.js";
+
+// Solo fotos/imágenes para el comprobante del remito.
+const uploadRemitoFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (
+    _req: Express.Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, acceptFile?: boolean) => void,
+  ) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de archivo no permitido: ${file.mimetype}`));
+    }
+  },
+});
 
 export const elaboracionRoutes = Router();
 
@@ -150,6 +169,12 @@ elaboracionRoutes.get(
   "/remitos-uva/:id/impacto-borrado",
   authMiddleware,
   getImpactoBorradoRemitoHandler,
+);
+elaboracionRoutes.post(
+  "/remitos-uva/:id/adjuntos",
+  authMiddleware,
+  uploadRemitoFoto.single("imagen"),
+  uploadRemitoUvaAdjuntoHandler,
 );
 
 elaboracionRoutes.get("/recepciones-bodega", authMiddleware, listRecepcionesBodegaHandler);
