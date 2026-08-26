@@ -977,7 +977,8 @@ export async function botIniciarCreacionTarea(
 
   const delegacionInput: Parameters<typeof botSolicitarDelegacion>[0] = {
     whatsapp: input.whatsapp,
-    scopes: ["tareas.crear", "tareas.ver", "tareas.contactar", "tareas.cargar_datos", "tareas.resolver"],
+    // Set completo: sin actualizar_estado el operario no puede mover la tarea de estado.
+    scopes: [...VALID_SCOPES],
     bodegaId: input.bodegaId,
   };
   if (input.delegacionExpiresAt !== undefined) delegacionInput.expiresAt = input.delegacionExpiresAt;

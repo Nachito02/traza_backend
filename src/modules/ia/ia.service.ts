@@ -719,6 +719,33 @@ async function getDelegationForAssignment(
   });
 
   if (!delegation) {
+    // Distinguir "no delegó nada" de "delegó pero sin este permiso": son problemas
+    // distintos para el usuario y el mensaje genérico mandaba a diagnosticar al lugar equivocado.
+    const sinScope = await prisma.botDelegation.findFirst({
+      where: {
+        bot_user_id: botUserId,
+        activo: true,
+        revoked_at: null,
+        OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
+        AND: [
+          {
+            OR: [{ bodega_id: null }, { bodega_id: asignacion.tarea.bodega_id }],
+          },
+        ],
+      },
+      select: { scopes: true, granted_by_user: { select: { nombre: true } } },
+    });
+
+    if (sinScope) {
+      const faltantes = [...requiredScopes].filter((s) => !sinScope.scopes.includes(s));
+      throw new IaError(
+        `La delegación de ${sinScope.granted_by_user?.nombre ?? "el usuario"} no incluye `
+          + `${faltantes.map((s) => `"${s}"`).join(" o ")}. `
+          + `Permisos otorgados: ${sinScope.scopes.join(", ") || "ninguno"}.`,
+        403,
+      );
+    }
+
     throw new IaError("No hay delegación activa para esta asignación", 403);
   }
 
