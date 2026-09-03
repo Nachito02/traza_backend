@@ -6,6 +6,7 @@ import {
   botAyudarCarga,
   botContactarAsignacion,
 } from "../bot/bot.service.js";
+import { resolveTareaEstadoFromAssignments } from "../tareas/tarea-state.js";
 import {
   getTipoVariedadForVariedad,
   isValidCultivo,
@@ -976,43 +977,56 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
   );
 
   const now = new Date();
-  const updated = await prisma.tareaAsignacion.update({
-    where: { tarea_asignacion_id: input.tareaAsignacionId },
-    data: {
-      estado: input.estado,
-      ultima_interaccion_bot_at: now,
-      updated_at: now,
-      completed_at:
-        input.estado === "completado" || input.estado === "cancelado" ? now : null,
-    },
-    include: {
-      tarea: true,
-      app_user: {
-        select: { user_id: true, nombre: true, email: true },
-      },
-    },
-  });
-  if (input.observaciones !== undefined) {
-    await prisma.tareaAsignacion.update({
+  const { updated, log, tareaEstado } = await prisma.$transaction(async (tx) => {
+    const updated = await tx.tareaAsignacion.update({
       where: { tarea_asignacion_id: input.tareaAsignacionId },
-      data: { observaciones: input.observaciones },
-    });
-    updated.observaciones = input.observaciones;
-  }
-
-  const log = await prisma.botActionLog.create({
-    data: {
-      bot_user_id: input.botUserId,
-      on_behalf_user_id: context.asignacion.user_id,
-      bot_delegation_id: context.delegation.bot_delegation_id,
-      tarea_asignacion_id: input.tareaAsignacionId,
-      action: "tareas.resultado",
-      input_payload: {
+      data: {
         estado: input.estado,
-        observaciones: input.observaciones ?? null,
-      } as Prisma.InputJsonObject,
-      output_payload: normalizePayload(input.outputPayload),
-    },
+        ultima_interaccion_bot_at: now,
+        updated_at: now,
+        completed_at:
+          input.estado === "completado" || input.estado === "cancelado" ? now : null,
+        ...(input.observaciones !== undefined
+          ? { observaciones: input.observaciones }
+          : {}),
+      },
+      include: {
+        tarea: true,
+        app_user: {
+          select: { user_id: true, nombre: true, email: true },
+        },
+      },
+    });
+
+    const siblings = await tx.tareaAsignacion.findMany({
+      where: { tarea_id: context.asignacion.tarea_id },
+      select: { estado: true },
+    });
+    const tareaEstado = resolveTareaEstadoFromAssignments(
+      siblings.map((assignment) => assignment.estado),
+    );
+
+    await tx.tarea.update({
+      where: { tarea_id: context.asignacion.tarea_id },
+      data: { estado: tareaEstado, updated_at: now },
+    });
+
+    const log = await tx.botActionLog.create({
+      data: {
+        bot_user_id: input.botUserId,
+        on_behalf_user_id: context.asignacion.user_id,
+        bot_delegation_id: context.delegation.bot_delegation_id,
+        tarea_asignacion_id: input.tareaAsignacionId,
+        action: "tareas.resultado",
+        input_payload: {
+          estado: input.estado,
+          observaciones: input.observaciones ?? null,
+        } as Prisma.InputJsonObject,
+        output_payload: normalizePayload(input.outputPayload),
+      },
+    });
+
+    return { updated, log, tareaEstado };
   });
 
   return {
@@ -1023,6 +1037,7 @@ export async function submitIaJobResult(input: SubmitIaResultInput) {
       updatedAt: updated.updated_at,
       completedAt: updated.completed_at,
     },
+    tareaEstado,
     botActionLogId: log.bot_action_log_id,
   };
 }
