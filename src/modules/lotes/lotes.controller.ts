@@ -7,6 +7,7 @@ import {
   getLoteById,
   getLoteCiusExport,
   getLoteGenealogia,
+  getLoteHistorial,
   listLotes,
   listRecepcionesParaLote,
   LoteError,
@@ -63,7 +64,7 @@ export async function crearCorteConVasijasHandler(req: Request, res: Response) {
   try {
     const userId = requireUserId(req, res);
     if (!userId) return;
-    const { bodegaId, campaniaId, fecha, objetivo, responsableUserId, observaciones, fuentes, destinoVasijaId } =
+    const { bodegaId, campaniaId, fecha, objetivo, responsableUserId, observaciones, fuentes, destinos } =
       req.body ?? {};
     const corte = await crearCorteConVasijas({
       userId,
@@ -73,11 +74,16 @@ export async function crearCorteConVasijasHandler(req: Request, res: Response) {
       ...(objetivo !== undefined ? { objetivo: String(objetivo) } : {}),
       ...(responsableUserId !== undefined ? { responsableUserId: String(responsableUserId) } : {}),
       ...(observaciones !== undefined ? { observaciones: String(observaciones) } : {}),
-      ...(destinoVasijaId !== undefined ? { destinoVasijaId: String(destinoVasijaId) } : {}),
       fuentes: Array.isArray(fuentes)
         ? fuentes.map((f: { vasijaId?: unknown; volumenL?: unknown }) => ({
             vasijaId: String(f.vasijaId ?? ""),
             volumenL: Number(f.volumenL ?? 0),
+          }))
+        : [],
+      destinos: Array.isArray(destinos)
+        ? destinos.map((d: { vasijaId?: unknown; volumenL?: unknown }) => ({
+            vasijaId: String(d.vasijaId ?? ""),
+            volumenL: Number(d.volumenL ?? 0),
           }))
         : [],
     });
@@ -154,6 +160,16 @@ export async function getLoteGenealogiaHandler(req: Request, res: Response) {
     const userId = requireUserId(req, res);
     if (!userId) return;
     return res.json(await getLoteGenealogia(String(req.params.id ?? ""), userId));
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function getLoteHistorialHandler(req: Request, res: Response) {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    return res.json(await getLoteHistorial(String(req.params.id ?? ""), userId));
   } catch (error) {
     return handleError(res, error);
   }
