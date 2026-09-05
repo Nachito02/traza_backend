@@ -381,16 +381,21 @@ export async function iaConsultarHandler(req: Request, res: Response) {
     const bodegaId = typeof req.body?.bodegaId === "string" ? req.body.bodegaId : undefined;
     const trazabilidadId =
       typeof req.body?.trazabilidadId === "string" ? req.body.trazabilidadId : undefined;
+    const campaniaId = typeof req.body?.campaniaId === "string" ? req.body.campaniaId : undefined;
+    const fincaId = typeof req.body?.fincaId === "string" ? req.body.fincaId : undefined;
+    const cuartelId = typeof req.body?.cuartelId === "string" ? req.body.cuartelId : undefined;
     const limit = typeof req.body?.limit === "number" ? req.body.limit : undefined;
-    return res.json(
-      await iaConsultar({
-        botUserId: req.user.userId,
-        pregunta,
-        bodegaId,
-        trazabilidadId,
-        limit,
-      }),
-    );
+    const params = {
+      botUserId: req.user.userId,
+      pregunta,
+      ...(bodegaId ? { bodegaId } : {}),
+      ...(trazabilidadId ? { trazabilidadId } : {}),
+      ...(campaniaId ? { campaniaId } : {}),
+      ...(fincaId ? { fincaId } : {}),
+      ...(cuartelId ? { cuartelId } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    };
+    return res.json(await iaConsultar(params));
   } catch (error) {
     return handleError(res, error);
   }

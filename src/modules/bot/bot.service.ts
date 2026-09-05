@@ -16,6 +16,7 @@ import {
   normalizeSistemaConduccion,
   normalizeVariedad,
 } from "../cuarteles/cuartel.catalog.js";
+import { resolveTareaEstadoFromAssignments } from "../tareas/tarea-state.js";
 
 // Scopes que se pueden delegar a un agente bot (fuente de verdad).
 export const VALID_SCOPES = [
@@ -706,13 +707,12 @@ export async function botActualizarAsignacionEstado(
     where: { tarea_id: context.asignacion.tarea_id },
     select: { estado: true },
   });
-  const allDone = siblings.length > 0 && siblings.every((s) => s.estado === "completado");
-  const hasProgress = siblings.some((s) => s.estado === "en_progreso");
+  const tareaEstado = resolveTareaEstadoFromAssignments(siblings.map((s) => s.estado));
 
   await prisma.tarea.update({
     where: { tarea_id: context.asignacion.tarea_id },
     data: {
-      estado: allDone ? "completado" : hasProgress ? "en_progreso" : "pendiente",
+      estado: tareaEstado,
       updated_at: new Date(),
     },
   });

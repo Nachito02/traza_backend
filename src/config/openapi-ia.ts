@@ -917,8 +917,9 @@ const openapiIaSpec = {
         tags: ["Trazabilidad"],
         summary: "Lectura de eventos para responder preguntas del bot",
         description:
-          "⚠️ Sección no activa por el momento. Lee eventos agronómicos y de bodega para responder consultas, " +
-          "filtrable por `tipo`, `bodegaId`, `campaniaId`, `fincaId`, `cuartelId`, `trazabilidadId` y `limit`.",
+          "Lee eventos agronómicos materializados y progresos completos generados por cierres de tareas del bot. " +
+          "Es filtrable por `tipo`, `bodegaId`, `campaniaId`, `fincaId`, `cuartelId`, `trazabilidadId` y `limit`. " +
+          "Los eventos recuperados desde una tarea incluyen `source: tarea_progreso`.",
         parameters: [
           { name: "tipo", in: "query", required: false, schema: { type: "string" } },
           { name: "trazabilidadId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
@@ -1024,6 +1025,9 @@ const openapiIaSpec = {
                   pregunta: { type: "string" },
                   bodegaId: { type: "string", format: "uuid" },
                   trazabilidadId: { type: "string", format: "uuid" },
+                  campaniaId: { type: "string", format: "uuid" },
+                  fincaId: { type: "string", format: "uuid" },
+                  cuartelId: { type: "string", format: "uuid" },
                   limit: { type: "integer", minimum: 1, maximum: 200 },
                 },
               },

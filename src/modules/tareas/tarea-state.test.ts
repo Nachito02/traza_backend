@@ -30,4 +30,18 @@ describe("resolveTareaEstadoFromAssignments", () => {
       "pendiente",
     );
   });
+
+  it("completa la tarea cuando las demás asignaciones están canceladas", () => {
+    assert.equal(
+      resolveTareaEstadoFromAssignments(["completado", "cancelado"]),
+      "completado",
+    );
+  });
+
+  it("cancela la tarea cuando todas sus asignaciones están canceladas", () => {
+    assert.equal(
+      resolveTareaEstadoFromAssignments(["cancelado", "cancelado"]),
+      "cancelado",
+    );
+  });
 });

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint 'src/**/*.ts'",
+    "test": "node --import tsx --test src/modules/ia/ia-events.test.ts src/modules/tareas/tarea-state.test.ts",
     "prisma:generate": "prisma generate",
     "seed:protocol": "node scripts/seed-protocol-from-doc.mjs",
     "seed:protocolo-vasijas": "node scripts/seed-protocolo-vasijas.mjs",

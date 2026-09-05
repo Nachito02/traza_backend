@@ -12,6 +12,7 @@ import {
   addActividadContratista,
 } from "../costos/costos.service.js";
 import { createOperacionVasija } from "../elaboracion/elaboracion.service.js";
+import { resolveTareaEstadoFromAssignments } from "./tarea-state.js";
 
 /**
  * Recalcula los costos de una tarea sin romper el flujo si algo falla
@@ -1367,13 +1368,12 @@ export async function updateMyTareaAsignacionEstado(input: UpdateTareaAsignacion
     where: { tarea_id: row.tarea_id },
     select: { estado: true },
   });
-  const allDone = siblings.length > 0 && siblings.every((s) => s.estado === "completado");
-  const hasProgress = siblings.some((s) => s.estado === "en_progreso");
+  const tareaEstado = resolveTareaEstadoFromAssignments(siblings.map((s) => s.estado));
 
   await prisma.tarea.update({
     where: { tarea_id: row.tarea_id },
     data: {
-      estado: allDone ? "completado" : hasProgress ? "en_progreso" : "pendiente",
+      estado: tareaEstado,
       updated_at: new Date(),
     },
   });
@@ -1574,9 +1574,16 @@ export async function finalizarTareaAsignacion(tareaAsignacionId: string, userId
     where: { tarea_asignacion_id: tareaAsignacionId },
     data: { estado: "completado", completed_at: new Date(), updated_at: new Date() },
   });
+  const siblings = await prisma.tareaAsignacion.findMany({
+    where: { tarea_id: asignacion.tarea_id },
+    select: { estado: true },
+  });
   await prisma.tarea.update({
     where: { tarea_id: asignacion.tarea_id },
-    data: { estado: "completado", updated_at: new Date() },
+    data: {
+      estado: resolveTareaEstadoFromAssignments(siblings.map((s) => s.estado)),
+      updated_at: new Date(),
+    },
   });
   await recalcularCostosSafe(asignacion.tarea_id);
   return updated;

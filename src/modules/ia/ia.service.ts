@@ -8,6 +8,13 @@ import {
 } from "../bot/bot.service.js";
 import { resolveTareaEstadoFromAssignments } from "../tareas/tarea-state.js";
 import {
+  extractCompletedProgressEvents,
+  findMentionedOperationalContext,
+  inferEventTypeFromQuestion,
+  mergeEventsByDate,
+  type ProgressEventEntry,
+} from "./ia-events.js";
+import {
   getTipoVariedadForVariedad,
   isValidCultivo,
   isValidManejoCultivo,
@@ -378,6 +385,9 @@ type IaConsultaInput = {
   pregunta: string;
   bodegaId?: string;
   trazabilidadId?: string;
+  campaniaId?: string;
+  fincaId?: string;
+  cuartelId?: string;
   limit?: number;
 };
 
@@ -1512,6 +1522,69 @@ function parseLimit(value?: number) {
   return Math.min(Math.max(value, 1), 200);
 }
 
+async function listIaProgressEvents(params: {
+  bodegaIds: string[];
+  tipo?: string;
+  campaniaId?: string;
+  fincaId?: string;
+  cuartelId?: string;
+  limit: number;
+}) {
+  const rows = await prisma.tareaEntrada.findMany({
+    where: {
+      tarea: {
+        bodega_id: { in: params.bodegaIds },
+        ...(params.fincaId ? { finca_id: params.fincaId } : {}),
+        ...(params.cuartelId ? { cuartel_id: params.cuartelId } : {}),
+        tarea_asignacion: { some: { estado: "completado" } },
+      },
+    },
+    select: {
+      entrada_id: true,
+      fecha: true,
+      adjuntos: true,
+      tarea: {
+        select: {
+          tarea_id: true,
+          bodega_id: true,
+          finca_id: true,
+          cuartel_id: true,
+          finca: { select: { nombre_finca: true } },
+          cuartel: { select: { codigo_cuartel: true } },
+          tarea_asignacion: {
+            where: { estado: "completado" },
+            select: { tarea_asignacion_id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+    orderBy: [{ fecha: "desc" }],
+    take: Math.min(Math.max(params.limit * 5, 50), 1000),
+  });
+
+  const entries: ProgressEventEntry[] = rows.map((row) => ({
+    entradaId: row.entrada_id,
+    fecha: row.fecha,
+    adjuntos: row.adjuntos,
+    tarea: {
+      tareaId: row.tarea.tarea_id,
+      bodegaId: row.tarea.bodega_id,
+      fincaId: row.tarea.finca_id,
+      fincaNombre: row.tarea.finca?.nombre_finca ?? null,
+      cuartelId: row.tarea.cuartel_id,
+      cuartelCodigo: row.tarea.cuartel?.codigo_cuartel ?? null,
+      hasCompletedAssignment: row.tarea.tarea_asignacion.length > 0,
+    },
+  }));
+
+  return extractCompletedProgressEvents(entries, {
+    ...(params.tipo ? { tipo: params.tipo } : {}),
+    ...(params.campaniaId ? { campaniaId: params.campaniaId } : {}),
+    limit: params.limit,
+  });
+}
+
 export async function listIaEventos(params: {
   botUserId: string;
   tipo?: string;
@@ -1536,14 +1609,23 @@ export async function listIaEventos(params: {
   }
   if (bodegaIds.length === 0) return [];
 
+  const cuartelScope = {
+    ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
+    cuartel: {
+      finca: {
+        bodega_id: { in: bodegaIds },
+        ...(query.fincaId ? { finca_id: query.fincaId } : {}),
+      },
+    },
+  };
+
   const byType = async (tipo: string) => {
     switch (tipo) {
       case "riego":
         return prisma.eventoRiego.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1552,8 +1634,7 @@ export async function listIaEventos(params: {
         return prisma.eventoCosecha.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha_cosecha: "desc" }],
           take: limit,
@@ -1562,8 +1643,7 @@ export async function listIaEventos(params: {
         return prisma.eventoFenologia.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1572,8 +1652,7 @@ export async function listIaEventos(params: {
         return prisma.eventoFertilizacion.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1582,8 +1661,7 @@ export async function listIaEventos(params: {
         return prisma.eventoAplicacionFitosanitaria.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1592,8 +1670,7 @@ export async function listIaEventos(params: {
         return prisma.eventoMonitoreoPlaga.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1602,8 +1679,7 @@ export async function listIaEventos(params: {
         return prisma.eventoMonitoreoEnfermedad.findMany({
           where: {
             ...(query.campaniaId ? { campania_id: query.campaniaId } : {}),
-            ...(query.cuartelId ? { cuartel_id: query.cuartelId } : {}),
-            cuartel: { finca: { bodega_id: { in: bodegaIds } } },
+            ...cuartelScope,
           },
           orderBy: [{ fecha: "desc" }],
           take: limit,
@@ -1620,13 +1696,10 @@ export async function listIaEventos(params: {
         });
       case "analisis_suelo":
         {
-          const where: Prisma.EventoAnalisisDeSueloWhereInput = {};
+          const where: Prisma.EventoAnalisisDeSueloWhereInput = {
+            ...cuartelScope,
+          };
           if (query.campaniaId) where.campania_id = query.campaniaId;
-          if (query.cuartelId) {
-            where.cuartel_id = query.cuartelId;
-          } else {
-            where.cuartel = { finca: { bodega_id: { in: bodegaIds } } };
-          }
         return prisma.eventoAnalisisDeSuelo.findMany({
           where,
           orderBy: [{ fecha: "desc" }],
@@ -1652,10 +1725,23 @@ export async function listIaEventos(params: {
         "analisis_suelo",
       ];
 
+  const progressItems = await listIaProgressEvents({
+    bodegaIds,
+    ...(query.tipo ? { tipo: query.tipo } : {}),
+    ...(query.campaniaId ? { campaniaId: query.campaniaId } : {}),
+    ...(query.fincaId ? { fincaId: query.fincaId } : {}),
+    ...(query.cuartelId ? { cuartelId: query.cuartelId } : {}),
+    limit: limit * tipos.length,
+  });
+
   const results = await Promise.all(
     tipos.map(async (tipo) => ({
       tipo,
-      items: await byType(tipo),
+      items: mergeEventsByDate(
+        (await byType(tipo)) as Array<Record<string, unknown>>,
+        progressItems.filter((item) => item.evento_tipo === tipo),
+        limit,
+      ),
     })),
   );
 
@@ -1683,6 +1769,42 @@ export async function iaConsultar(input: IaConsultaInput) {
   }
 
   const limit = parseLimit(input.limit);
+  const [contextFincas, contextCuarteles] = await Promise.all([
+    prisma.finca.findMany({
+      where: { bodega_id: { in: bodegaIds } },
+      select: { finca_id: true, nombre_finca: true },
+    }),
+    prisma.cuartel.findMany({
+      where: { finca: { bodega_id: { in: bodegaIds } } },
+      select: { cuartel_id: true, codigo_cuartel: true, finca_id: true },
+    }),
+  ]);
+  const mentionedContext = findMentionedOperationalContext(
+    term,
+    contextFincas.map((finca) => ({ id: finca.finca_id, nombre: finca.nombre_finca })),
+    contextCuarteles.map((cuartel) => ({
+      id: cuartel.cuartel_id,
+      codigo: cuartel.codigo_cuartel,
+      fincaId: cuartel.finca_id,
+    })),
+  );
+  const inferredEventType = inferEventTypeFromQuestion(term);
+  const eventos = inferredEventType
+    ? await listIaEventos({
+        botUserId: input.botUserId,
+        tipo: inferredEventType,
+        ...(input.trazabilidadId ? { trazabilidadId: input.trazabilidadId } : {}),
+        ...(input.bodegaId ? { bodegaId: input.bodegaId } : {}),
+        ...(input.campaniaId ? { campaniaId: input.campaniaId } : {}),
+        ...(input.fincaId ?? mentionedContext.fincaId
+          ? { fincaId: input.fincaId ?? mentionedContext.fincaId }
+          : {}),
+        ...(input.cuartelId ?? mentionedContext.cuartelId
+          ? { cuartelId: input.cuartelId ?? mentionedContext.cuartelId }
+          : {}),
+        limit,
+      })
+    : [];
   const [fincas, cuarteles, campanias, trazabilidades, hallazgos] = await Promise.all([
     prisma.finca.findMany({
       where: {
@@ -1736,7 +1858,8 @@ export async function iaConsultar(input: IaConsultaInput) {
     cuarteles.length +
     campanias.length +
     trazabilidades.length +
-    hallazgos.length;
+    hallazgos.length +
+    eventos.reduce((sum, group) => sum + group.items.length, 0);
 
   return {
     pregunta: term,
@@ -1750,6 +1873,7 @@ export async function iaConsultar(input: IaConsultaInput) {
       campanias,
       trazabilidades,
       hallazgos,
+      eventos,
     },
   };
 }
