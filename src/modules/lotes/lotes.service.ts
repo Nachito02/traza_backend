@@ -752,6 +752,25 @@ export type LoteHistorialEvento =
       tipo_operacion: string | null;
       observaciones: string | null;
       responsable: string | null;
+      /** Controles de fermentación registrados en esa vasija mientras este lote estuvo ahí. */
+      analisis: Array<{
+        fecha_hora: string;
+        densidad: number | null;
+        temperatura: number | null;
+        brix: number | null;
+        ph: number | null;
+        acidez: number | null;
+        estado_fermentacion: string | null;
+        observaciones: string | null;
+      }>;
+      /** Existencias (volumen/alcohol/azúcar residual) registradas en esa vasija en esa ventana. */
+      existencias: Array<{
+        fecha_hora: string;
+        volumen_l: number | null;
+        grado_alcohol: number | null;
+        azucar_residual_g_l: number | null;
+        observaciones: string | null;
+      }>;
     }
   | {
       kind: "usado_en_corte";
@@ -762,7 +781,14 @@ export type LoteHistorialEvento =
       porcentaje: number;
     };
 
-export async function getLoteHistorial(loteId: string, userId: string): Promise<LoteHistorialEvento[]> {
+/**
+ * Arma la línea de tiempo de un lote (origen, movimientos entre vasijas, uso
+ * como componente de un corte posterior) sin chequeo de bodega/usuario — la
+ * usa tanto la versión autenticada (`getLoteHistorial`) como el endpoint
+ * público de producto/lote, que necesita mostrar "qué pasó en la bodega"
+ * además de la línea de campo.
+ */
+export async function resolverHistorialLote(loteId: string): Promise<LoteHistorialEvento[] | null> {
   const lote = await prisma.lote.findUnique({
     where: { lote_id: loteId },
     include: {
@@ -777,8 +803,7 @@ export async function getLoteHistorial(loteId: string, userId: string): Promise<
       },
     },
   });
-  if (!lote) throw new LoteError("Lote no encontrado", 404);
-  await ensureUserBodega(userId, lote.bodega_id);
+  if (!lote) return null;
 
   const eventos: LoteHistorialEvento[] = [];
 
@@ -818,6 +843,20 @@ export async function getLoteHistorial(loteId: string, userId: string): Promise<
     orderBy: { desde: "asc" },
   });
   for (const m of movimientos) {
+    // Análisis de laboratorio de esa vasija mientras este lote estuvo ahí (por ventana
+    // de fecha — estos controles son por vasija, no por lote, no hay FK directa).
+    const ventana = { gte: m.desde, ...(m.hasta ? { lte: m.hasta } : {}) };
+    const [controles, existencias] = await Promise.all([
+      prisma.controlFermentacion.findMany({
+        where: { vasija_id: m.vasija_id, fecha_hora: ventana },
+        orderBy: { fecha_hora: "asc" },
+      }),
+      prisma.existenciaVasija.findMany({
+        where: { vasija_id: m.vasija_id, fecha_hora: ventana },
+        orderBy: { fecha_hora: "asc" },
+      }),
+    ]);
+
     eventos.push({
       kind: "movimiento_vasija",
       fecha: m.desde.toISOString(),
@@ -827,6 +866,23 @@ export async function getLoteHistorial(loteId: string, userId: string): Promise<
       tipo_operacion: m.operacion_vasija?.tipo ?? null,
       observaciones: m.operacion_vasija?.observaciones ?? null,
       responsable: m.operacion_vasija?.app_user?.nombre ?? null,
+      analisis: controles.map((c) => ({
+        fecha_hora: c.fecha_hora.toISOString(),
+        densidad: c.densidad ? Number(c.densidad) : null,
+        temperatura: c.temperatura ? Number(c.temperatura) : null,
+        brix: c.brix ? Number(c.brix) : null,
+        ph: c.ph ? Number(c.ph) : null,
+        acidez: c.acidez ? Number(c.acidez) : null,
+        estado_fermentacion: c.estado_fermentacion,
+        observaciones: c.observaciones,
+      })),
+      existencias: existencias.map((e) => ({
+        fecha_hora: e.fecha_hora.toISOString(),
+        volumen_l: e.volumen_l ? Number(e.volumen_l) : null,
+        grado_alcohol: e.grado_alcohol ? Number(e.grado_alcohol) : null,
+        azucar_residual_g_l: e.azucar_residual_g_l ? Number(e.azucar_residual_g_l) : null,
+        observaciones: e.observaciones,
+      })),
     });
   }
 
@@ -850,6 +906,16 @@ export async function getLoteHistorial(loteId: string, userId: string): Promise<
   }
 
   return eventos.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+}
+
+export async function getLoteHistorial(loteId: string, userId: string): Promise<LoteHistorialEvento[]> {
+  const lote = await prisma.lote.findUnique({ where: { lote_id: loteId }, select: { bodega_id: true } });
+  if (!lote) throw new LoteError("Lote no encontrado", 404);
+  await ensureUserBodega(userId, lote.bodega_id);
+
+  const eventos = await resolverHistorialLote(loteId);
+  if (!eventos) throw new LoteError("Lote no encontrado", 404);
+  return eventos;
 }
 
 function campoDecimal(v: unknown): string {

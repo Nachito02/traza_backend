@@ -2,8 +2,10 @@ import { prisma } from "../../config/prismaClient.js";
 import {
   recolectarCiusDeGenealogia,
   resolverGenealogiaLote,
+  resolverHistorialLote,
   type CiuContribucion,
   type LoteGenealogiaNode,
+  type LoteHistorialEvento,
 } from "../lotes/lotes.service.js";
 
 export class PublicError extends Error {
@@ -72,6 +74,7 @@ async function resolverTrazabilidadCuartel(cuartelId: string) {
       transportista: true,
       patente: true,
       created_at: true,
+      adjuntos: true,
       recepcion_bodega: {
         select: {
           recepcion_bodega_id: true,
@@ -79,6 +82,22 @@ async function resolverTrazabilidadCuartel(cuartelId: string) {
           kg_pesados: true,
           clasificacion: true,
           observaciones: true,
+          // Análisis de la uva al ingresar — se correlacionan por recepcion_bodega_id
+          // exacto (no por ventana de tiempo), así que se traen siempre acá.
+          analisis_recepcion: {
+            select: { brix: true, ph: true, acidez: true, sanidad: true, temperatura_uva: true, observaciones: true },
+          },
+          qc_ingreso_uva: {
+            select: {
+              brix: true,
+              ph: true,
+              acidez: true,
+              temperatura_uva: true,
+              estado_pcc: true,
+              aprobado: true,
+              observaciones: true,
+            },
+          },
         },
       },
     },
@@ -94,6 +113,9 @@ async function resolverTrazabilidadCuartel(cuartelId: string) {
       estado: true,
       emitido_at: true,
       observaciones: true,
+      variedad_nombre: true,
+      tenor_azucarino_gl: true,
+      uva_organica: true,
     },
     orderBy: { emitido_at: "desc" },
   });
@@ -143,11 +165,33 @@ async function resolverTrazabilidadCuartel(cuartelId: string) {
       llegada_bodega: r.llegada_bodega,
       kg_declarados: r.kg_declarados ? Number(r.kg_declarados) : null,
       transportista: r.transportista,
+      adjuntos: Array.isArray(r.adjuntos) ? r.adjuntos : [],
       recepciones: r.recepcion_bodega.map((rb) => ({
         recepcion_bodega_id: rb.recepcion_bodega_id,
         fecha_hora: rb.fecha_hora,
         kg_pesados: rb.kg_pesados ? Number(rb.kg_pesados) : null,
         clasificacion: rb.clasificacion,
+        analisis: [
+          ...rb.analisis_recepcion.map((a) => ({
+            fuente: "Análisis de recepción" as const,
+            brix: a.brix ? Number(a.brix) : null,
+            ph: a.ph ? Number(a.ph) : null,
+            acidez: a.acidez ? Number(a.acidez) : null,
+            temperatura_uva: a.temperatura_uva ? Number(a.temperatura_uva) : null,
+            sanidad: a.sanidad,
+            observaciones: a.observaciones,
+          })),
+          ...rb.qc_ingreso_uva.map((q) => ({
+            fuente: "Control de calidad" as const,
+            brix: q.brix ? Number(q.brix) : null,
+            ph: q.ph ? Number(q.ph) : null,
+            acidez: q.acidez ? Number(q.acidez) : null,
+            temperatura_uva: q.temperatura_uva ? Number(q.temperatura_uva) : null,
+            estado_pcc: q.estado_pcc,
+            aprobado: q.aprobado,
+            observaciones: q.observaciones,
+          })),
+        ],
       })),
     })),
     cius: cius.map((c) => ({
@@ -155,6 +199,10 @@ async function resolverTrazabilidadCuartel(cuartelId: string) {
       codigo_ciu: c.codigo_ciu,
       estado: c.estado,
       emitido_at: c.emitido_at,
+      observaciones: c.observaciones,
+      variedad_nombre: c.variedad_nombre,
+      tenor_azucarino_gl: c.tenor_azucarino_gl ? Number(c.tenor_azucarino_gl) : null,
+      uva_organica: c.uva_organica,
     })),
   };
 }
@@ -208,6 +256,15 @@ export async function getPublicLote(loteId: string) {
     Array.from(cuartelIds).map((cuartelId) => resolverTrazabilidadCuartel(cuartelId)),
   );
 
+  const historial = (await resolverHistorialLote(loteId)) ?? [];
+
+  // Si ya hay un Producto creado con este lote como origen (aunque todavía no se
+  // haya fraccionado nada), se muestra su nombre comercial en vez del código pelado.
+  const producto = await prisma.producto.findFirst({
+    where: { lote_origen_id: loteId },
+    select: { producto_id: true, nombre_comercial: true, varietal: true, anio: true, tipo: true },
+  });
+
   return {
     lote_id: genealogia.lote_id,
     codigo: genealogia.codigo,
@@ -215,6 +272,9 @@ export async function getPublicLote(loteId: string) {
     genealogia,
     cius,
     cuarteles: cuarteles.filter((c): c is NonNullable<typeof c> => c !== null),
+    /** Qué pasó con este lote en la bodega: origen, movimientos entre vasijas, uso en otro corte. */
+    historial,
+    producto,
   };
 }
 
@@ -304,6 +364,14 @@ export async function getPublicProducto(codigoQr: string) {
     Array.from(cuartelIds).map((cuartelId) => resolverTrazabilidadCuartel(cuartelId)),
   );
 
+  // Qué pasó en la bodega con el/los lote(s) resultado (normalmente uno solo): el
+  // propio corte, a qué vasija fue a parar, si después se usó en otro corte, etc.
+  const historialPorRaiz = await Promise.all(raices.map((loteId) => resolverHistorialLote(loteId)));
+  const historial: LoteHistorialEvento[] = historialPorRaiz
+    .filter((h): h is LoteHistorialEvento[] => h !== null)
+    .flat()
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+
   return {
     codigo_envase_id: codigo.codigo_envase_id,
     codigo_qr: codigo.codigo_qr,
@@ -323,5 +391,6 @@ export async function getPublicProducto(codigoQr: string) {
     genealogia,
     cius,
     cuarteles: cuarteles.filter((c): c is NonNullable<typeof c> => c !== null),
+    historial,
   };
 }

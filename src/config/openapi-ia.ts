@@ -12,7 +12,8 @@ const openapiIaSpec = {
   info: {
     title: "Traza IA API",
     version: "1.1.0",
-    description: "API de integración para bots y agentes sobre Traza.",
+    description:
+      "API de integración para bots y agentes sobre Traza.\n\n📄 [Versión Markdown de esta documentación](/docs/ia/api.md) — para pegar directo en un chat con un bot/IA. Se genera a partir de este mismo spec, así que siempre está al día.",
   },
   servers: [
     {
