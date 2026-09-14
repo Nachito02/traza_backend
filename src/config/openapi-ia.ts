@@ -12,6 +12,8 @@ const openapiIaSpec = {
     version: "1.2.0",
     description:
       "API de integración para el **agente de IA / bot** sobre Traza.\n\n" +
+      "📄 [Versión Markdown de esta documentación](/docs/ia/api.md) — para pegar directo en un chat con un bot/IA. " +
+      "Se genera a partir de este mismo spec, así que siempre está al día.\n\n" +
       "**Base:** todas las rutas cuelgan de `/api/ia`.\n\n" +
       "**Autenticación:** enviar `Authorization: Bearer <token>` en todas las llamadas, salvo `/auth/login`. " +
       "El token se obtiene con `/auth/login` (bot_agent o super_agent).\n\n" +
@@ -230,7 +232,8 @@ const openapiIaSpec = {
         summary: "Crear cuartel en una finca (requiere delegación)",
         description:
           "Da de alta un cuartel en una finca. Requiere `fincaId` y `codigoCuartel`; el resto (superficie, " +
-          "variedad, sistema de riego, etc.) es opcional. El bot necesita delegación con scope `cuarteles.crear`.",
+          "variedad, sistema de riego, etc.) es opcional. Alcanza con el rol de bot: esta acción NO exige " +
+          "un scope delegado. Los scopes válidos son solo los de `tareas.*` (ver `GET /bot/scopes`).",
         requestBody: {
           required: true,
           content: {

@@ -586,6 +586,7 @@ model Lote {
   corte_componente      CorteComponente[]
   composicion_hijo      LoteComposicion[]     @relation("LoteComposicionHijo")
   composicion_padre     LoteComposicion[]     @relation("LoteComposicionPadre")
+  producto              Producto[]
 
   @@unique([bodega_id, codigo], map: "uq_lote_bodega_codigo")
   @@index([bodega_id, cuartel_id, campania_id], map: "idx_lote_bodega_cuartel_campania")
@@ -761,12 +762,18 @@ model Producto {
   anio                 Int?
   tipo                 String?
   activo               Boolean               @default(true)
+  /// Lote del que salió este producto — opcional: da trazabilidad desde que se
+  /// crea el producto, sin esperar a que se fraccione (fraccionamiento/despacho
+  /// son eventos posteriores en la misma historia, no un prerrequisito).
+  lote_origen_id       String?               @db.Uuid
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
   bodega               Bodega                @relation(fields: [bodega_id], references: [bodega_id], onDelete: Restrict, onUpdate: NoAction)
+  lote_origen          Lote?                 @relation(fields: [lote_origen_id], references: [lote_id], onDelete: SetNull, onUpdate: NoAction)
   lote_fraccionamiento LoteFraccionamiento[]
 
   @@unique([bodega_id, nombre_comercial], map: "uq_producto_bodega_nombre")
   @@index([bodega_id], map: "idx_producto_bodega")
+  @@index([lote_origen_id], map: "idx_producto_lote_origen")
   @@map("producto")
 }
 
