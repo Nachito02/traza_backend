@@ -7,6 +7,7 @@ import {
   isValidSistemaRiego,
   isValidSistemaConduccion,
   isValidVariedad,
+  isValidCustomDescription,
   normalizeCultivo,
   normalizeManejoCultivo,
   normalizeSistemaRiego,
@@ -75,13 +76,14 @@ function normalizeCuartelCatalogFields(input: {
   }
 
   const variedad = normalizeVariedad(input.variedad);
-  if (!isValidVariedad(variedad)) {
-    throw new CuartelError("Variedad inválida. Seleccioná una variedad del catálogo.", 400);
+  if (!isValidVariedad(variedad) && !isValidCustomDescription(variedad)) {
+    throw new CuartelError("Ingresá una variedad de hasta 200 caracteres.", 400);
   }
 
-  const tipoFromVariedad = getTipoVariedadForVariedad(variedad);
+  const tipoFromVariedad = isValidVariedad(variedad) ? getTipoVariedadForVariedad(variedad) : null;
   const tipoVariedad = normalizeTipoVariedad(input.tipo_variedad) ?? tipoFromVariedad;
-  if (tipoVariedad !== tipoFromVariedad) {
+  if (!tipoVariedad) throw new CuartelError("Seleccioná el tipo de variedad: tinta, blanca o rosada.", 400);
+  if (tipoFromVariedad && tipoVariedad !== tipoFromVariedad) {
     throw new CuartelError("El tipo de variedad no coincide con la variedad seleccionada.", 400);
   }
 

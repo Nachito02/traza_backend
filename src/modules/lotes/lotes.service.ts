@@ -399,7 +399,7 @@ type CrearCorteConVasijasInput = {
   responsableUserId?: string;
   observaciones?: string;
   fuentes: Array<{ vasijaId: string; volumenL: number }>;
-  destinoVasijaId?: string;
+  destinos: Array<{ vasijaId: string; volumenL: number }>;
 };
 
 /**
@@ -407,8 +407,10 @@ type CrearCorteConVasijasInput = {
  * vasijas sacar y cuánto volumen. El sistema valida contra el ledger de cada
  * vasija, arma el Corte + CorteComponente (histórico), crea el Lote resultado del
  * blend con su código, y registra en LoteComposicion de qué lotes padre viene (con
- * el % efectivo). Si se indica vasija destino, ahí queda la fila de VasijaContenido
- * del lote nuevo (no se repiten los lotes padre en el destino).
+ * el % efectivo). El resultado se reparte en una o más vasijas destino (obligatorio
+ * elegir al menos una) — cada una recibe una fila de VasijaContenido del lote nuevo;
+ * la composición (% por lote padre) es una propiedad del lote, no de dónde quedó
+ * guardado, así que repartirlo en varias vasijas no cambia esa cuenta.
  */
 export async function crearCorteConVasijas(input: CrearCorteConVasijasInput) {
   const {
@@ -420,7 +422,7 @@ export async function crearCorteConVasijas(input: CrearCorteConVasijasInput) {
     responsableUserId,
     observaciones,
     fuentes,
-    destinoVasijaId,
+    destinos,
   } = input;
 
   if (!bodegaId || !fecha) {
@@ -434,9 +436,22 @@ export async function crearCorteConVasijas(input: CrearCorteConVasijasInput) {
       throw new LoteError("Cada fuente necesita vasija y un volumen mayor a 0", 400);
     }
   }
+  if (!destinos || destinos.length === 0) {
+    throw new LoteError("Elegí al menos una vasija destino", 400);
+  }
+  for (const d of destinos) {
+    if (!d.vasijaId || !(d.volumenL > 0)) {
+      throw new LoteError("Cada destino necesita vasija y un volumen mayor a 0", 400);
+    }
+  }
+  if (new Set(destinos.map((d) => d.vasijaId)).size !== destinos.length) {
+    throw new LoteError("No repitas la misma vasija destino", 400);
+  }
   await ensureUserBodega(userId, bodegaId);
 
-  const vasijaIds = Array.from(new Set([...fuentes.map((f) => f.vasijaId), ...(destinoVasijaId ? [destinoVasijaId] : [])]));
+  const vasijaIds = Array.from(
+    new Set([...fuentes.map((f) => f.vasijaId), ...destinos.map((d) => d.vasijaId)]),
+  );
   const vasijas = await prisma.vasija.findMany({ where: { vasija_id: { in: vasijaIds } } });
   if (vasijas.length !== vasijaIds.length || vasijas.some((v) => v.bodega_id !== bodegaId)) {
     throw new LoteError("Alguna vasija no pertenece a la bodega", 400);
@@ -469,6 +484,14 @@ export async function crearCorteConVasijas(input: CrearCorteConVasijasInput) {
 
     if (aportesPorLote.size === 0) {
       throw new LoteError("Las vasijas elegidas no tienen composición registrada", 400);
+    }
+
+    const volumenDestinos = destinos.reduce((acc, d) => acc + d.volumenL, 0);
+    if (Math.abs(volumenDestinos - volumenTotal) > EPSILON_VOLUMEN_L) {
+      throw new LoteError(
+        `La suma de las vasijas destino (${volumenDestinos.toFixed(2)} l) no coincide con el volumen total del corte (${volumenTotal.toFixed(2)} l)`,
+        400,
+      );
     }
 
     const corte = await tx.corte.create({
@@ -529,15 +552,17 @@ export async function crearCorteConVasijas(input: CrearCorteConVasijasInput) {
       })),
     });
 
-    if (destinoVasijaId && volumenTotal > EPSILON_VOLUMEN_L) {
-      await tx.vasijaContenido.create({
-        data: {
-          vasija_id: destinoVasijaId,
-          lote_id: loteBlend.lote_id,
-          desde: fechaHoraDate,
-          volumen_l: volumenTotal,
-        },
-      });
+    for (const destino of destinos) {
+      if (destino.volumenL > EPSILON_VOLUMEN_L) {
+        await tx.vasijaContenido.create({
+          data: {
+            vasija_id: destino.vasijaId,
+            lote_id: loteBlend.lote_id,
+            desde: fechaHoraDate,
+            volumen_l: destino.volumenL,
+          },
+        });
+      }
     }
 
     return tx.corte.findUnique({
@@ -701,6 +726,196 @@ export async function getLoteGenealogia(loteId: string, userId: string) {
   const cius = Array.from(ciusMap.values()).sort((a, b) => b.porcentaje_efectivo - a.porcentaje_efectivo);
 
   return { genealogia, cius };
+}
+
+// ── Historial (línea de tiempo de todo lo que le pasó al lote) ─────────────
+
+export type LoteHistorialEvento =
+  | {
+      kind: "origen_ingreso";
+      fecha: string;
+      recepciones: Array<{ codigo_ciu: string | null; fecha_hora: string; kg_pesados: number | null }>;
+    }
+  | {
+      kind: "origen_corte";
+      fecha: string;
+      corte_id: string;
+      objetivo: string | null;
+      componentes: Array<{ lote_id: string; lote_codigo: string; porcentaje: number }>;
+    }
+  | {
+      kind: "movimiento_vasija";
+      fecha: string;
+      vasija_codigo: string;
+      volumen_l: number;
+      cerrado: boolean;
+      tipo_operacion: string | null;
+      observaciones: string | null;
+      responsable: string | null;
+      /** Controles de fermentación registrados en esa vasija mientras este lote estuvo ahí. */
+      analisis: Array<{
+        fecha_hora: string;
+        densidad: number | null;
+        temperatura: number | null;
+        brix: number | null;
+        ph: number | null;
+        acidez: number | null;
+        estado_fermentacion: string | null;
+        observaciones: string | null;
+      }>;
+      /** Existencias (volumen/alcohol/azúcar residual) registradas en esa vasija en esa ventana. */
+      existencias: Array<{
+        fecha_hora: string;
+        volumen_l: number | null;
+        grado_alcohol: number | null;
+        azucar_residual_g_l: number | null;
+        observaciones: string | null;
+      }>;
+    }
+  | {
+      kind: "usado_en_corte";
+      fecha: string;
+      corte_id: string;
+      lote_resultado_id: string;
+      lote_resultado_codigo: string;
+      porcentaje: number;
+    };
+
+/**
+ * Arma la línea de tiempo de un lote (origen, movimientos entre vasijas, uso
+ * como componente de un corte posterior) sin chequeo de bodega/usuario — la
+ * usa tanto la versión autenticada (`getLoteHistorial`) como el endpoint
+ * público de producto/lote, que necesita mostrar "qué pasó en la bodega"
+ * además de la línea de campo.
+ */
+export async function resolverHistorialLote(loteId: string): Promise<LoteHistorialEvento[] | null> {
+  const lote = await prisma.lote.findUnique({
+    where: { lote_id: loteId },
+    include: {
+      lote_origen_recepcion: {
+        include: { recepcion_bodega: { include: { ciu: true } } },
+      },
+      corte_origen: {
+        select: { corte_id: true, fecha: true, objetivo: true },
+      },
+      composicion_hijo: {
+        include: { lote_padre: { select: { lote_id: true, codigo: true } } },
+      },
+    },
+  });
+  if (!lote) return null;
+
+  const eventos: LoteHistorialEvento[] = [];
+
+  if (lote.origen === "ingreso" && lote.lote_origen_recepcion.length > 0) {
+    const recepciones = lote.lote_origen_recepcion.map((lor) => ({
+      codigo_ciu: lor.recepcion_bodega.ciu?.codigo_ciu ?? null,
+      fecha_hora: lor.recepcion_bodega.fecha_hora.toISOString(),
+      kg_pesados: lor.recepcion_bodega.kg_pesados ? Number(lor.recepcion_bodega.kg_pesados) : null,
+    }));
+    const fecha = recepciones.reduce(
+      (min, r) => (r.fecha_hora < min ? r.fecha_hora : min),
+      recepciones[0]!.fecha_hora,
+    );
+    eventos.push({ kind: "origen_ingreso", fecha, recepciones });
+  }
+
+  if (lote.origen === "corte" && lote.corte_origen) {
+    eventos.push({
+      kind: "origen_corte",
+      fecha: lote.corte_origen.fecha.toISOString(),
+      corte_id: lote.corte_origen.corte_id,
+      objetivo: lote.corte_origen.objetivo,
+      componentes: lote.composicion_hijo.map((c) => ({
+        lote_id: c.lote_padre.lote_id,
+        lote_codigo: c.lote_padre.codigo,
+        porcentaje: Number(c.porcentaje ?? 0),
+      })),
+    });
+  }
+
+  const movimientos = await prisma.vasijaContenido.findMany({
+    where: { lote_id: loteId },
+    include: {
+      vasija: { select: { codigo: true } },
+      operacion_vasija: { include: { app_user: { select: { nombre: true } } } },
+    },
+    orderBy: { desde: "asc" },
+  });
+  for (const m of movimientos) {
+    // Análisis de laboratorio de esa vasija mientras este lote estuvo ahí (por ventana
+    // de fecha — estos controles son por vasija, no por lote, no hay FK directa).
+    const ventana = { gte: m.desde, ...(m.hasta ? { lte: m.hasta } : {}) };
+    const [controles, existencias] = await Promise.all([
+      prisma.controlFermentacion.findMany({
+        where: { vasija_id: m.vasija_id, fecha_hora: ventana },
+        orderBy: { fecha_hora: "asc" },
+      }),
+      prisma.existenciaVasija.findMany({
+        where: { vasija_id: m.vasija_id, fecha_hora: ventana },
+        orderBy: { fecha_hora: "asc" },
+      }),
+    ]);
+
+    eventos.push({
+      kind: "movimiento_vasija",
+      fecha: m.desde.toISOString(),
+      vasija_codigo: m.vasija.codigo,
+      volumen_l: Number(m.volumen_l ?? 0),
+      cerrado: m.hasta !== null,
+      tipo_operacion: m.operacion_vasija?.tipo ?? null,
+      observaciones: m.operacion_vasija?.observaciones ?? null,
+      responsable: m.operacion_vasija?.app_user?.nombre ?? null,
+      analisis: controles.map((c) => ({
+        fecha_hora: c.fecha_hora.toISOString(),
+        densidad: c.densidad ? Number(c.densidad) : null,
+        temperatura: c.temperatura ? Number(c.temperatura) : null,
+        brix: c.brix ? Number(c.brix) : null,
+        ph: c.ph ? Number(c.ph) : null,
+        acidez: c.acidez ? Number(c.acidez) : null,
+        estado_fermentacion: c.estado_fermentacion,
+        observaciones: c.observaciones,
+      })),
+      existencias: existencias.map((e) => ({
+        fecha_hora: e.fecha_hora.toISOString(),
+        volumen_l: e.volumen_l ? Number(e.volumen_l) : null,
+        grado_alcohol: e.grado_alcohol ? Number(e.grado_alcohol) : null,
+        azucar_residual_g_l: e.azucar_residual_g_l ? Number(e.azucar_residual_g_l) : null,
+        observaciones: e.observaciones,
+      })),
+    });
+  }
+
+  const usosComoComponente = await prisma.loteComposicion.findMany({
+    where: { lote_padre_id: loteId },
+    include: {
+      lote: { select: { lote_id: true, codigo: true } },
+      corte: { select: { corte_id: true, fecha: true } },
+    },
+  });
+  for (const uso of usosComoComponente) {
+    if (!uso.corte) continue;
+    eventos.push({
+      kind: "usado_en_corte",
+      fecha: uso.corte.fecha.toISOString(),
+      corte_id: uso.corte.corte_id,
+      lote_resultado_id: uso.lote.lote_id,
+      lote_resultado_codigo: uso.lote.codigo,
+      porcentaje: Number(uso.porcentaje ?? 0),
+    });
+  }
+
+  return eventos.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+}
+
+export async function getLoteHistorial(loteId: string, userId: string): Promise<LoteHistorialEvento[]> {
+  const lote = await prisma.lote.findUnique({ where: { lote_id: loteId }, select: { bodega_id: true } });
+  if (!lote) throw new LoteError("Lote no encontrado", 404);
+  await ensureUserBodega(userId, lote.bodega_id);
+
+  const eventos = await resolverHistorialLote(loteId);
+  if (!eventos) throw new LoteError("Lote no encontrado", 404);
+  return eventos;
 }
 
 function campoDecimal(v: unknown): string {

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "../../config/prismaClient.js";
 import type { Prisma } from "../../generated/prisma/index.js";
 import type { IpfsUploadResult } from "../../lib/ipfs.js";
@@ -57,6 +58,8 @@ type CreateProductoInput = {
   anio?: number;
   tipo?: string;
   activo?: boolean;
+  /** Lote del que sale este producto — da trazabilidad desde que se crea, sin esperar a fraccionarlo. */
+  loteId?: string;
 };
 
 type UpdateProductoInput = {
@@ -87,7 +90,7 @@ type UpdateLoteFraccionamientoInput = {
 type CreateCodigoEnvaseInput = {
   userId: string;
   loteFraccionamientoId: string;
-  codigo_qr: string;
+  codigo_qr?: string;
   codigo_lote_impreso?: string;
 };
 
@@ -831,7 +834,7 @@ export async function listCortes(userId: string, bodegaId?: string) {
     await ensureUserBodega(userId, bodegaId);
     return prisma.corte.findMany({
       where: { bodega_id: bodegaId },
-      include: { corte_componente: true },
+      include: { corte_componente: true, lote_creado: { select: { lote_id: true, codigo: true } } },
       orderBy: [{ fecha: "desc" }],
     });
   }
@@ -839,7 +842,7 @@ export async function listCortes(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.corte.findMany({
     where: { bodega_id: { in: bodegaIds } },
-    include: { corte_componente: true },
+    include: { corte_componente: true, lote_creado: { select: { lote_id: true, codigo: true } } },
     orderBy: [{ fecha: "desc" }],
   });
 }
@@ -1005,19 +1008,28 @@ export async function deleteCorte(corteId: string, userId: string) {
   return { deleted: true };
 }
 
+const PRODUCTO_LISTA_INCLUDE = {
+  lote_origen: { select: { lote_id: true, codigo: true } },
+  lote_fraccionamiento: {
+    select: { lote_fraccionamiento_id: true, codigo_envase: { select: { codigo_qr: true } } },
+  },
+} satisfies Prisma.ProductoInclude;
+
 export async function listProductos(userId: string, bodegaId?: string) {
   if (bodegaId) {
     await ensureUserBodega(userId, bodegaId);
     return prisma.producto.findMany({
       where: { bodega_id: bodegaId },
-      orderBy: [{ nombre_comercial: "asc" }],
+      include: PRODUCTO_LISTA_INCLUDE,
+      orderBy: [{ created_at: "desc" }],
     });
   }
   const bodegaIds = await getUserBodegaIds(userId);
   if (bodegaIds.length === 0) return [];
   return prisma.producto.findMany({
     where: { bodega_id: { in: bodegaIds } },
-    orderBy: [{ nombre_comercial: "asc" }],
+    include: PRODUCTO_LISTA_INCLUDE,
+    orderBy: [{ created_at: "desc" }],
   });
 }
 
@@ -1027,11 +1039,17 @@ export async function getProductoById(productoId: string, userId: string) {
 }
 
 export async function createProducto(input: CreateProductoInput) {
-  const { userId, bodegaId, nombre_comercial, varietal, anio, tipo, activo } = input;
+  const { userId, bodegaId, nombre_comercial, varietal, anio, tipo, activo, loteId } = input;
   if (!bodegaId || !nombre_comercial) {
     throw new ElaboracionError("bodegaId y nombre_comercial son requeridos", 400);
   }
   await ensureUserBodega(userId, bodegaId);
+  if (loteId) {
+    const lote = await prisma.lote.findUnique({ where: { lote_id: loteId }, select: { bodega_id: true } });
+    if (!lote || lote.bodega_id !== bodegaId) {
+      throw new ElaboracionError("El lote de origen no pertenece a la bodega", 400);
+    }
+  }
   return prisma.producto.create({
     data: {
       bodega_id: bodegaId,
@@ -1040,6 +1058,7 @@ export async function createProducto(input: CreateProductoInput) {
       ...(anio !== undefined ? { anio } : {}),
       ...(tipo !== undefined ? { tipo } : {}),
       ...(activo !== undefined ? { activo } : {}),
+      ...(loteId ? { lote_origen_id: loteId } : {}),
     },
   });
 }
@@ -1184,7 +1203,12 @@ export async function listCodigosEnvase(
         : {}),
     },
     include: {
-      lote_fraccionamiento: true,
+      lote_fraccionamiento: {
+        include: {
+          producto: true,
+          corte: { select: { fecha: true } },
+        },
+      },
     },
     orderBy: [{ created_at: "desc" }],
   });
@@ -1204,12 +1228,38 @@ export async function getCodigoEnvaseById(codigoEnvaseId: string, userId: string
   return codigo;
 }
 
+/** Código corto, único y URL-safe para el QR del envase (12 hex mayúsculas ≈ 48 bits de entropía). */
+function generarCodigoQrEnvase(): string {
+  return randomBytes(6).toString("hex").toUpperCase();
+}
+
 export async function createCodigoEnvase(input: CreateCodigoEnvaseInput) {
-  const { userId, loteFraccionamientoId, codigo_qr, codigo_lote_impreso } = input;
-  if (!loteFraccionamientoId || !codigo_qr) {
-    throw new ElaboracionError("loteFraccionamientoId y codigo_qr son requeridos", 400);
+  const { userId, loteFraccionamientoId, codigo_lote_impreso } = input;
+  if (!loteFraccionamientoId) {
+    throw new ElaboracionError("loteFraccionamientoId es requerido", 400);
   }
   await getLoteFraccionamientoScoped(loteFraccionamientoId, userId);
+
+  // El código de QR es el identificador público del producto (termina impreso
+  // en la etiqueta) — se genera acá en vez de dejarlo tipear a mano. Si el
+  // caller igual manda uno explícito (ej. edición futura), se respeta.
+  let codigo_qr = input.codigo_qr?.trim();
+  if (!codigo_qr) {
+    for (let intento = 0; intento < 5; intento++) {
+      const candidato = generarCodigoQrEnvase();
+      const existe = await prisma.codigoEnvase.findUnique({
+        where: { codigo_qr: candidato },
+        select: { codigo_envase_id: true },
+      });
+      if (!existe) {
+        codigo_qr = candidato;
+        break;
+      }
+    }
+    if (!codigo_qr) {
+      throw new ElaboracionError("No se pudo generar un código de QR único, reintentá.", 500);
+    }
+  }
 
   return prisma.codigoEnvase.create({
     data: {
@@ -2052,7 +2102,7 @@ export async function listDespachos(userId: string, bodegaId?: string) {
   if (bodegaIds.length === 0) return [];
   return prisma.despacho.findMany({
     where: { lote_fraccionamiento: { producto: { bodega_id: { in: bodegaIds } } } },
-    include: { lote_fraccionamiento: true },
+    include: { lote_fraccionamiento: { include: { producto: true } } },
     orderBy: [{ fecha: "desc" }],
   });
 }

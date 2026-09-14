@@ -81,12 +81,17 @@ export function isValidVariedad(value: unknown) {
   return typeof value === "string" && VARIEDAD_VALUES.includes(value.trim());
 }
 
+export function isValidCustomDescription(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 200 &&
+    !["otro", "otra", "otros", "otras", "__custom__", "__otro__", "__otra__"].includes(value.trim().toLowerCase());
+}
+
 export function normalizeVariedad(value: unknown) {
   if (typeof value !== "string") return "";
   const normalized = slugCatalogValue(value);
   if (normalized === "aspirant_bouschet") return "aspiran_bouschet";
   if (normalized === "pedro_jimenez") return "pedro_gimenez";
-  return normalized;
+  return VARIEDAD_VALUES.includes(normalized) ? normalized : value.trim();
 }
 
 export function normalizeManejoCultivo(value: unknown) {
@@ -101,14 +106,14 @@ export function normalizeManejoCultivo(value: unknown) {
   }
   if (normalized === "labranza_cero_cobertura_vegetal") return normalized;
   if (normalized === "biodinamico") return "biodinamica";
-  return normalized;
+  return MANEJO_CULTIVO_VALUES.includes(normalized as (typeof MANEJO_CULTIVO_VALUES)[number]) ? normalized : value.trim();
 }
 
 export function isValidManejoCultivo(value: unknown) {
   return (
     value === null ||
     (typeof value === "string" &&
-      MANEJO_CULTIVO_VALUES.includes(value as (typeof MANEJO_CULTIVO_VALUES)[number]))
+      (MANEJO_CULTIVO_VALUES.includes(value as (typeof MANEJO_CULTIVO_VALUES)[number]) || isValidCustomDescription(value)))
   );
 }
 
@@ -118,14 +123,14 @@ export function normalizeSistemaRiego(value: unknown) {
   const normalized = slugCatalogValue(value);
   if (normalized === "aspersión") return "aspersion";
   if (normalized === "micro_aspersion") return "microaspersion";
-  return normalized;
+  return SISTEMA_RIEGO_VALUES.includes(normalized as (typeof SISTEMA_RIEGO_VALUES)[number]) ? normalized : value.trim();
 }
 
 export function isValidSistemaRiego(value: unknown) {
   return (
     value === null ||
     (typeof value === "string" &&
-      SISTEMA_RIEGO_VALUES.includes(value as (typeof SISTEMA_RIEGO_VALUES)[number]))
+      (SISTEMA_RIEGO_VALUES.includes(value as (typeof SISTEMA_RIEGO_VALUES)[number]) || isValidCustomDescription(value)))
   );
 }
 
@@ -137,14 +142,14 @@ export function normalizeSistemaConduccion(value: unknown) {
     return "cordon_bilateral_doble_cordon";
   }
   if (normalized === "gobelet") return "vaso";
-  return normalized;
+  return SISTEMA_CONDUCCION_VALUES.includes(normalized as (typeof SISTEMA_CONDUCCION_VALUES)[number]) ? normalized : value.trim();
 }
 
 export function isValidSistemaConduccion(value: unknown) {
   return (
     value === null ||
     (typeof value === "string" &&
-      SISTEMA_CONDUCCION_VALUES.includes(value as (typeof SISTEMA_CONDUCCION_VALUES)[number]))
+      (SISTEMA_CONDUCCION_VALUES.includes(value as (typeof SISTEMA_CONDUCCION_VALUES)[number]) || isValidCustomDescription(value)))
   );
 }
 

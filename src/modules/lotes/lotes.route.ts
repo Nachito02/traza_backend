@@ -8,6 +8,7 @@ import {
   getLoteCiusExportHandler,
   getLoteGenealogiaHandler,
   getLoteHandler,
+  getLoteHistorialHandler,
   listLotesHandler,
   listRecepcionesParaLoteHandler,
   updateLoteHandler,
@@ -19,6 +20,7 @@ lotesRoutes.get("/lotes", authMiddleware, listLotesHandler);
 lotesRoutes.post("/lotes", authMiddleware, crearLoteHandler);
 lotesRoutes.post("/lotes/blend", authMiddleware, crearCorteConVasijasHandler);
 lotesRoutes.get("/lotes/:id/genealogia", authMiddleware, getLoteGenealogiaHandler);
+lotesRoutes.get("/lotes/:id/historial", authMiddleware, getLoteHistorialHandler);
 lotesRoutes.get("/lotes/:id/cius-export", authMiddleware, getLoteCiusExportHandler);
 lotesRoutes.get("/lotes/:id/impacto-borrado", authMiddleware, getImpactoBorradoLoteHandler);
 lotesRoutes.get("/lotes/:id", authMiddleware, getLoteHandler);

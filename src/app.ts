@@ -9,6 +9,7 @@ import { routes } from './routes/index.js';
 import swaggerUi from "swagger-ui-express";
 import openapiSpec from "./config/openapi.js";
 import openapiIaSpec from "./config/openapi-ia.js";
+import { generateApiMarkdown } from "./config/openapi-markdown.js";
 
 const app = express();
 app.set('trust proxy', 1);
@@ -42,6 +43,15 @@ app.use(
 app.use('/uploads', express.static('uploads'));
 app.get("/docs/spec.json", (_req, res) => res.json(openapiSpec));
 app.get("/docs/ia/spec.json", (_req, res) => res.json(openapiIaSpec));
+
+// Markdown generado en caliente a partir del spec — se autoactualiza con openapi.ts/openapi-ia.ts.
+// Pensado para pegar directo en un chat/bot: texto plano, sin necesidad de renderizar Swagger.
+app.get("/docs/api.md", (_req, res) => {
+  res.type("text/markdown; charset=utf-8").send(generateApiMarkdown(openapiSpec));
+});
+app.get("/docs/ia/api.md", (_req, res) => {
+  res.type("text/markdown; charset=utf-8").send(generateApiMarkdown(openapiIaSpec));
+});
 
 // /docs/ia debe ir ANTES que /docs para evitar captura por prefijo.
 const iaDocsOpts = {
