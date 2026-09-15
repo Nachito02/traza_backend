@@ -45,5 +45,6 @@
   },
 
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  // Los .test.ts corren con vitest (que transpila por su cuenta): no deben ir a dist/.
+  "exclude": ["node_modules", "src/**/*.test.ts", "vitest.config.ts"]
 }

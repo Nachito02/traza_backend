@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { normalizeManejoCultivo, normalizeSistemaConduccion, normalizeSistemaRiego, normalizeVariedad, isValidCustomDescription, isValidManejoCultivo, isValidSistemaConduccion, isValidSistemaRiego, isValidVariedad, getTipoVariedadForVariedad } from "./cuartel.catalog.js";
 
 test("conserva códigos conocidos y alias", () => {
