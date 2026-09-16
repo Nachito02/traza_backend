@@ -1768,7 +1768,7 @@ model TareaEjecucion {
   modalidad              ModalidadEjecucion
   fecha_inicio           DateTime?          @db.Date
   fecha_fin              DateTime?          @db.Date
-  superficie_intervenida Decimal            @db.Decimal(10, 2)
+  superficie_intervenida Decimal?           @db.Decimal(10, 2)
   unidad_superficie      String             @default("ha")
   pct_intervenido        Decimal?           @db.Decimal(5, 2)
   cantidad_ejecutada     Decimal?           @db.Decimal(14, 2)

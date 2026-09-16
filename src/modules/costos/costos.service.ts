@@ -423,15 +423,19 @@ export async function upsertEjecucion(
   const tieneHorasOperario = horasHombreTotales > 0;
   const jornalesAuto = tieneHorasOperario ? money(horasHombreTotales / 8) : null;
 
-  // Regla de negocio: no hay actividad sin superficie intervenida.
-  const superficie = parseRequiredPositive(input.superficie_intervenida, "Superficie intervenida");
-  if (superficie <= 0) {
-    throw new CostoError("La superficie intervenida debe ser mayor a 0", 400);
-  }
+  // La superficie es opcional: hay procesos que no intervienen hectáreas (capacitaciones,
+  // accidentes, mantenimiento de equipos). `null` significa "no aplica" y es distinto de 0,
+  // que sigue siendo un valor válido. Quien decide si pedirla es la política del frontend
+  // (features/actividades/superficiePolicy.ts); acá solo se valida que, si viene, sea un
+  // número no negativo.
+  const superficie = parsePositiveOrNull(input.superficie_intervenida, "Superficie intervenida");
 
-  // % intervenido respecto del cuartel (si se conoce la superficie del cuartel).
+  // % intervenido respecto del cuartel. Sin superficie declarada no hay porcentaje que calcular.
   const superficieCuartel = num(tarea.cuartel?.superficie_ha);
-  const pct = superficieCuartel > 0 ? money((superficie / superficieCuartel) * 100) : null;
+  const pct =
+    superficie !== null && superficie > 0 && superficieCuartel > 0
+      ? money((superficie / superficieCuartel) * 100)
+      : null;
 
   const data = {
     modalidad: input.modalidad as ModalidadEjecucion,

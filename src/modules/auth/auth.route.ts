@@ -23,6 +23,12 @@ export const authRoutes = Router();
 
 authRoutes.post("/login", loginHandler);
 authRoutes.post("/change-password", changePasswordHandler);
+// TODO(seguridad): cerrar el alta de usuarios por API.
+// Esta ruta es PÚBLICA —no pasa por authMiddleware— y usa el mismo createUserHandler que
+// POST /users, que sí está protegido. O sea: hoy cualquiera con la URL puede crearse un
+// usuario. El frontend ya no la consume (la pantalla de registro se eliminó: el alta la
+// hacemos nosotros en la configuración inicial), así que borrarla no rompe la app.
+// Al cerrarla, revisar también scripts/create-admin.ts, que es el camino que debería quedar.
 authRoutes.post("/register", createUserHandler);
 authRoutes.get("/me", authMiddleware, meHandler);
 authRoutes.get("/me/bodegas", authMiddleware, meBodegasHandler);

@@ -116,7 +116,10 @@ No se puede cargar una máquina ad-hoc con nombre/costo manual.
 ---
 
 ## 📋 Reglas de negocio implementadas (de la spec)
-- No hay actividad sin superficie intervenida (> 0).
+- La superficie intervenida es opcional: 13 de los 27 procesos del catálogo no intervienen
+  hectáreas (capacitaciones, accidentes, entrega de EPP, mantenimiento de equipos…). `NULL`
+  significa "no aplica" y es distinto de `0` ("se intervinieron cero hectáreas"). Qué procesos
+  la exigen lo decide `features/actividades/superficiePolicy.ts` en el frontend.
 - Insumo obliga: producto + dosis/ha + cantidad total.
 - Máquina motriz propia obliga consumo de combustible (o tarifa con lts/hora).
 - Modalidad contratada/mixta obliga contratista + monto.
