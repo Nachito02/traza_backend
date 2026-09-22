@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 import { seedProtocol } from "./seed-protocol-from-doc.mjs";
+import { seedProtocoloVasijas } from "./seed-protocolo-vasijas.mjs";
 import { runSqlFile } from "./_psql.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -279,6 +280,7 @@ async function main() {
   await ensureBaseOperationData();
   const users = await ensureUsers();
   await seedProtocol(prisma);
+  await seedProtocoloVasijas(prisma);
 
   // Catálogos base (SQL, idempotentes): maestros globales + tarifas/insumos de la bodega demo.
   const rawUrl = process.env.DATABASE_URL;
