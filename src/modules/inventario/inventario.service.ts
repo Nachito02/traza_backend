@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prismaClient.js";
 import { canAccessBodega, canManageBodega } from "../auth/scope-permissions.service.js";
 import type { AmbitoInsumo } from "../../generated/prisma/index.js";
+import { parseInitialStock } from "./initial-stock.js";
 
 const AMBITOS: AmbitoInsumo[] = ["finca", "bodega"];
 
@@ -133,10 +134,19 @@ export async function createInsumo(input: {
   marca?: unknown;
   fabricante?: unknown;
   presentacion?: unknown;
+  stock_inicial?: unknown;
 }) {
   await ensureBodegaManage(input.userId, input.bodegaId);
-  return prisma.insumoCatalogo.create({
-    data: {
+  let stockInicial: number | null;
+  try {
+    stockInicial = parseInitialStock(input.stock_inicial);
+  } catch (error) {
+    throw new InventarioError(error instanceof Error ? error.message : "Stock inicial inválido", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const insumo = await tx.insumoCatalogo.create({
+      data: {
       bodega_id: input.bodegaId,
       ambito: parseAmbito(input.ambito, "finca")!,
       tipo: parseRequiredString(input.tipo, "Tipo"),
@@ -154,7 +164,25 @@ export async function createInsumo(input: {
       marca: parseOptionalString(input.marca),
       fabricante: parseOptionalString(input.fabricante),
       presentacion: parseOptionalString(input.presentacion),
-    },
+      },
+    });
+
+    if (stockInicial !== null) {
+      await tx.movimientoStock.create({
+        data: {
+          insumo_id: insumo.insumo_id,
+          bodega_id: input.bodegaId,
+          tipo: "ingreso",
+          cantidad: stockInicial,
+          unidad: insumo.unidad_base,
+          ...(insumo.costo_unitario !== null ? { costo_unitario: insumo.costo_unitario } : {}),
+          motivo: "Stock inicial",
+          created_by: input.userId,
+        },
+      });
+    }
+
+    return insumo;
   });
 }
 

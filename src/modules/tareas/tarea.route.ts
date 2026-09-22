@@ -14,6 +14,7 @@ import {
   eliminarTareaHandler,
   finalizarTareaAsignacionHandler,
   listBodegaPendientesHandler,
+  listTareasPendientesValidacionHandler,
   listTareaEntradasHandler,
   listTareasHandler,
   listMyTareasHandler,
@@ -66,6 +67,11 @@ tareaRoutes.get(
   "/bodega/:bodegaId/pendientes",
   authMiddleware,
   listBodegaPendientesHandler,
+);
+tareaRoutes.get(
+  "/bodega/:bodegaId/pendientes-validacion",
+  authMiddleware,
+  listTareasPendientesValidacionHandler,
 );
 tareaRoutes.patch(
   "/me/asignaciones/:tareaAsignacionId/estado",

@@ -14,6 +14,8 @@ import type {
   TipoCombustible,
   Prisma,
 } from "../../generated/prisma/index.js";
+import { calcularUsoMaquinaria } from "./maquinaria-cost.js";
+import { CLASE_MAQUINA, esClaseMaquina } from "./maquinaria-clase.js";
 
 export class CostoError extends Error {
   status: number;
@@ -128,7 +130,7 @@ async function loadTareaScoped(tareaId: string, userId: string) {
   return tarea;
 }
 
-const CLASES_MAQUINARIA = ["motriz", "implemento", "equipo", "herramienta"];
+const CLASES_MAQUINARIA = [CLASE_MAQUINA, "implemento", "equipo", "herramienta"];
 const TIPOS_COMBUSTIBLE = ["gasoil", "nafta", "electricidad", "glp", "otro"];
 const MODALIDADES = ["propia", "contratada", "mixta"];
 
@@ -496,8 +498,8 @@ export async function addActividadMaquina(
   userId: string,
   input: {
     tarifa_maquinaria_id?: unknown;
+    implemento_tarifa_maquinaria_id?: unknown;
     nombre?: unknown;
-    clase: string;
     propia?: unknown;
     cantidad?: unknown;
     horas: unknown;
@@ -505,41 +507,54 @@ export async function addActividadMaquina(
   },
 ) {
   const tarea = await loadTareaScoped(tareaId, userId);
-  if (!CLASES_MAQUINARIA.includes(input.clase)) {
-    throw new CostoError(`Clase inválida: ${input.clase}`, 400);
-  }
-
-  let nombre = typeof input.nombre === "string" ? input.nombre.trim() : "";
+  let nombre = "";
   let tarifaId: string | null = null;
+  let consumoHoraMaquina: unknown = null;
+  let implementoId: string | null = null;
+  let implementoNombre: string | null = null;
   if (typeof input.tarifa_maquinaria_id === "string" && input.tarifa_maquinaria_id) {
     const tarifa = await prisma.tarifaMaquinaria.findUnique({
       where: { tarifa_maquinaria_id: input.tarifa_maquinaria_id },
-      select: { tarifa_maquinaria_id: true, bodega_id: true, nombre: true },
+      select: { tarifa_maquinaria_id: true, bodega_id: true, nombre: true, clase: true, activo: true, consumo_lts_hora: true },
     });
-    if (!tarifa || tarifa.bodega_id !== tarea.bodega_id) {
+    if (!tarifa || tarifa.bodega_id !== tarea.bodega_id || !esClaseMaquina(tarifa.clase) || !tarifa.activo) {
       throw new CostoError("Tarifa de maquinaria inválida para esta bodega", 400);
     }
     tarifaId = tarifa.tarifa_maquinaria_id;
-    if (!nombre) nombre = tarifa.nombre;
+    nombre = tarifa.nombre;
+    consumoHoraMaquina = tarifa.consumo_lts_hora;
   }
-  if (!nombre) throw new CostoError("Nombre de máquina es obligatorio", 400);
+  if (!tarifaId || !nombre) throw new CostoError("La máquina es obligatoria", 400);
+
+  if (typeof input.implemento_tarifa_maquinaria_id === "string" && input.implemento_tarifa_maquinaria_id) {
+    const implemento = await prisma.tarifaMaquinaria.findUnique({
+      where: { tarifa_maquinaria_id: input.implemento_tarifa_maquinaria_id },
+      select: { tarifa_maquinaria_id: true, bodega_id: true, nombre: true, clase: true, activo: true },
+    });
+    if (!implemento || implemento.bodega_id !== tarea.bodega_id || implemento.clase !== "implemento" || !implemento.activo) {
+      throw new CostoError("Implemento inválido para esta bodega", 400);
+    }
+    implementoId = implemento.tarifa_maquinaria_id;
+    implementoNombre = implemento.nombre;
+  }
 
   const propia = input.propia === undefined ? true : Boolean(input.propia);
   const horas = parseRequiredPositive(input.horas, "Horas de utilización");
+  if (horas <= 0) {
+    throw new CostoError("Horas de utilización debe ser mayor a 0", 400);
+  }
+  const cantidad = parseIntOrNull(input.cantidad, "Cantidad de equipos");
+  if (cantidad !== null && cantidad < 1) {
+    throw new CostoError("Cantidad de equipos debe ser un entero mayor a 0", 400);
+  }
 
-  // Regla: si es máquina motriz propia, exigir consumo de combustible
+  // Regla: si es máquina propia, exigir consumo de combustible
   // (o que la tarifa tenga consumo_lts_hora para derivarlo).
   const consumo = parsePositiveOrNull(input.consumo_combustible_lts, "Consumo combustible");
-  if (input.clase === "motriz" && propia && consumo === null) {
-    const tarifa = tarifaId
-      ? await prisma.tarifaMaquinaria.findUnique({
-          where: { tarifa_maquinaria_id: tarifaId },
-          select: { consumo_lts_hora: true },
-        })
-      : null;
-    if (!tarifa?.consumo_lts_hora) {
+  if (propia && consumo === null) {
+    if (!consumoHoraMaquina) {
       throw new CostoError(
-        "Una máquina motriz propia requiere consumo de combustible (o una tarifa con consumo lts/hora)",
+        "Una máquina propia requiere consumo de combustible (o una tarifa con consumo lts/hora)",
         400,
       );
     }
@@ -549,10 +564,13 @@ export async function addActividadMaquina(
     data: {
       tarea_id: tareaId,
       tarifa_maquinaria_id: tarifaId,
+      implemento_tarifa_maquinaria_id: implementoId,
+      implemento_nombre: implementoNombre,
+      modelo_conjunto: true,
       nombre,
-      clase: input.clase as ClaseMaquinaria,
+      clase: CLASE_MAQUINA,
       propia,
-      cantidad: parseIntOrNull(input.cantidad, "Cantidad de equipos"),
+      cantidad,
       horas,
       consumo_combustible_lts: consumo,
     },
@@ -721,7 +739,7 @@ export async function deleteActividadContratista(id: string, userId: string) {
 /**
  * Recalcula y persiste los costos de una actividad (tarea).
  * - Snapshotea precios vigentes en cada línea de máquina/insumo.
- * - Deriva el combustible de las máquinas motrices.
+ * - Deriva el combustible de las máquinas.
  * - Reescribe las filas de `actividad_costo` (una por categoría).
  *
  * Pensado para llamarse cuando cambian datos de la actividad y al
@@ -739,7 +757,10 @@ export async function recalcularCostosTarea(tareaId: string) {
     prisma.tareaEjecucion.findUnique({ where: { tarea_id: tareaId } }),
     prisma.actividadMaquina.findMany({
       where: { tarea_id: tareaId },
-      include: { tarifa_maquinaria: { select: { costo_hora: true, consumo_lts_hora: true } } },
+      include: {
+        tarifa_maquinaria: { select: { costo_hora: true, consumo_lts_hora: true } },
+        implemento_tarifa_maquinaria: { select: { costo_hora: true } },
+      },
     }),
     prisma.actividadInsumo.findMany({
       where: { tarea_id: tareaId },
@@ -776,18 +797,29 @@ export async function recalcularCostosTarea(tareaId: string) {
     if (personas > 0) detalleManoObra.personas = personas;
   }
 
-  // 2) Maquinaria + 3) Combustible (derivado de motrices)
+  // 2) Maquinaria + 3) Combustible (derivado de máquinas)
   let montoMaquinaria = 0;
   let litrosCombustible = 0;
   for (const m of maquinas) {
-    const costoHora = num(m.tarifa_maquinaria?.costo_hora ?? m.costo_hora_snapshot);
     const horas = num(m.horas);
-    const totalLinea = money(costoHora * horas);
+    const esLegacy = !m.modelo_conjunto;
+    const tieneImplemento = Boolean(m.implemento_tarifa_maquinaria_id || m.implemento_nombre);
+    const uso = calcularUsoMaquinaria({
+      costoMaquina: num(m.tarifa_maquinaria?.costo_hora ?? m.costo_hora_snapshot),
+      costoImplemento: tieneImplemento
+        ? num(m.implemento_tarifa_maquinaria?.costo_hora ?? m.costo_hora_snapshot)
+        : null,
+      horas,
+      cantidad: esLegacy ? 1 : m.cantidad,
+      consumoHora: esClaseMaquina(m.clase) ? num(m.tarifa_maquinaria?.consumo_lts_hora) : 0,
+    });
+    const costoHora = uso.costoHoraEfectivo;
+    const totalLinea = uso.costoTotal;
 
-    // Litros: explícito o derivado de horas × consumo de la tarifa (sólo motriz).
+    // Litros: explícito o derivado de horas × consumo de la tarifa (sólo máquinas).
     let litros = m.consumo_combustible_lts !== null ? num(m.consumo_combustible_lts) : 0;
-    if (m.clase === "motriz" && litros === 0 && m.tarifa_maquinaria?.consumo_lts_hora) {
-      litros = num(m.tarifa_maquinaria.consumo_lts_hora) * horas;
+    if (esClaseMaquina(m.clase) && litros === 0 && m.tarifa_maquinaria?.consumo_lts_hora) {
+      litros = uso.combustibleDerivado;
     }
     litrosCombustible += litros;
     montoMaquinaria += totalLinea;

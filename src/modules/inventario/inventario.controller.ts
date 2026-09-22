@@ -107,6 +107,7 @@ export async function createInsumoHandler(req: Request, res: Response) {
       marca,
       fabricante,
       presentacion,
+      stock_inicial,
     } = req.body ?? {};
     const row = await createInsumo({
       userId,
@@ -127,6 +128,7 @@ export async function createInsumoHandler(req: Request, res: Response) {
       marca,
       fabricante,
       presentacion,
+      stock_inicial,
     });
     return res.status(201).json(row);
   } catch (error) {

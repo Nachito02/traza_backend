@@ -17,6 +17,7 @@ import {
   listMyTareaAsignaciones,
   listMyPendientes,
   listPendientesByBodega,
+  listTareasPendientesValidacion,
   updateMyTareaAsignacionEstado,
   updateTareaEntrada,
 } from "./tarea.service.js";
@@ -114,6 +115,19 @@ export async function listTareasHandler(req: Request, res: Response) {
       req.query.pendientes === "1" ||
       req.query.pendientes === "true";
     const items = await listTareas(req.user.userId, bodegaId, fincaId, Boolean(soloPendientes));
+    return res.json(items);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function listTareasPendientesValidacionHandler(req: Request, res: Response) {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const bodegaId = typeof req.params.bodegaId === "string" ? req.params.bodegaId : "";
+    const items = await listTareasPendientesValidacion(req.user.userId, bodegaId);
     return res.json(items);
   } catch (error) {
     return handleError(res, error);

@@ -12,7 +12,10 @@ import {
   addActividadContratista,
 } from "../costos/costos.service.js";
 import { createOperacionVasija } from "../elaboracion/elaboracion.service.js";
-import { resolveTareaEstadoFromAssignments } from "./tarea-state.js";
+import {
+  buildTareaApprovalUpdate,
+  resolveTareaEstadoFromAssignments,
+} from "./tarea-state.js";
 
 /**
  * Recalcula los costos de una tarea sin romper el flujo si algo falla
@@ -831,6 +834,7 @@ async function materializarEvento(
 const tareaInclude = {
   finca: { select: { finca_id: true, nombre_finca: true } },
   cuartel: { select: { cuartel_id: true, codigo_cuartel: true } },
+  validador: { select: { user_id: true, nombre: true, email: true } },
   tarea_asignacion: {
     include: {
       app_user: { select: { user_id: true, nombre: true, email: true } },
@@ -1105,6 +1109,24 @@ export async function listTareas(
   return prisma.tarea.findMany({ where, orderBy: [{ created_at: "desc" }], include: tareaInclude });
 }
 
+/** Órdenes terminadas que todavía esperan la revisión de un responsable. */
+export async function listTareasPendientesValidacion(
+  actorUserId: string,
+  bodegaId: string,
+) {
+  if (!bodegaId) throw new TareaError("bodegaId requerido", 400);
+  await ensureCanManageBodega(actorUserId, bodegaId);
+
+  return prisma.tarea.findMany({
+    where: {
+      bodega_id: bodegaId,
+      estado: "completado",
+    },
+    orderBy: [{ updated_at: "asc" }],
+    include: tareaInclude,
+  });
+}
+
 export async function addTareaAsignaciones(
   tareaId: string,
   userIds: string[],
@@ -1278,14 +1300,19 @@ export async function validarTarea(tareaId: string, actorUserId: string) {
   if (tarea.estado === "validada") {
     return prisma.tarea.findUnique({ where: { tarea_id: tareaId }, include: tareaInclude });
   }
-  // Solo se valida una actividad ya completada.
-  if (tarea.estado !== "completado") {
-    throw new TareaError("Solo se puede validar una tarea completada", 400);
+  let approvalData;
+  try {
+    approvalData = buildTareaApprovalUpdate(tarea.estado, actorUserId);
+  } catch (error) {
+    throw new TareaError(
+      error instanceof Error ? error.message : "Solo se puede aprobar una tarea completada",
+      400,
+    );
   }
 
   await prisma.tarea.update({
     where: { tarea_id: tareaId },
-    data: { estado: "validada", updated_at: new Date() },
+    data: approvalData,
   });
 
   return prisma.tarea.findUnique({

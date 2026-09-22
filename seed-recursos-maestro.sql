@@ -4,11 +4,11 @@
 -- Idempotente: ON CONFLICT (ambito, clase, nombre) DO NOTHING.
 --   npm run seed:recursos-maestro   (no requiere bodega)
 
--- ═══════════════ FINCA · MÁQUINAS (motriz) ═══════════════
+-- ═══════════════ FINCA · MÁQUINAS (máquina) ═══════════════
 -- A.1 Tractores (el nombre incluye la potencia para diferenciar variantes).
 INSERT INTO "recurso_maestro"
   ("ambito","clase","categoria","familia","nombre","potencia_hp","uso_principal","unidad_uso","consumo_descripcion","observaciones")
-SELECT 'finca'::"AmbitoRecurso",'motriz'::"ClaseMaquinaria",v.cat,v.fam,v.nom,v.pot,v.uso,v.uni,v.con,v.obs
+SELECT 'finca'::"AmbitoRecurso",'maquina'::"ClaseMaquinaria",v.cat,v.fam,v.nom,v.pot,v.uso,v.uni,v.con,v.obs
 FROM (VALUES
   ('Tractor','Tractor Viñatero Angosto','Tractor Viñatero Angosto 55–65 HP','55–65','Viñedos tradicionales','Hora','4,5 l/h',NULL),
   ('Tractor','Tractor Viñatero Angosto','Tractor Viñatero Angosto 65–75 HP','65–75','Labores generales','Hora','5,5 l/h',NULL),

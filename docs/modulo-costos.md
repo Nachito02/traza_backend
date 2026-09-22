@@ -87,7 +87,7 @@ Agua/ha, combustible/ha, energía/ha, nutrientes/ha, fitosanitarios/ha, huella d
 Requiere cruzar costo de actividad con `evento_cosecha` (producción obtenida).
 
 ### E. Combustible: sólo gasoil
-El motor calcula combustible de máquinas motrices **siempre con la tarifa de gasoil**.
+El motor calcula combustible de máquinas **siempre con la tarifa de gasoil**.
 Nafta/eléctrico están en el catálogo pero el motor no los usa por máquina todavía.
 
 ### F. Sin ABM de insumos en la UI
@@ -121,7 +121,7 @@ No se puede cargar una máquina ad-hoc con nombre/costo manual.
   significa "no aplica" y es distinto de `0` ("se intervinieron cero hectáreas"). Qué procesos
   la exigen lo decide `features/actividades/superficiePolicy.ts` en el frontend.
 - Insumo obliga: producto + dosis/ha + cantidad total.
-- Máquina motriz propia obliga consumo de combustible (o tarifa con lts/hora).
+- Máquina propia obliga consumo de combustible (o tarifa con lts/hora).
 - Modalidad contratada/mixta obliga contratista + monto.
 
 ---

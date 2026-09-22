@@ -14,7 +14,7 @@ export class RecursoError extends Error {
 }
 
 const AMBITOS: AmbitoRecurso[] = ["finca", "bodega"];
-const CLASES: ClaseMaquinaria[] = ["motriz", "implemento", "equipo", "herramienta"];
+const CLASES: ClaseMaquinaria[] = ["maquina", "implemento", "equipo", "herramienta"];
 
 function parseRequiredString(value: unknown, label: string): string {
   if (typeof value !== "string" || !value.trim()) {

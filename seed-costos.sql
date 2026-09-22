@@ -20,11 +20,11 @@ FROM "bodega" b
 JOIN (
   VALUES
     -- Tractores (categoria = 'Tractor', tipo en familia)
-    ('Tractor Viñatero Angosto 75–85 HP','motriz','Tractor','Tractor Viñatero Angosto','75–85','Pulverización, desmalezado','Hora','6,5 l/h',18000.00,6.500::numeric),
-    ('Tractor Agrícola 95–110 HP','motriz','Tractor','Tractor Agrícola','95–110','Rastras, cinceles, subsolado liviano','Hora','9,0 l/h',22000.00,9.000::numeric),
+    ('Tractor Viñatero Angosto 75–85 HP','maquina','Tractor','Tractor Viñatero Angosto','75–85','Pulverización, desmalezado','Hora','6,5 l/h',18000.00,6.500::numeric),
+    ('Tractor Agrícola 95–110 HP','maquina','Tractor','Tractor Agrícola','95–110','Rastras, cinceles, subsolado liviano','Hora','9,0 l/h',22000.00,9.000::numeric),
     -- Autopropulsadas (categoria = función)
-    ('Cosechadora de Vid','motriz','Cosecha',NULL,NULL,NULL,'Hora',NULL,45000.00,18.000::numeric),
-    ('Pulverizadora Autopropulsada','motriz','Pulverización',NULL,NULL,NULL,'Hora',NULL,38000.00,12.000::numeric),
+    ('Cosechadora de Vid','maquina','Cosecha',NULL,NULL,NULL,'Hora',NULL,45000.00,18.000::numeric),
+    ('Pulverizadora Autopropulsada','maquina','Pulverización',NULL,NULL,NULL,'Hora',NULL,38000.00,12.000::numeric),
     -- Implementos (categoria = función)
     ('Pulverizadora de arrastre','implemento','Aplicación fitosanitaria',NULL,NULL,NULL,'Hora',NULL,4000.00,NULL::numeric),
     ('Rastra de discos','implemento','Manejo de suelo',NULL,NULL,NULL,'Hora',NULL,3500.00,NULL::numeric),

@@ -1630,7 +1630,7 @@ const openapiSpec = {
         responses: { 200: { description: "OK" }, 404: { description: "No encontrada" } },
       },
       post: {
-        summary: "Crear registro operativo para una asignación",
+        summary: "Crear registro de actividad para una asignación",
         tags: ["Tareas"],
         parameters: [uuidParam("tareaAsignacionId")],
         requestBody: genericJsonBody,
@@ -1717,7 +1717,7 @@ const openapiSpec = {
     },
     "/tareas/entradas/{entradaId}": {
       patch: {
-        summary: "Corregir un registro operativo (tarea_entrada)",
+        summary: "Corregir un registro de actividad (tarea_entrada)",
         tags: ["Tareas"],
         parameters: [uuidParam("entradaId")],
         requestBody: genericJsonBody,
@@ -1726,7 +1726,7 @@ const openapiSpec = {
     },
     "/tareas/entradas/{entradaId}/adjuntos": {
       post: {
-        summary: "Subir un adjunto (imagen/video/documento) a un registro operativo",
+        summary: "Subir un adjunto (imagen/video/documento) a un registro de actividad",
         description: "Sube el archivo a IPFS y guarda el CID en `adjuntos` de la tarea_entrada. `multipart/form-data`, campo `imagen`.",
         tags: ["Tareas"],
         parameters: [uuidParam("entradaId")],
